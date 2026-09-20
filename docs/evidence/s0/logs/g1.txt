@@ -1,0 +1,6 @@
+ROOT=/home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s0
+HEAD=4035d5b60c4ed611f9a81b2f9ca850682b62fb7b
+BASE=4035d5b60c4ed611f9a81b2f9ca850682b62fb7b
+BRANCH=feat/s0-foundation
+private/lifecycle/pi checks ok ['package.json', 'packages/protocol/package.json']
+G1_OK

@@ -1,0 +1,28 @@
+node=v24.20.0 path=/usr/bin/node
+npm=11.19.0 path=/usr/bin/npm
+project_tsc=Version 5.9.3
+global_tsc=Version 7.0.2
+pi=0.85.1
+sqlite 3.53.4
+node:sqlite function
+pi-hermes-gateway@0.0.0 /home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s0
+├── pi-hermes-gateway-protocol@0.0.0 -> ./packages/protocol
+└── typescript@5.9.3
+
+
+> pi-hermes-gateway@0.0.0 typecheck
+> npm run typecheck -w pi-hermes-gateway-protocol
+
+
+> pi-hermes-gateway-protocol@0.0.0 typecheck
+> tsc -p tsconfig.json --noEmit
+
+
+> pi-hermes-gateway@0.0.0 build
+> npm run build -w pi-hermes-gateway-protocol
+
+
+> pi-hermes-gateway-protocol@0.0.0 build
+> tsc -p tsconfig.json
+
+G2_OK

@@ -1,0 +1,21 @@
+{
+  "name": "pi-hermes-gateway",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Local unpublished workspace for a pluggable Pi messaging gateway. Package names are provisional identifiers, not npm-scope claims.",
+  "workspaces": [
+    "packages/protocol"
+  ],
+  "scripts": {
+    "build": "npm run build -w pi-hermes-gateway-protocol",
+    "typecheck": "npm run typecheck -w pi-hermes-gateway-protocol",
+    "test": "npm run test -w pi-hermes-gateway-protocol"
+  },
+  "engines": {
+    "node": ">=24.20.0"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}
