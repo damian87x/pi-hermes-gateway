@@ -1,0 +1,90 @@
+{
+  "status": "PASS",
+  "candidateSha": null,
+  "candidateShaNote": "Do not self-reference. Launcher records actual HEAD after this commit. Start candidate was 0da0a1d2e2d71b482df98d186e743a2e3a9e9603.",
+  "baseSha": "4035d5b60c4ed611f9a81b2f9ca850682b62fb7b",
+  "startCandidate": "0da0a1d2e2d71b482df98d186e743a2e3a9e9603",
+  "changedPaths": [
+    "docs/evidence/s0/fix-r1-contract.md",
+    "docs/evidence/s0/fix-r1/g2-build.txt",
+    "docs/evidence/s0/fix-r1/g2-full.txt",
+    "docs/evidence/s0/fix-r1/g2-typecheck.txt",
+    "docs/evidence/s0/fix-r1/g3-npm-test.txt",
+    "docs/evidence/s0/fix-r1/g3-tdd-fail.txt",
+    "docs/evidence/s0/fix-r1/g4-pack-import.txt",
+    "docs/evidence/s0/fix-r1/g5-dual-import.txt",
+    "docs/evidence/s0/fix-r1/repro-f1-f2-after.txt",
+    "docs/evidence/s0/fix-r1/repro-f1-f2-before.txt",
+    "docs/evidence/s0/fix-r1/worker-summary.json",
+    "docs/evidence/s0-review/r1-code-safety/adversarial-1-wire-values.txt",
+    "docs/evidence/s0-review/r1-code-safety/adversarial-2-limits-proto-manifest.txt",
+    "docs/evidence/s0-review/r1-code-safety/adversarial-3-side-effects.txt",
+    "docs/evidence/s0-review/r1-code-safety/g1-containment-adapted.txt",
+    "docs/evidence/s0-review/r1-code-safety/g2-npm-ci.txt",
+    "docs/evidence/s0-review/r1-code-safety/g2-typecheck-build.txt",
+    "docs/evidence/s0-review/r1-code-safety/g3-coverage.txt",
+    "docs/evidence/s0-review/r1-code-safety/g3-npm-test.txt",
+    "docs/evidence/s0-review/r1-code-safety/g4-pack-import.txt",
+    "docs/evidence/s0-review/r1-code-safety/g5-dual-import.txt",
+    "docs/evidence/s0-review/r1-code-safety/g6-docs-license.txt",
+    "docs/evidence/s0-review/r1-code-safety/g7-source-unchanged.txt",
+    "docs/evidence/s0-review/r1-code-safety/native-receipt.json",
+    "docs/evidence/s0-review/r1-code-safety/run-g1-review-adapted.sh",
+    "docs/evidence/s0-review/r1-code-safety/summary.json",
+    "packages/protocol/src/delivery.ts",
+    "packages/protocol/src/jobs.ts",
+    "packages/protocol/src/wire.ts",
+    "packages/protocol/test/delivery.test.ts",
+    "packages/protocol/test/jobs.test.ts",
+    "packages/protocol/test/wire.test.ts"
+  ],
+  "gates": [
+    {
+      "id": "G2",
+      "command": "bash docs/evidence/s0/run-g2.sh",
+      "exitCode": 0,
+      "counts": { "node": "v24.20.0", "npm": "11.19.0", "tsc": "5.9.3", "sqlite": "3.53.4" },
+      "rawPath": "docs/evidence/s0/fix-r1/g2-full.txt"
+    },
+    {
+      "id": "G3-tdd-fail",
+      "command": "npm test -w pi-hermes-gateway-protocol  (failing F1/F2 tests before product fix)",
+      "exitCode": 1,
+      "counts": { "fail": 3, "note": "clock nowMs x2 entry points + nonexistent calendar dates" },
+      "rawPath": "docs/evidence/s0/fix-r1/g3-tdd-fail.txt"
+    },
+    {
+      "id": "G3",
+      "command": "npm test -w pi-hermes-gateway-protocol",
+      "exitCode": 0,
+      "counts": { "tests": 39, "pass": 39, "fail": 0, "skipped": 0, "todo": 0, "cancelled": 0 },
+      "rawPath": "docs/evidence/s0/fix-r1/g3-npm-test.txt"
+    },
+    {
+      "id": "G4",
+      "command": "npm run build -w pi-hermes-gateway-protocol && node packages/protocol/test/g4-pack-import.mjs",
+      "exitCode": 0,
+      "counts": { "tarballFiles": 34, "importProtocolVersion": 1, "importAdapterApiVersion": 1 },
+      "rawPath": "docs/evidence/s0/fix-r1/g4-pack-import.txt"
+    },
+    {
+      "id": "G5",
+      "command": "npm run build -w pi-hermes-gateway-protocol && node packages/protocol/test/g5-dual-import.mjs",
+      "exitCode": 0,
+      "counts": { "distinctModules": true, "distinctFns": true, "protocolVersion": 1, "adapterApiVersion": 1 },
+      "rawPath": "docs/evidence/s0/fix-r1/g5-dual-import.txt"
+    }
+  ],
+  "regressions": {
+    "F1": { "entryPoints": 2, "invalidClockCasesPerEntry": 7, "tests": 2, "result": "reject malformed" },
+    "F2": { "nonexistentDatesRejected": 6, "validUtcFormsKept": 10, "tests": 2, "result": "invalid_body vs preserved UTC/fractional/end-of-day" }
+  },
+  "unverified": [
+    "Independent native Opus re-attestation of this correction candidate (prior r1 PASS applies only to 0da0a1d).",
+    "F3–F6 remain deferred findings (prototype/hasOwn, freeze constants, throwing getters, atUtc temporal horizon).",
+    "No live transport, network, model, Telegram or WhatsApp operation.",
+    "G1/G6/G7 not re-run in this narrow correction; G4/G5 import gates were re-run."
+  ],
+  "blockers": [],
+  "nextAction": "Independent native Opus code-safety re-review of the committed correction candidate. Do not treat 0da0a1d G1–G7 PASS as applying to the new SHA."
+}

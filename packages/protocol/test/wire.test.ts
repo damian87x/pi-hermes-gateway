@@ -96,3 +96,13 @@ test("rejects oversized payloads", () => {
   if (!result.ok) assert.equal(result.error.code, "payload_too_large");
   assert.ok(utf8Bytes(body) > LIMITS.maxPayloadBytes);
 });
+
+test("rejects invalid caller clock nowMs", () => {
+  const input = validRequest();
+  const frameByteLength = frameFor(input);
+  for (const nowMs of [undefined, NaN, "1", 1.5, Infinity, null, {}]) {
+    const result = validateWireRequest(input, { nowMs: nowMs as number, frameByteLength });
+    assert.equal(result.ok, false, String(nowMs));
+    if (!result.ok) assert.equal(result.error.code, "malformed");
+  }
+});

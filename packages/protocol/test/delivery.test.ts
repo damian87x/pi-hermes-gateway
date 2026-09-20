@@ -100,3 +100,12 @@ test("rejects notAfter beyond 24 hours", () => {
   assert.equal(result.ok, false);
   if (!result.ok) assert.equal(result.error.code, "invalid_not_after");
 });
+
+test("rejects invalid caller clock nowMs", () => {
+  const input = validDelivery();
+  for (const nowMs of [undefined, NaN, "1", 1.5, Infinity, null, {}]) {
+    const result = validateStaticDelivery(input, { nowMs: nowMs as number });
+    assert.equal(result.ok, false, String(nowMs));
+    if (!result.ok) assert.equal(result.error.code, "malformed");
+  }
+});

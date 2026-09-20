@@ -1,0 +1,7 @@
+globalThis keys delta: 0
+process.env delta: 0
+process listener delta: 0
+exports: ADAPTER_API_VERSION,KNOWN_CAPABILITIES,LIMITS,METHODS,PROTOCOL_VERSION,RECEIPT_LEVELS,fail,isAdapterApiCompatible,ok,utf8ByteLength,validateAdapterManifest,validateDeliveryRoute,validateMethodBody,validateStaticDelivery,validateWireRequest
+export count: 15
+any non-fn/non-obj export: []
+timers after import: PipeWrap,PipeWrap

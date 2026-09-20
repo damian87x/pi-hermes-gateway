@@ -29,6 +29,17 @@ function validateOnceSchedule(value: Record<string, unknown>): ProtocolResult<On
   }
   const ms = Date.parse(value.atUtc);
   if (!Number.isFinite(ms)) return fail("invalid_body", "once schedule atUtc is not parseable");
+  const year = Number(value.atUtc.slice(0, 4));
+  const month = Number(value.atUtc.slice(5, 7));
+  const day = Number(value.atUtc.slice(8, 10));
+  const calendar = new Date(Date.UTC(year, month - 1, day));
+  if (
+    calendar.getUTCFullYear() !== year ||
+    calendar.getUTCMonth() !== month - 1 ||
+    calendar.getUTCDate() !== day
+  ) {
+    return fail("invalid_body", "once schedule atUtc is not an existing calendar date");
+  }
   return ok({ type: "once", atUtc: value.atUtc });
 }
 

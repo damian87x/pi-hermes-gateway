@@ -1,0 +1,39 @@
+frameByteLength=undefined                        => malformed
+frameByteLength=null                             => malformed
+frameByteLength="200"                            => malformed
+frameByteLength=1.5                              => malformed
+frameByteLength={}                               => malformed
+frameByteLength=65536                            => *** ACCEPTED ***
+frameByteLength=65537                            => frame_too_large
+opts missing frameByteLength key                 => malformed
+opts nowMs undefined                             => *** ACCEPTED ***
+opts nowMs NaN                                   => *** ACCEPTED ***
+atUtc 2026-02-30T00:00:00Z                       => *** ACCEPTED *** -> parses to 2026-03-02T00:00:00.000Z
+atUtc 2026-13-01T00:00:00Z                       => invalid_body
+atUtc 2026-00-10T00:00:00Z                       => invalid_body
+atUtc 2026-04-31T00:00:00Z                       => *** ACCEPTED *** -> parses to 2026-05-01T00:00:00.000Z
+atUtc 2026-09-21T24:00:00Z                       => *** ACCEPTED *** -> parses to 2026-09-22T00:00:00.000Z
+atUtc 2026-09-21T23:59:60Z                       => invalid_body
+proto-pollution: route fields from Object.prototype => *** ACCEPTED INHERITED *** {"profileId":"pwned-profileId","adapterId":"pwned-adapterId","accountId":"pwned-accountId","chatId":"pwned-chatId","threadId":"pwned-threadId"}
+proto-pollution: wire fields from Object.prototype => *** ACCEPTED INHERITED *** {"protocolVersion":1,"requestId":"inherited","method":"job.list","body":{},"expiresAt":1789905605000}
+JSON.parse __proto__ does NOT pollute            => ownProto=true globalPolluted=undefined
+LIMITS frozen?                                   => false
+METHODS frozen?                                  => false
+KNOWN_CAPABILITIES frozen?                       => false
+MUTATE LIMITS.maxTextChars -> affects validation? => *** GLOBAL VALIDATION CHANGED -> text_too_long ***
+MUTATE METHODS.push('evil') -> accepted?         => unknown_method
+validateStaticDelivery huge timeZone via job path => invalid_body in 19.243066ms
+requestId 1MB (ReDoS probe)                      => invalid_request_id in 0.41087ms
+man dup capability                               => duplicate_capability
+man unknown capability                           => invalid_capability
+man empty capabilities                           => invalid_capability
+man apiVersion 2                                 => unsupported_adapter_api_version
+man apiVersion 1.5                               => unsupported_adapter_api_version
+man apiVersion '1'                               => unsupported_adapter_api_version
+man maxTextLength 0                              => invalid_manifest
+man maxTextLength 99999                          => invalid_manifest
+man receiptLevels without accepted               => invalid_manifest
+man dup receiptLevel                             => invalid_manifest
+man configSchemaVersion 0                        => invalid_manifest
+man capabilities via Array-like                  => invalid_capability
+isAdapterApiCompatible(1,1)/(2,1)/(NaN,1)        => true,false,false

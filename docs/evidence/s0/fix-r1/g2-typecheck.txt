@@ -1,0 +1,8 @@
+
+> pi-hermes-gateway@0.0.0 typecheck
+> npm run typecheck -w pi-hermes-gateway-protocol
+
+
+> pi-hermes-gateway-protocol@0.0.0 typecheck
+> tsc -p tsconfig.json --noEmit
+

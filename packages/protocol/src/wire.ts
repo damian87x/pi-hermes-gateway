@@ -3,6 +3,7 @@ import { LIMITS, METHODS, PROTOCOL_VERSION, type Method } from "./limits.js";
 import {
   isPlainObject,
   payloadByteLength,
+  requireInteger,
   requireRequestId,
 } from "./check.js";
 import { validateMethodBody } from "./jobs.js";
@@ -30,6 +31,8 @@ export function validateWireRequest(
   if (opts.frameByteLength > LIMITS.maxFrameBytes) {
     return fail("frame_too_large", `frame exceeds ${LIMITS.maxFrameBytes} bytes`);
   }
+  const nowMs = requireInteger(opts.nowMs, "malformed", "nowMs must be an integer unix millisecond timestamp");
+  if (!nowMs.ok) return nowMs;
   if (!isPlainObject(input)) return fail("malformed", "request must be a plain object");
   if (!("protocolVersion" in input)) return fail("malformed", "protocolVersion is required");
   if (typeof input.protocolVersion !== "number" || !Number.isInteger(input.protocolVersion)) {
@@ -66,14 +69,14 @@ export function validateWireRequest(
   if (typeof input.expiresAt !== "number" || !Number.isInteger(input.expiresAt)) {
     return fail("expired", "expiresAt must be an integer unix millisecond timestamp");
   }
-  if (input.expiresAt <= opts.nowMs || input.expiresAt > opts.nowMs + LIMITS.maxRequestTtlMs) {
+  if (input.expiresAt <= nowMs.value || input.expiresAt > nowMs.value + LIMITS.maxRequestTtlMs) {
     return fail(
       "expired",
       `expiresAt must be > now and <= now + ${LIMITS.maxRequestTtlMs}ms`,
     );
   }
 
-  const body = validateMethodBody(input.method, input.body, { nowMs: opts.nowMs });
+  const body = validateMethodBody(input.method, input.body, { nowMs: nowMs.value });
   if (!body.ok) return body;
 
   return ok({

@@ -1,0 +1,56 @@
+
+> pi-hermes-gateway@0.0.0 test
+> npm run test -w pi-hermes-gateway-protocol
+
+
+> pi-hermes-gateway-protocol@0.0.0 test
+> npm run build && node --experimental-strip-types --test test/*.test.ts
+
+
+> pi-hermes-gateway-protocol@0.0.0 build
+> tsc -p tsconfig.json
+
+✔ accepts a declared M1 text adapter manifest (1.886707ms)
+✔ rejects unsupported adapter API versions (0.176801ms)
+✔ rejects duplicate capability definitions (0.1282ms)
+✔ rejects unknown capability definitions (0.116291ms)
+✔ rejects empty capability lists (0.12661ms)
+✔ rejects duplicate receipt levels (0.11074ms)
+✔ requires accepted receipt level (0.132511ms)
+✔ rejects maxTextLength outside protocol bounds (0.1295ms)
+✔ rejects invalid adapterId (0.147001ms)
+✔ accepts a static owner-route text delivery (0.882123ms)
+✔ accepts optional threadId (0.147091ms)
+✔ rejects missing route fields (0.1491ms)
+✔ rejects empty or oversized route fields (0.11402ms)
+✔ rejects empty text (0.122131ms)
+✔ rejects oversized text using UTF-16 code units (0.10966ms)
+✔ rejects notAfter at or before now (0.129961ms)
+✔ rejects notAfter beyond 24 hours (0.131951ms)
+✔ accepts job.create static-text once-at body (0.933393ms)
+✔ accepts job.create daily local schedule with IANA zone (10.42766ms)
+✔ rejects worker job kinds in S0/M1 protocol (0.151221ms)
+✔ rejects unknown IANA time zones (0.209551ms)
+✔ rejects invalid localTime (0.125601ms)
+✔ validates job.inspect and delivery.enqueue bodies (0.18872ms)
+✔ rejects delivery.enqueue that fails static delivery rules (0.10834ms)
+✔ wire validation also checks method bodies (0.314471ms)
+✔ accepts a supported wire request within limits (1.022804ms)
+✔ rejects unsupported protocol versions (0.179101ms)
+✔ rejects missing protocolVersion (0.13573ms)
+✔ rejects invalid request IDs (0.192461ms)
+✔ rejects unknown methods (0.177681ms)
+✔ rejects non-object bodies (0.163601ms)
+✔ rejects expired requests (0.162751ms)
+✔ rejects expiry beyond the bounded TTL (0.16261ms)
+✔ rejects oversized frames (0.18735ms)
+✔ rejects oversized payloads (1.585526ms)
+ℹ tests 35
+ℹ suites 0
+ℹ pass 35
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 100.343341
+G3_EXIT=0

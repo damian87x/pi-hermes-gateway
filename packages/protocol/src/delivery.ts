@@ -1,6 +1,6 @@
 import { fail, ok, type ProtocolResult } from "./errors.js";
 import { LIMITS } from "./limits.js";
-import { isPlainObject, requireToken } from "./check.js";
+import { isPlainObject, requireInteger, requireToken } from "./check.js";
 
 export type DeliveryRoute = {
   profileId: string;
@@ -45,6 +45,8 @@ export function validateStaticDelivery(
   input: unknown,
   opts: { nowMs: number },
 ): ProtocolResult<StaticDelivery> {
+  const nowMs = requireInteger(opts.nowMs, "malformed", "nowMs must be an integer unix millisecond timestamp");
+  if (!nowMs.ok) return nowMs;
   if (!isPlainObject(input)) return fail("malformed", "delivery must be an object");
   const route = validateDeliveryRoute(input.route);
   if (!route.ok) return route;
@@ -60,7 +62,7 @@ export function validateStaticDelivery(
   if (typeof input.notAfter !== "number" || !Number.isInteger(input.notAfter)) {
     return fail("invalid_not_after", "notAfter must be an integer unix millisecond timestamp");
   }
-  if (input.notAfter <= opts.nowMs || input.notAfter > opts.nowMs + LIMITS.maxNotAfterMs) {
+  if (input.notAfter <= nowMs.value || input.notAfter > nowMs.value + LIMITS.maxNotAfterMs) {
     return fail(
       "invalid_not_after",
       `notAfter must be > now and <= now + ${LIMITS.maxNotAfterMs}ms (24h)`,

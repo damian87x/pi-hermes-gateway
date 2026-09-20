@@ -1,0 +1,40 @@
+utf8len:"a"                                => impl=1 buf=1 MATCH
+utf8len:"é"                                => impl=2 buf=2 MATCH
+utf8len:"€"                                => impl=3 buf=3 MATCH
+utf8len:"😀"                               => impl=4 buf=4 MATCH
+utf8len:"\ud800"                           => impl=3 buf=3 MATCH
+utf8len:"\udfff"                           => impl=3 buf=3 MATCH
+utf8len:"a\ud83d"                          => impl=4 buf=4 MATCH
+utf8len:"\u0000"                           => impl=1 buf=1 MATCH
+body BigInt                                => invalid_body
+body circular                              => invalid_body
+body toJSON throws                         => invalid_body
+body getter throws                         => THREW: Error: getter
+body is array                              => invalid_body
+body Object.create(null)                   => OK
+body undefined-valued key                  => OK
+expiresAt NaN                              => expired
+expiresAt Infinity                         => expired
+expiresAt 1e21                             => expired
+expiresAt -0                               => expired
+expiresAt string                           => expired
+protocolVersion 1.0 float                  => OK
+protocolVersion '1'                        => malformed
+protocolVersion true                       => malformed
+protocolVersion -1                         => unsupported_protocol_version
+frameByteLength NaN                        => malformed
+frameByteLength -1                         => malformed
+frameByteLength 65537                      => frame_too_large
+frameByteLength undefined                  => OK
+method proto key 'constructor'             => unknown_method
+method '__proto__'                         => unknown_method
+method 'toString'                          => unknown_method
+requestId proto 'constructor'              => OK
+input is array                             => malformed
+input null                                 => malformed
+input Object.create(null) valid            => OK
+input via JSON __proto__ literal           => invalid_request_id
+extra keys stripped (job.create)           => keys=kind,text,route,schedule routeKeys=profileId,adapterId,accountId,chatId aliased=false
+job.create atUtc in the PAST (1999)        => OK
+job.create atUtc year 9999                 => OK
+job.create atUtc 2026-02-30 (impossible day) => OK

@@ -1,0 +1,35 @@
+### npm ci tail
+
+found 0 vulnerabilities
+EXIT=0
+### node -v
+v24.20.0
+### npm -v
+11.19.0
+### project tsc
+Version 5.9.3
+### npm ls
+pi-hermes-gateway@0.0.0 /home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s0-review
+├── pi-hermes-gateway-protocol@0.0.0 -> ./packages/protocol
+└── typescript@5.9.3
+
+### typecheck
+
+> pi-hermes-gateway@0.0.0 typecheck
+> npm run typecheck -w pi-hermes-gateway-protocol
+
+
+> pi-hermes-gateway-protocol@0.0.0 typecheck
+> tsc -p tsconfig.json --noEmit
+
+TYPECHECK_EXIT=0
+### build
+
+> pi-hermes-gateway@0.0.0 build
+> npm run build -w pi-hermes-gateway-protocol
+
+
+> pi-hermes-gateway-protocol@0.0.0 build
+> tsc -p tsconfig.json
+
+BUILD_EXIT=0

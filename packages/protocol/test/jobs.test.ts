@@ -98,6 +98,47 @@ test("rejects delivery.enqueue that fails static delivery rules", () => {
   if (!result.ok) assert.equal(result.error.code, "invalid_not_after");
 });
 
+test("rejects nonexistent once-schedule calendar dates", () => {
+  for (const atUtc of [
+    "2026-02-30T00:00:00Z",
+    "2026-02-30T00:00:00.000Z",
+    "2026-04-31T00:00:00Z",
+    "2026-02-29T00:00:00Z",
+    "2026-02-29T24:00:00Z",
+    "2026-06-31T00:00:00Z",
+  ]) {
+    const result = validateMethodBody(
+      "job.create",
+      { kind: "static-text", text: "ping", route, schedule: { type: "once", atUtc } },
+      { nowMs: NOW },
+    );
+    assert.equal(result.ok, false, atUtc);
+    if (!result.ok) assert.equal(result.error.code, "invalid_body");
+  }
+});
+
+test("accepts valid UTC once-schedule forms including leap day, month boundaries, fractional seconds, and end-of-day", () => {
+  for (const atUtc of [
+    "2026-09-21T00:00:00Z",
+    "2026-09-21T00:00:00.000Z",
+    "2026-09-21T00:00:00.123Z",
+    "2024-02-29T00:00:00Z",
+    "2024-02-29T24:00:00Z",
+    "2026-02-28T00:00:00Z",
+    "2026-04-30T23:59:59Z",
+    "2026-01-31T00:00:00Z",
+    "2026-09-21T24:00:00Z",
+    "2026-09-21T24:00:00.000Z",
+  ]) {
+    const result = validateMethodBody(
+      "job.create",
+      { kind: "static-text", text: "ping", route, schedule: { type: "once", atUtc } },
+      { nowMs: NOW },
+    );
+    assert.equal(result.ok, true, atUtc);
+  }
+});
+
 test("wire validation also checks method bodies", () => {
   const input = {
     protocolVersion: 1,

@@ -1,0 +1,52 @@
+Pre-fix reproduction on candidate 0da0a1d2e2d71b482df98d186e743a2e3a9e9603
+Command: node --input-type=module (inline) importing packages/protocol/dist/index.js
+NOW = Date.UTC(2026, 8, 20, 17, 0, 0)
+
+=== F1 wire nowMs (expect: currently ok for undefined/NaN/{}) ===
+{"nowMs":"undefined","ok":true,"code":null,"msg":null}
+{"nowMs":"NaN","ok":true,"code":null,"msg":null}
+{"nowMs":"null","ok":false,"code":"expired","msg":"expiresAt must be > now and <= now + 60000ms"}
+{"nowMs":"1","ok":false,"code":"expired","msg":"expiresAt must be > now and <= now + 60000ms"}
+{"nowMs":"1.5","ok":false,"code":"expired","msg":"expiresAt must be > now and <= now + 60000ms"}
+{"nowMs":"Infinity","ok":false,"code":"expired","msg":"expiresAt must be > now and <= now + 60000ms"}
+{"nowMs":"-Infinity","ok":false,"code":"expired","msg":"expiresAt must be > now and <= now + 60000ms"}
+{"nowMs":"[object Object]","ok":true,"code":null,"msg":null}
+{"nowMs":"","ok":false,"code":"expired","msg":"expiresAt must be > now and <= now + 60000ms"}
+
+=== F1 delivery nowMs (expect: currently ok for undefined/NaN/{}) ===
+{"nowMs":"undefined","ok":true,"code":null,"msg":null}
+{"nowMs":"NaN","ok":true,"code":null,"msg":null}
+{"nowMs":"null","ok":false,"code":"invalid_not_after","msg":"notAfter must be > now and <= now + 86400000ms (24h)"}
+{"nowMs":"1","ok":false,"code":"invalid_not_after","msg":"notAfter must be > now and <= now + 86400000ms (24h)"}
+{"nowMs":"1.5","ok":false,"code":"invalid_not_after","msg":"notAfter must be > now and <= now + 86400000ms (24h)"}
+{"nowMs":"Infinity","ok":false,"code":"invalid_not_after","msg":"notAfter must be > now and <= now + 86400000ms (24h)"}
+{"nowMs":"-Infinity","ok":false,"code":"invalid_not_after","msg":"notAfter must be > now and <= now + 86400000ms (24h)"}
+{"nowMs":"[object Object]","ok":true,"code":null,"msg":null}
+{"nowMs":"","ok":false,"code":"invalid_not_after","msg":"notAfter must be > now and <= now + 86400000ms (24h)"}
+
+=== F2 once-schedule dates (Date.parse / toISOString / validateMethodBody) ===
+{"d":"2026-02-30T00:00:00Z","ms":1772409600000,"iso":"2026-03-02T00:00:00.000Z","ok":true,"code":null}
+{"d":"2026-04-31T00:00:00Z","ms":1777593600000,"iso":"2026-05-01T00:00:00.000Z","ok":true,"code":null}
+{"d":"2026-02-29T00:00:00Z","ms":1772323200000,"iso":"2026-03-01T00:00:00.000Z","ok":true,"code":null}
+{"d":"2024-02-29T00:00:00Z","ms":1709164800000,"iso":"2024-02-29T00:00:00.000Z","ok":true,"code":null}
+{"d":"2026-02-28T00:00:00Z","ms":1772236800000,"iso":"2026-02-28T00:00:00.000Z","ok":true,"code":null}
+{"d":"2026-04-30T00:00:00Z","ms":1777507200000,"iso":"2026-04-30T00:00:00.000Z","ok":true,"code":null}
+{"d":"2026-09-21T00:00:00Z","ms":1789948800000,"iso":"2026-09-21T00:00:00.000Z","ok":true,"code":null}
+{"d":"2026-09-21T00:00:00.000Z","ms":1789948800000,"iso":"2026-09-21T00:00:00.000Z","ok":true,"code":null}
+{"d":"2026-09-21T00:00:00.123Z","ms":1789948800123,"iso":"2026-09-21T00:00:00.123Z","ok":true,"code":null}
+{"d":"2026-09-21T24:00:00Z","ms":1790035200000,"iso":"2026-09-22T00:00:00.000Z","ok":true,"code":null}
+{"d":"2026-09-21T24:00:00.000Z","ms":1790035200000,"iso":"2026-09-22T00:00:00.000Z","ok":true,"code":null}
+{"d":"2026-09-21T24:00:01Z","ms":null,"iso":null,"ok":false,"code":"invalid_body"}
+{"d":"2026-09-21T23:59:60Z","ms":null,"iso":null,"ok":false,"code":"invalid_body"}
+{"d":"2026-13-01T00:00:00Z","ms":null,"iso":null,"ok":false,"code":"invalid_body"}
+{"d":"2026-00-01T00:00:00Z","ms":null,"iso":null,"ok":false,"code":"invalid_body"}
+{"d":"2026-01-32T00:00:00Z","ms":null,"iso":null,"ok":false,"code":"invalid_body"}
+{"d":"2026-01-00T00:00:00Z","ms":null,"iso":null,"ok":false,"code":"invalid_body"}
+{"d":"2026-09-21T25:00:00Z","ms":null,"iso":null,"ok":false,"code":"invalid_body"}
+
+Notes:
+- F1: undefined/NaN/{} make expiry comparisons false, so validateWireRequest and validateStaticDelivery return ok:true.
+- F2: 2026-02-30 rolls to 2026-03-02; 2026-04-31 rolls to 2026-05-01; 2026-02-29 (non-leap) rolls to 2026-03-01; all currently accepted.
+- Valid forms already accepted that must be preserved: fractional seconds, 2024-02-29 leap day, 2026-02-28 / 2026-04-30 month boundaries, ISO end-of-day T24:00:00Z and T24:00:00.000Z.
+- Naive toISOString() round-trip would reject T24:00:00Z; conductor requires preserving that already-accepted form and rejecting nonexistent calendar dates only.
+- Callers of nowMs: validateWireRequest (wire.ts), validateStaticDelivery (delivery.ts), validateMethodBody -> validateStaticDelivery / validateJobCreate (void nowMs, F6 deferred). Tests and g5-dual-import.mjs pass integer Date.UTC clocks. No new callers added.

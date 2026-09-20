@@ -1,0 +1,13 @@
+=== G7: identity re-verified AFTER all gate execution ===
+HEAD=0da0a1d2e2d71b482df98d186e743a2e3a9e9603
+BASE=4035d5b60c4ed611f9a81b2f9ca850682b62fb7b
+diffSha256=e148a206ce5b0e7b3fbf3cc6b44d40a11b3e94c2530bdc700dbfac2f8606a080  -
+=== tracked-file integrity (diff vs candidate commit) ===
+TRACKED_DIFF_LINES=0
+=== worker logs untouched ===
+WORKER_LOG_DIFF_LINES=0
+=== full status (porcelain, incl. untracked) ===
+?? .omc/
+?? docs/evidence/s0-review/
+=== status ignoring my evidence dir ===
+?? .omc/
