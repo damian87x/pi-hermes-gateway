@@ -1,0 +1,70 @@
+=== AC7: fix-r1 worker-summary.json ===
+top-level keys: ['baseSha', 'blockers', 'candidateSha', 'candidateShaNote', 'changedPaths', 'gates', 'nextAction', 'regressions', 'startCandidate', 'status', 'unverified']
+baseSha = "4035d5b60c4ed611f9a81b2f9ca850682b62fb7b"
+candidateSha = null
+status = "PASS"
+nextAction = "Independent native Opus code-safety re-review of the committed correction candidate. Do not treat 0da0a1d G1\u2013G7 PASS as applying to the new SHA."
+gates: 5
+   {"id": "G2", "command": "bash docs/evidence/s0/run-g2.sh", "exitCode": 0, "counts": {"node": "v24.20.0", "npm": "11.19.0", "tsc": "5.9.3", "sqlite": "3.53.4"}, "rawPath": "docs/evidence/s0/fix-r1/g2-full.txt"}
+   {"id": "G3-tdd-fail", "command": "npm test -w pi-hermes-gateway-protocol  (failing F1/F2 tests before product fix)", "exitCode": 1, "counts": {"fail": 3, "note": "clock nowMs x2 entry points + nonexistent calendar dates"}, "rawPat
+   {"id": "G3", "command": "npm test -w pi-hermes-gateway-protocol", "exitCode": 0, "counts": {"tests": 39, "pass": 39, "fail": 0, "skipped": 0, "todo": 0, "cancelled": 0}, "rawPath": "docs/evidence/s0/fix-r1/g3-npm-test.txt"}
+   {"id": "G4", "command": "npm run build -w pi-hermes-gateway-protocol && node packages/protocol/test/g4-pack-import.mjs", "exitCode": 0, "counts": {"tarballFiles": 34, "importProtocolVersion": 1, "importAdapterApiVersion": 1}, "raw
+   {"id": "G5", "command": "npm run build -w pi-hermes-gateway-protocol && node packages/protocol/test/g5-dual-import.mjs", "exitCode": 0, "counts": {"distinctModules": true, "distinctFns": true, "protocolVersion": 1, "adapterApiVers
+changedPaths = ["docs/evidence/s0/fix-r1-contract.md", "docs/evidence/s0/fix-r1/g2-build.txt", "docs/evidence/s0/fix-r1/g2-full.txt", "docs/evidence/s0/fix-r1/g2-typecheck.txt", "docs/evidence/s0/fix-r1/g3-npm-test.txt", "docs/evidence/s0/fix-r1/g3-tdd-fail.txt", "docs/evidence/s0/fix-r1/g4-pack-import.txt", "docs/evidence/s0/fix-r1/g5-dual-import.txt", "docs/evidence/s0/fix-r1/repro-f1-f2-after.txt", "docs/evidence/s0/fix-r1/repro-f1-f2-before.txt", "docs/evidence/s0/fix-r1/worker-summary.json", "docs/evidence/s0-review/r1-code-safety/adversarial-1-wire-values.txt", "docs/evidence/s0-review/r1-code-safety/a
+
+=== AC7: raw evidence paths referenced exist? ===
+OK   docs/evidence/s0-review/r1-code-safety/adversarial-1-wire-values.txt
+OK   docs/evidence/s0-review/r1-code-safety/adversarial-2-limits-proto-manifest.txt
+OK   docs/evidence/s0-review/r1-code-safety/adversarial-3-side-effects.txt
+OK   docs/evidence/s0-review/r1-code-safety/g1-containment-adapted.txt
+OK   docs/evidence/s0-review/r1-code-safety/g2-npm-ci.txt
+OK   docs/evidence/s0-review/r1-code-safety/g2-typecheck-build.txt
+OK   docs/evidence/s0-review/r1-code-safety/g3-coverage.txt
+OK   docs/evidence/s0-review/r1-code-safety/g3-npm-test.txt
+OK   docs/evidence/s0-review/r1-code-safety/g4-pack-import.txt
+OK   docs/evidence/s0-review/r1-code-safety/g5-dual-import.txt
+OK   docs/evidence/s0-review/r1-code-safety/g6-docs-license.txt
+OK   docs/evidence/s0-review/r1-code-safety/g7-source-unchanged.txt
+OK   docs/evidence/s0-review/r1-code-safety/native-receipt.json
+OK   docs/evidence/s0-review/r1-code-safety/run-g1-review-adapted.sh
+OK   docs/evidence/s0-review/r1-code-safety/summary.json
+OK   docs/evidence/s0/fix-r1-contract.md
+OK   docs/evidence/s0/fix-r1/g2-build.txt
+OK   docs/evidence/s0/fix-r1/g2-full.txt
+OK   docs/evidence/s0/fix-r1/g2-typecheck.txt
+OK   docs/evidence/s0/fix-r1/g3-npm-test.txt
+OK   docs/evidence/s0/fix-r1/g3-tdd-fail.txt
+OK   docs/evidence/s0/fix-r1/g4-pack-import.txt
+OK   docs/evidence/s0/fix-r1/g5-dual-import.txt
+OK   docs/evidence/s0/fix-r1/repro-f1-f2-after.txt
+OK   docs/evidence/s0/fix-r1/repro-f1-f2-before.txt
+OK   docs/evidence/s0/fix-r1/worker-summary.json
+OK   docs/evidence/s0/run-g2.sh
+
+=== final tracked cleanliness ===
+?? .omc/
+?? docs/evidence/s0-review/r2-code-safety/
+?? docs/evidence/s0-review/r2-spec/
+-- tracked diff vs candidate --
+(empty above = no tracked modification)
+-- untracked --
+?? .omc/project-memory.json
+?? .omc/state/last-tool-error.json
+?? docs/evidence/s0-review/r2-code-safety/g1-adaptation-delta.diff
+?? docs/evidence/s0-review/r2-code-safety/g1-containment-adapted.txt
+?? docs/evidence/s0-review/r2-code-safety/g2-npm-ci.txt
+?? docs/evidence/s0-review/r2-code-safety/g2-typecheck-build.txt
+?? docs/evidence/s0-review/r2-code-safety/g3-coverage.txt
+?? docs/evidence/s0-review/r2-code-safety/g3-npm-test.txt
+?? docs/evidence/s0-review/r2-code-safety/g4-pack-import.txt
+?? docs/evidence/s0-review/r2-code-safety/g5-dual-import.txt
+?? docs/evidence/s0-review/r2-code-safety/g6-docs-license.txt
+?? docs/evidence/s0-review/r2-code-safety/g7-source-unchanged.txt
+?? docs/evidence/s0-review/r2-code-safety/native-receipt.json
+?? docs/evidence/s0-review/r2-code-safety/native-result.json
+?? docs/evidence/s0-review/r2-code-safety/probe-carried-f3-f6.mjs
+?? docs/evidence/s0-review/r2-code-safety/probe-carried-f3-f6.txt
+?? docs/evidence/s0-review/r2-code-safety/probe-carried-f3-proto.mjs
+?? docs/evidence/s0-review/r2-code-safety/probe-f1-f2.mjs
+?? docs/evidence/s0-review/r2-code-safety/probe-f1-f2.txt
+?? docs/evidence/s0-review/r2-code-safety/run-g1-r2-adapted.sh

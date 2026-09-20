@@ -1,0 +1,15 @@
+=== AC7 structural: worker-summary.json top-level keys only ===
+status,candidateSha,candidateShaNote,baseSha,changedPaths,gates,unverified,blockers,nextAction
+=== gate raw-evidence paths referenced in gates.md, existence check ===
+EXISTS  docs/evidence/
+EXISTS  docs/evidence/s0/fix-r1/worker-summary.json
+MISSING docs/evidence/s0/g7-receipt.md
+EXISTS  docs/evidence/s0-review/r1-code-safety/.
+EXISTS  docs/evidence/s0/run-g1.sh
+EXISTS  docs/evidence/s0/run-g2.sh
+EXISTS  docs/evidence/s0/run-g6.sh
+=== remotes / unpushed state ===
+origin	git@github.com:damian87x/pi-hermes-gateway.git (fetch)
+origin	git@github.com:damian87x/pi-hermes-gateway.git (push)
+82d0de5 fix: reject invalid clocks and nonexistent UTC dates
+0da0a1d feat: S0 protocol workspace foundation

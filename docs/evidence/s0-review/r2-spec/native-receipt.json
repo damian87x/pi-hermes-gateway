@@ -1,0 +1,32 @@
+{
+  "stage": "spec",
+  "exitCode": 0,
+  "finishedAt": "2026-09-20T18:06:05.332468+00:00",
+  "requestedModel": "opus",
+  "observedModelUsage": {
+    "claude-opus-5": {
+      "inputTokens": 42,
+      "outputTokens": 34676,
+      "cacheReadInputTokens": 1240993,
+      "cacheCreationInputTokens": 101012,
+      "webSearchRequests": 0,
+      "costUSD": 2.4977264999999997,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "thinkingTokens": 8947,
+      "canonicalModel": "claude-opus-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "sessionId": "6a2cc5c6-6d48-4d16-bd84-f4b3d695ebcd",
+  "candidateSha": "82d0de5dae6229ff0983267e4b26bdafe99a4178",
+  "verdict": "PASS",
+  "passedToNextStage": true,
+  "receiptProblems": [],
+  "summary": "**STAGE 2 SPEC COMPLIANCE \u2014 VERDICT: PASS** (candidate `82d0de5`, diff SHA256 `9d68ca94\u2026` independently recomputed and matching; tracked tree clean, 0 modifications).\n\nAll seven ACs met. Coverage table: `docs/evidence/s0-review/r2-spec/ac-coverage.md`.\n\n- **AC3** \u2014 every documented limit is boundary-exact: `expiresAt` `(now, now+60s]`, `notAfter` `(now, now+24h]`, frame 65536, payload 32768 UTF-8 bytes, text 4096 UTF-16 units; all 9 emitted codes are within `security.md:7`. F1 fixed (12 invalid-clock cases reject `malformed` across both entry points), F2 fixed (7 nonexistent dates rejected, 5 valid forms incl. leap day and ISO 24:00 preserved). No TODO validators, no scheduling/transport/persistence.\n- **AC2/AC4** \u2014 packed tarball 34 files, zero src/test leakage; clean `/tmp` consumer installs 1 package, `pi` unresolvable, validators work; 39/39 tests pass, 0 skipped/todo; import adds 0 globals, 0 prototype delta.\n- **AC5** \u2014 every recorded version independently confirmed (Node v24.20.0, npm 11.19.0, tsc 5.9.3, pi 0.85.1, sqlite 3.53.4, no `@types/node`); unsupported claims correctly deferred.\n\nR1 carried findings adjudicated \u2014 none is an AC violation: **F3/F5** are unreachable from the wire boundary (I verified JSON-derived input can carry neither inherited fields nor getters \u2014 reachability, not \"no transport yet\"); **F4** does not breach AC2's singleton/identity prohibition and the package's own behaviour is stateless; **F6** is a genuine S1 owner decision that AC3 and `fix-r1-contract.md:12` explicitly exclude from this lane, and no doc makes a false atUtc claim. One new low nit confirmed (years 0001\u20130099 over-rejected, fail-closed). One low AC7 reporting gap: worker summaries omit candidate SHA/diff digest/clean status \u2014 purpose satisfied via independent recomputation.\n\nNo live daemon/Telegram proof was demanded or claimed. Next: release to origin/AC conformance and observable-outcome stages; no new correction round warranted.",
+  "summaryTruncated": false,
+  "gateSummary": "/home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s0-review-r2/docs/evidence/s0-review/r2-spec/summary.json",
+  "nativeRaw": "/home/damian-linux/workspace/billioner-coder/.pi/tasks/pi-hermes-gateway-conductor/s0-review-r2/spec/raw.json",
+  "stderr": "/home/damian-linux/workspace/billioner-coder/.pi/tasks/pi-hermes-gateway-conductor/s0-review-r2/spec/stderr.log"
+}

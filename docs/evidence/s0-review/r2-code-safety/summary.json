@@ -1,0 +1,170 @@
+{
+  "stage": "code-safety",
+  "verdict": "PASS",
+  "candidateSha": "82d0de5dae6229ff0983267e4b26bdafe99a4178",
+  "baseSha": "4035d5b60c4ed611f9a81b2f9ca850682b62fb7b",
+  "diffSha256": "9d68ca943f130b237eab6a1b71edfbffa0c1f63619258e985e88ff0c6ab461af",
+  "sourceIdentity": {
+    "headMatchesPinnedCandidate": true,
+    "baseResolves": true,
+    "diffSha256MatchesExpected": true,
+    "priorPassAppliesTo": "0da0a1d2e2d71b482df98d186e743a2e3a9e9603 (old candidate) - NOT reused; all gates rerun independently on 82d0de5"
+  },
+  "gates": [
+    {
+      "id": "G1",
+      "command": "bash /tmp/r2-g1/run-g1-r2-adapted.sh  (ADAPTED copy of tracked docs/evidence/s0/run-g1.sh; tracked script NOT modified; exact 4-line delta recorded in g1-adaptation-delta.diff: ROOT pinned to this review worktree, worktree-name case arm, branch assert replaced by pinned-candidate SHA assert, origin/main replaced by pinned base SHA. All substantive checks preserved verbatim.)",
+      "exitCode": 0,
+      "counts": { "packages": 2, "privateTrue": 2, "lifecycleScripts": 0, "licenseFields": 0, "piManifests": 0, "peerDependencies": 0, "forbiddenFuturePackageDirs": 5, "forbiddenFuturePackageDirsPresent": 0 },
+      "coverage": null,
+      "rawPath": "docs/evidence/s0-review/r2-code-safety/g1-containment-adapted.txt"
+    },
+    {
+      "id": "G2",
+      "command": "npm ci ; bash docs/evidence/s0/run-g2.sh  (tracked script, unmodified: toolchain identities + npm ls + npm run typecheck + npm run build)",
+      "exitCode": 0,
+      "counts": { "npmCiExit": 0, "typecheckExit": 0, "buildExit": 0, "node": "v24.20.0", "npm": "11.19.0", "projectTsc": "5.9.3", "globalTsc": "7.0.2", "nodeSqlite": "3.53.4", "workspacePackagesInstalled": 2, "externalRuntimeDeps": 0, "vulnerabilities": 0 },
+      "coverage": null,
+      "rawPath": "docs/evidence/s0-review/r2-code-safety/g2-typecheck-build.txt"
+    },
+    {
+      "id": "G3",
+      "command": "npm test  (npm run build && node --experimental-strip-types --test test/*.test.ts) ; plus node --experimental-strip-types --test --experimental-test-coverage test/*.test.ts",
+      "exitCode": 0,
+      "counts": { "tests": 39, "pass": 39, "fail": 0, "skipped": 0, "todo": 0, "cancelled": 0, "testsOnPriorCandidate": 35, "newRegressionTests": 4, "regressions": 0 },
+      "coverage": { "linePct": 88.5, "branchPct": 80.95, "funcsPct": 90.48, "measuredAgainst": "compiled dist, not TypeScript sources", "priorCandidateLinePct": 88.05, "priorCandidateBranchPct": 78.98 },
+      "rawPath": "docs/evidence/s0-review/r2-code-safety/g3-npm-test.txt"
+    },
+    {
+      "id": "G4",
+      "command": "npm run build -w pi-hermes-gateway-protocol && node packages/protocol/test/g4-pack-import.mjs  (npm pack + clean temp consumer install of the tarball + external import)",
+      "exitCode": 0,
+      "counts": { "tarballFiles": 34, "importProtocolVersion": 1, "importAdapterApiVersion": 1, "srcOrTestFilesInTarball": 0, "tsconfigInTarball": 0, "nodeModulesInTarball": 0, "piOrTransportPackagesPulled": 0, "installedPiManifest": 0, "sourcemapFilesInTarball": 16 },
+      "coverage": null,
+      "rawPath": "docs/evidence/s0-review/r2-code-safety/g4-pack-import.txt"
+    },
+    {
+      "id": "G5",
+      "command": "npm run build -w pi-hermes-gateway-protocol && node packages/protocol/test/g5-dual-import.mjs",
+      "exitCode": 0,
+      "counts": { "moduleRoots": 2, "distinctModules": 1, "distinctFns": 1, "structurallyEqualResults": 1, "sharedSingletonIdentityRequired": 0 },
+      "coverage": null,
+      "rawPath": "docs/evidence/s0-review/r2-code-safety/g5-dual-import.txt"
+    },
+    {
+      "id": "G6",
+      "command": "bash docs/evidence/s0/run-g6.sh  (tracked script, unmodified)",
+      "exitCode": 0,
+      "counts": { "requiredDocsPresent": 7, "licenseFiles": 0, "piImportsInProtocolSrc": 0 },
+      "coverage": null,
+      "rawPath": "docs/evidence/s0-review/r2-code-safety/g6-docs-license.txt"
+    },
+    {
+      "id": "G7",
+      "command": "git rev-parse HEAD ; git rev-parse <base> ; git diff <base>..<candidate> | sha256sum ; git diff HEAD ; git status --porcelain ; git diff HEAD --name-only -- docs/evidence/s0 docs/evidence/s0-review/r1-code-safety",
+      "exitCode": 0,
+      "counts": { "trackedFileDiffLines": 0, "priorEvidenceModifiedFiles": 0, "changedFilesInCandidateRange": 71, "insertions": 4307, "deletions": 1, "fixCommitChangedFiles": 32, "fixCommitSrcFilesChanged": 3, "fixCommitTestFilesChanged": 3 },
+      "coverage": null,
+      "rawPath": "docs/evidence/s0-review/r2-code-safety/g7-source-unchanged.txt"
+    }
+  ],
+  "fixVerification": {
+    "F1": {
+      "status": "FIXED - independently verified",
+      "detail": "requireInteger(opts.nowMs,'malformed',...) added at wire.ts:34-35 and delivery.ts:48-49, and the validated nowMs.value (not opts.nowMs) is used for every expiry comparison and forwarded to validateMethodBody. Probed 11 invalid clock values (undefined, NaN, null, '1', 1.5, Infinity, -Infinity, {}, [], true, 1e-7) against the BUILT dist through all three public clock-taking entry points: validateWireRequest 0/11 accepted, validateStaticDelivery 0/11 accepted, validateMethodBody('delivery.enqueue') 0/11 accepted. All return the stable code 'malformed'. Control: valid clock still accepts a valid request, still returns 'expired' for a past expiresAt and for expiresAt beyond the bounded TTL - so the guard fails closed without weakening the existing bound.",
+      "rawPath": "docs/evidence/s0-review/r2-code-safety/probe-f1-f2.txt"
+    },
+    "F2": {
+      "status": "FIXED - independently verified",
+      "detail": "Calendar round-trip added at jobs.ts:32-42. Probed against BUILT dist: 15/15 nonexistent or out-of-range dates rejected with stable 'invalid_body' (2026-02-30, 2026-04-31, 2026-06-31, 2026-09-31, 2026-11-31, 2026-02-29 non-leap, 1900-02-29, 2100-02-29, fractional-second variants, day 32, month 00, month 13, second 60, hour 25). 13/13 supported valid forms preserved: plain UTC, .000/.123 fractional seconds, leap days 2024-02-29 and 2000-02-29, month boundaries (01-31, 03-31, 04-30, 02-28, 12-31), and ISO end-of-day T24:00:00Z including 2024-02-29T24:00:00Z and 2026-09-21T24:00:00.000Z. The end-of-day form is correctly still accepted, matching the ruling that it is not itself the defect.",
+      "rawPath": "docs/evidence/s0-review/r2-code-safety/probe-f1-f2.txt"
+    }
+  },
+  "findings": [
+    {
+      "severity": "low",
+      "file": "packages/protocol/src/jobs.ts",
+      "line": 35,
+      "problem": "NEW, introduced by this commit. The calendar round-trip uses new Date(Date.UTC(year, month-1, day)). Date.UTC applies the legacy two-digit-year mapping for year arguments 0..99, so Date.UTC(50,5,15) yields 1950, the round-trip comparison fails, and ISO-8601 years 0000-0099 are rejected as 'once schedule atUtc is not an existing calendar date' even though they match the package's own atUtc regex and Date.parse resolves them exactly. Verified on the built dist: 0000-01-01T00:00:00Z, 0050-06-15T00:00:00Z and 0099-12-31T00:00:00Z are rejected while 0100-01-01T00:00:00Z is accepted; Date.parse('0050-06-15T00:00:00Z') round-trips to 0050-06-15T00:00:00.000Z, confirming the date is real and the rejection is a false negative.",
+      "impact": "Fail-closed false rejection confined to years 0000-0099. It does not violate AC3, which requires rejecting malformed input rather than accepting every well-formed one, and atUtc carries no temporal bound at all in S0 (see carried F6), so no real schedule is lost. It is a precision defect in a validator whose job is exact trust-boundary semantics, not a safety hole. Non-blocking for code safety.",
+      "requiredFix": "Non-blocking. If corrected later, build the comparison date with calendar.setUTCFullYear(year) after construction, or compare new Date(ms).toISOString() against the input normalised for the optional .SSS fraction as the original F2 requiredFix suggested. Add a year-0050 regression. Do NOT bundle this with any atUtc horizon decision.",
+      "acLink": "AC3 (reject malformed input with stable errors) - not violated; recorded as a correctness nit against the same validator",
+      "class": "non-blocking hardening",
+      "evidence": "docs/evidence/s0-review/r2-code-safety/probe-f1-f2.txt, docs/evidence/s0-review/r2-code-safety/probe-carried-f3-f6.txt"
+    },
+    {
+      "severity": "low",
+      "file": "packages/protocol/src/check.ts",
+      "line": 8,
+      "problem": "CARRIED F3, unchanged by this commit and out of its allowlist. isPlainObject accepts any non-null non-array object and all field reads use dot access, traversing the prototype chain; no Object.hasOwn guard exists. Re-verified on the built candidate: with writable Object.prototype.{profileId,adapterId,accountId,chatId,threadId} set, validateDeliveryRoute({}) returns ok:true with a fully attacker-controlled route. Newly observed extension of the same root cause: opts.nowMs is also read via dot access, so with a polluted Object.prototype.nowMs an opts object carrying no own nowMs passes the new F1 guard in both validateWireRequest and validateStaticDelivery.",
+      "impact": "Defense-in-depth gap, identical precondition to R1's F3: the host process must already be prototype-polluted, and the package itself does not cause pollution. The nowMs extension does NOT weaken the F1 fix - with a clean prototype, a missing or invalid nowMs is rejected as 'malformed' (0/11 leaks). Reported so the F3 fix, whenever authorised, is known to cover opts as well as input.",
+      "requiredFix": "Deferred to a separate authorised hardening pass, as fix-r1-contract explicitly forbids folding prototype/accessor policy into this correction. When done: guard reads with Object.hasOwn, or require Object.getPrototypeOf(value) === Object.prototype || null in isPlainObject, and include the opts objects.",
+      "acLink": "AC3 (trust-boundary validation) - carried, not newly violated",
+      "class": "carried / not blocking this stage",
+      "evidence": "docs/evidence/s0-review/r2-code-safety/probe-carried-f3-f6.txt"
+    },
+    {
+      "severity": "low",
+      "file": "packages/protocol/src/limits.ts",
+      "line": 4,
+      "problem": "CARRIED F4, unchanged and out of allowlist. Re-verified on the built candidate: Object.isFrozen is false for LIMITS, METHODS, KNOWN_CAPABILITIES and RECEIPT_LEVELS, so 'as const' gives compile-time protection only and one consumer can mutate validation limits for every other consumer sharing a module root.",
+      "impact": "Sits uneasily with the 'stateless' wording in packages/protocol/README.md and docs/architecture.md, but does not violate the literal no-runtime-singleton / no-class-or-Symbol-identity claim, which G5 independently reconfirms. No untrusted-input path reaches it in S0.",
+      "requiredFix": "Deferred. Object.freeze the exported constants in a separate authorised pass; fix-r1-contract explicitly forbids folding global freezing into this correction.",
+      "acLink": "AC2 (stateless, no runtime singleton) - carried, G5 confirms the literal claim holds",
+      "class": "carried / not blocking this stage",
+      "evidence": "docs/evidence/s0-review/r2-code-safety/probe-carried-f3-f6.txt"
+    },
+    {
+      "severity": "low",
+      "file": "packages/protocol/src/wire.ts",
+      "line": 58,
+      "problem": "CARRIED F5, unchanged and out of allowlist. validateWireRequest declares a total ProtocolResult return type but can still throw: re-verified on the built candidate that an input object with a throwing 'body' getter escapes as a raw Error ('boom') instead of a stable protocol error. The JSON.stringify path remains correctly guarded.",
+      "impact": "Reachable only with non-JSON-derived inputs; real callers parse JSON, which cannot produce getters. In-process misuse only. The F1 nowMs guard now runs before the input object is touched, which slightly narrows but does not close this path.",
+      "requiredFix": "Deferred. Either document that input must be JSON-derived, or wrap property access in the existing try/catch so the function is total as typed.",
+      "acLink": "AC3 (stable errors) - carried",
+      "class": "carried / not blocking this stage",
+      "evidence": "docs/evidence/s0-review/r2-code-safety/probe-carried-f3-f6.txt"
+    },
+    {
+      "severity": "low",
+      "file": "packages/protocol/src/jobs.ts",
+      "line": 76,
+      "problem": "CARRIED F6, deliberately untouched per fix-r1-contract, which forbids introducing job-horizon policy in this correction. validateJobCreate still discards the clock with 'void nowMs'. Re-verified: atUtc 1999-01-01 and 9999-01-01 are both accepted. Consequence for the F1 audit: validateMethodBody is a public export taking opts.nowMs, and for job.create / job.list / job.pause / job.resume / job.cancel / job.inspect an invalid clock is accepted (11/11 in the probe) because those branches never consult the clock. This is NOT an F1 fail-open - there is no temporal guarantee on those methods to bypass - but it does mean clock-validation semantics are uniform only across the paths that actually enforce a bound.",
+      "impact": "Unbounded-in-both-directions once schedules cross the trust boundary. Genuinely an S1 scheduling/anchoring decision, and docs/architecture.md's deferred-items list records notAfter anchoring but not the absence of any atUtc bound. Flagged for the spec/AC and conformance reviewers, not treated as a code-safety defect here.",
+      "requiredFix": "Owner/architecture decision, not a technical fix for this lane. Either bound atUtc (e.g. must be > nowMs) in S1, or add an explicit deferred-items line to docs/architecture.md stating atUtc temporal bounds are deferred. If the clock stays unused, consider validating opts.nowMs uniformly at the validateMethodBody entry so the public contract is consistent.",
+      "acLink": "AC3 (reject malformed input) + AC5 (documentation must not overclaim) - carried, escalated to later stages",
+      "class": "genuine authority / product decision - escalate, do not fix technically",
+      "evidence": "docs/evidence/s0-review/r2-code-safety/probe-carried-f3-f6.txt"
+    }
+  ],
+  "regressionCheck": {
+    "method": "Reran the full tracked suite on the candidate rather than trusting the worker's assertions, and compared against R1's independently recorded 35-test baseline.",
+    "testsBefore": 35,
+    "testsAfter": 39,
+    "failures": 0,
+    "skipped": 0,
+    "coverageDirection": "improved (line 88.05 -> 88.50, branch 78.98 -> 80.95)",
+    "behaviouralRegressionsFound": 1,
+    "behaviouralRegressionDetail": "Only the year 0000-0099 false rejection above. All previously supported valid atUtc forms, the expiry bound, the TTL bound, frame/payload limits, adapter capability/API checks, packed-consumer import and distinct-module-root behaviour are unchanged.",
+    "allowlistRespected": "Yes - source changes are confined to packages/protocol/src/{wire,delivery,jobs}.ts plus their existing test files and docs/evidence/**. check.ts was reused, not modified. No package/dependency/version change, no architecture refactor, no outside-project mutation."
+  },
+  "unverified": [
+    "Any live transport, network, model, Telegram or WhatsApp operation. S0 ships no daemon and no transport; this is OUT OF SCOPE for S0 and is explicitly NOT marked PASS and NOT demanded as an S0 gate.",
+    "Spec compliance, origin/AC conformance and observable S0 outcome - the other three review classes, deliberately not judged here.",
+    "Node/SQLite behaviour on Node versions other than the observed v24.20.0 / sqlite 3.53.4.",
+    "systemd user-unit linger, logout survival, Pi CLI isolation flags and provider credential behaviour.",
+    "npm scope ownership, publication identity and outbound license choice - owner decisions, correctly left open.",
+    "notAfter anchoring for job-created deliveries (S1 decision, deferred in docs).",
+    "G4's clean-consumer install uses npm install --ignore-scripts; behaviour without that flag was not exercised. Indirect evidence of no script surface: zero declared dependencies and zero lifecycle scripts (G1).",
+    "Coverage is measured against compiled dist rather than TypeScript sources, so the percentages are dist-line-based.",
+    "The .omc/ directory is untracked and hook-created; it was recorded but not inspected or modified, per instruction."
+  ],
+  "sourceUnchanged": true,
+  "cleanliness": {
+    "trackedTreeClean": true,
+    "trackedDiffLines": 0,
+    "priorEvidenceOverwritten": false,
+    "untracked": [".omc/ (hook-created, untouched)", "docs/evidence/s0-review/r2-code-safety/ (this stage's new evidence only)"]
+  },
+  "nextAction": "Code-safety PASS stands for candidate 82d0de5 only. Release this candidate to the three remaining independent review stages (spec compliance, origin/AC conformance, observable S0 outcome). Carry F3, F4, F5 and the new year-0000-0099 nit as non-blocking hardening for a separately authorised pass; escalate F6 (unbounded atUtc, plus the architecture.md deferred-items omission) to the spec/AC reviewers as an owner-facing decision rather than a technical fix."
+}

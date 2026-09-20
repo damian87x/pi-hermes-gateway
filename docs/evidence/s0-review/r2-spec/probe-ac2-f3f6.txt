@@ -1,0 +1,31 @@
+=== AC2: no automatic side effect on import ===
+new globals after import: []
+Object.prototype own keys delta: 0
+exported names: ADAPTER_API_VERSION,KNOWN_CAPABILITIES,LIMITS,METHODS,PROTOCOL_VERSION,RECEIPT_LEVELS,fail,isAdapterApiCompatible,ok,utf8ByteLength,validateAdapterManifest,validateDeliveryRoute,validateMethodBody,validateStaticDelivery,validateWireRequest
+any exported value is a class/Symbol?: none
+result objects are plain: true
+
+=== F4 adjudication: exported constants mutable? ===
+LIMITS frozen= false
+METHODS frozen= false
+KNOWN_CAPABILITIES frozen= false
+RECEIPT_LEVELS frozen= false
+same input before mutation: true after LIMITS.maxTextChars=1: false text_too_long
+(restored) 4096
+namespace rebinding blocked: TypeError
+
+=== F3 adjudication: prototype-inherited fields accepted? ===
+validateDeliveryRoute({}) with polluted Object.prototype: {"ok":true,"value":{"profileId":"evil","adapterId":"evil","accountId":"evil","chatId":"evil"}}
+validateWireRequest({}) with polluted Object.prototype: {"ok":true,"value":{"protocolVersion":1,"requestId":"r1","method":"job.list","body":{},"expiresAt":1700000001000}}
+does the package itself pollute? JSON.parse __proto__ test: no
+cleanup ok: true
+
+=== F5 adjudication: throwing getter escapes total-typed validator? ===
+THREW out of validator: Error getter boom
+JSON-derived input can carry a getter?: false
+
+=== F6 adjudication: atUtc temporal bound ===
+atUtc 1999-01-01T00:00:00Z: ACCEPTED
+atUtc 9999-12-31T23:59:59Z: ACCEPTED
+atUtc 2026-09-21T00:00:00Z: ACCEPTED
+(protocol declares no atUtc horizon; scheduling execution is out of S0 scope per contract)

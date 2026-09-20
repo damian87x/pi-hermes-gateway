@@ -1,0 +1,39 @@
+### consumer-a install (offline)
+
+added 1 package in 180ms
+EXIT_A=0
+### consumer-b install (offline)
+
+added 1 package in 182ms
+EXIT_B=0
+### installed trees (must contain ONLY the protocol package, no Pi/transport)
+/tmp/s0-out/consumer-a/node_modules:
+pi-hermes-gateway-protocol
+
+/tmp/s0-out/consumer-a/node_modules/pi-hermes-gateway-protocol:
+README.md
+dist
+package.json
+
+/tmp/s0-out/consumer-a/node_modules/pi-hermes-gateway-protocol/dist:
+adapter.d.ts
+adapter.d.ts.map
+adapter.js
+adapter.js.map
+check.d.ts
+check.d.ts.map
+check.js
+check.js.map
+delivery.d.ts
+delivery.d.ts.map
+delivery.js
+delivery.js.map
+errors.d.ts
+errors.d.ts.map
+errors.js
+errors.js.map
+index.d.ts
+index.d.ts.map
+index.js
+index.js.map
+jobs.d.ts

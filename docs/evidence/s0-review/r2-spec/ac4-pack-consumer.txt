@@ -1,0 +1,55 @@
+tmp=/tmp/r2spec-consumer-24SMOC
+=== pack protocol ===
+npm notice
+pi-hermes-gateway-protocol-0.0.0.tgz
+tgz=pi-hermes-gateway-protocol-0.0.0.tgz
+=== tarball contents ===
+package/dist/adapter.d.ts
+package/dist/adapter.d.ts.map
+package/dist/adapter.js
+package/dist/adapter.js.map
+package/dist/check.d.ts
+package/dist/check.d.ts.map
+package/dist/check.js
+package/dist/check.js.map
+package/dist/delivery.d.ts
+package/dist/delivery.d.ts.map
+package/dist/delivery.js
+package/dist/delivery.js.map
+package/dist/errors.d.ts
+package/dist/errors.d.ts.map
+package/dist/errors.js
+package/dist/errors.js.map
+package/dist/index.d.ts
+package/dist/index.d.ts.map
+package/dist/index.js
+package/dist/index.js.map
+package/dist/jobs.d.ts
+package/dist/jobs.d.ts.map
+package/dist/jobs.js
+package/dist/jobs.js.map
+package/dist/limits.d.ts
+package/dist/limits.d.ts.map
+package/dist/limits.js
+package/dist/limits.js.map
+package/dist/wire.d.ts
+package/dist/wire.d.ts.map
+package/dist/wire.js
+package/dist/wire.js.map
+package/package.json
+package/README.md
+count=34
+src/test/tsconfig leakage: 0 (expect 0)
+=== clean consumer install, no Pi/transport ambient ===
+
+added 1 package in 175ms
+installed tree:
+pi-hermes-gateway-protocol
+dependency count (expect only the protocol pkg):
+1
+=== import in clean consumer ===
+import OK; PROTOCOL_VERSION= 1 ADAPTER_API_VERSION= 1
+validate from packed tarball: {"ok":true,"value":{"protocolVersion":1,"requestId":"r1","method":"job.list","body":{},"expiresAt":1700000001000}}
+ambient pi resolvable?: no (ERR_MODULE_NOT_FOUND)
+types file present: true
+consumer exit=0

@@ -1,0 +1,73 @@
+=== expiresAt boundary: documented (now, now+60s] ===
+expiresAt = now                                            ok:false expired
+expiresAt = now+1                                          ok:true
+expiresAt = now+60000 (upper incl)                         ok:true
+expiresAt = now+60001 (over)                               ok:false expired
+=== frame boundary: documented max 65536 ===
+frameByteLength = 65536                                    ok:true
+frameByteLength = 65537                                    ok:false frame_too_large
+frameByteLength = -1                                       ok:false malformed
+=== payload boundary: documented max 32768 UTF-8 bytes of JSON.stringify(body) ===
+delivery.inspect payload 28 bytes                          ok:true
+delivery.inspect payload 128 bytes                         ok:true
+payload ==32768 (actual 32768)                             ok:true
+payload ==32769 (actual 32769)                             ok:false payload_too_large
+=== multibyte payload counted as UTF-8 bytes not UTF-16 ===
+payload utf8=40028 utf16=20028                             ok:false payload_too_large
+=== text boundary: documented 4096 UTF-16 code units ===
+text length 4096                                           ok:true
+text length 4097                                           ok:false text_too_long
+text 2048 astral chars (4096 utf16 units)                  ok:true
+text 2049 astral chars (4098 utf16 units)                  ok:false text_too_long
+=== notAfter boundary: documented (now, now+24h] ===
+notAfter = now                                             ok:false invalid_not_after
+notAfter = now+1                                           ok:true
+notAfter = now+86400000 (upper incl)                       ok:true
+notAfter = now+86400001 (over)                             ok:false invalid_not_after
+notAfter missing                                           ok:false invalid_not_after
+=== version axis independence (AC2) ===
+PROTOCOL_VERSION 1 ADAPTER_API_VERSION 1
+wire protocolVersion=2                                     ok:false unsupported_protocol_version
+manifest adapterApiVersion=2                               ok:false unsupported_adapter_api_version
+manifest adapterApiVersion=1 ok                            ok:true
+isAdapterApiCompatible(1,1) true (1,2) false (1.5,1.5) false
+=== F1 regression: invalid caller clock (AC3 bounded expiry) ===
+nowMs=undefined wire                                       ok:false malformed
+nowMs=undefined delivery                                   ok:false malformed
+nowMs=NaN wire                                             ok:false malformed
+nowMs=NaN delivery                                         ok:false malformed
+nowMs=1700000000000 wire                                   ok:false malformed
+nowMs=1700000000000 delivery                               ok:false malformed
+nowMs=1.5 wire                                             ok:false malformed
+nowMs=1.5 delivery                                         ok:false malformed
+nowMs=Infinity wire                                        ok:false malformed
+nowMs=Infinity delivery                                    ok:false malformed
+nowMs=null wire                                            ok:false malformed
+nowMs=null delivery                                        ok:false malformed
+=== F2 regression: nonexistent calendar dates (AC3 malformed schedule) ===
+reject? 2026-02-30T00:00:00Z                               ok:false invalid_body
+reject? 2026-04-31T00:00:00Z                               ok:false invalid_body
+reject? 2025-02-29T00:00:00Z                               ok:false invalid_body
+reject? 2026-13-01T00:00:00Z                               ok:false invalid_body
+reject? 2026-00-10T00:00:00Z                               ok:false invalid_body
+reject? 2026-06-31T00:00:00Z                               ok:false invalid_body
+reject? 2026-11-31T00:00:00Z                               ok:false invalid_body
+accept? 2024-02-29T00:00:00Z                               ok:true
+accept? 2026-02-28T23:59:59Z                               ok:true
+accept? 2026-01-31T00:00:00Z                               ok:true
+accept? 2026-12-31T23:59:59.999Z                           ok:true
+accept? 2026-09-21T24:00:00Z                               ok:true
+=== year 0000-0099 (prior stage nit) ===
+accept? 0050-06-15T00:00:00Z                               ok:false invalid_body
+accept? 0099-01-01T00:00:00Z                               ok:false invalid_body
+accept? 0100-01-01T00:00:00Z                               ok:true
+=== error codes emitted in this probe ===
+expired
+frame_too_large
+invalid_body
+invalid_not_after
+malformed
+payload_too_large
+text_too_long
+unsupported_adapter_api_version
+unsupported_protocol_version

@@ -1,0 +1,9 @@
+
+> pi-hermes-gateway@0.0.0 build
+> npm run build -w pi-hermes-gateway-protocol
+
+
+> pi-hermes-gateway-protocol@0.0.0 build
+> tsc -p tsconfig.json
+
+EXIT_BUILD=0

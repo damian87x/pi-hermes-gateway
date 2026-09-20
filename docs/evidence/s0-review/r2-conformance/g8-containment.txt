@@ -1,0 +1,28 @@
+=== TODO/FIXME/XXX in shipped source+tests ===
+(eval):1: no matches found: --include=*.ts
+none
+=== Pi / transport imports in src ===
+none
+=== node: builtin imports in src ===
+none
+=== secrets-ish tokens in src ===
+packages/protocol/src/check.ts:50:export function requireToken(value: unknown, field: string, code: string): ProtocolResult<string> {
+packages/protocol/src/delivery.ts:3:import { isPlainObject, requireInteger, requireToken } from "./check.js";
+packages/protocol/src/delivery.ts:21:  const profileId = requireToken(input.profileId, "profileId", "invalid_route");
+packages/protocol/src/delivery.ts:23:  const adapterId = requireToken(input.adapterId, "adapterId", "invalid_route");
+packages/protocol/src/delivery.ts:25:  const accountId = requireToken(input.accountId, "accountId", "invalid_route");
+packages/protocol/src/delivery.ts:27:  const chatId = requireToken(input.chatId, "chatId", "invalid_route");
+packages/protocol/src/delivery.ts:37:    const threadId = requireToken(input.threadId, "threadId", "invalid_route");
+packages/protocol/src/jobs.ts:3:import { isIanaTimeZone, isPlainObject, requireToken } from "./check.js";
+packages/protocol/src/jobs.ts:21:  const jobId = requireToken(body.jobId, "jobId", "invalid_body");
+packages/protocol/src/jobs.ts:107:      const deliveryId = requireToken(body.deliveryId, "deliveryId", "invalid_body");
+packages/protocol/src/adapter.ts:10:import { isPlainObject, requireInteger, requireToken } from "./check.js";
+packages/protocol/src/adapter.ts:35:  const adapterId = requireToken(input.adapterId, "adapterId", "invalid_adapter_id");
+=== future/empty packages ===
+protocol
+=== LICENSE files ===
+ls: cannot access 'LICENSE': No such file or directory
+ls: cannot access 'packages/protocol/LICENSE': No such file or directory
+=== license/pi/peerDeps keys ===
+package.json private=true license=undefined pi=undefined peerDeps=undefined deps=undefined
+packages/protocol/package.json private=true license=undefined pi=undefined peerDeps=undefined deps=undefined

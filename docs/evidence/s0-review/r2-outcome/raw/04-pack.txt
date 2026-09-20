@@ -1,0 +1,115 @@
+npm notice
+npm notice 📦  pi-hermes-gateway-protocol@0.0.0
+npm notice Tarball Contents
+npm notice 312B README.md
+npm notice 576B dist/adapter.d.ts
+npm notice 569B dist/adapter.d.ts.map
+npm notice 3.7kB dist/adapter.js
+npm notice 3.3kB dist/adapter.js.map
+npm notice 899B dist/check.d.ts
+npm notice 903B dist/check.d.ts.map
+npm notice 2.0kB dist/check.js
+npm notice 2.2kB dist/check.js.map
+npm notice 554B dist/delivery.d.ts
+npm notice 627B dist/delivery.d.ts.map
+npm notice 2.5kB dist/delivery.js
+npm notice 2.5kB dist/delivery.js.map
+npm notice 363B dist/errors.d.ts
+npm notice 526B dist/errors.d.ts.map
+npm notice 188B dist/errors.js
+npm notice 327B dist/errors.js.map
+npm notice 798B dist/index.d.ts
+npm notice 732B dist/index.d.ts.map
+npm notice 500B dist/index.js
+npm notice 495B dist/index.js.map
+npm notice 783B dist/jobs.d.ts
+npm notice 885B dist/jobs.d.ts.map
+npm notice 4.2kB dist/jobs.js
+npm notice 4.3kB dist/jobs.js.map
+npm notice 1.1kB dist/limits.d.ts
+npm notice 609B dist/limits.d.ts.map
+npm notice 839B dist/limits.js
+npm notice 806B dist/limits.js.map
+npm notice 512B dist/wire.d.ts
+npm notice 561B dist/wire.d.ts.map
+npm notice 3.0kB dist/wire.js
+npm notice 2.9kB dist/wire.js.map
+npm notice 663B package.json
+npm notice Tarball Details
+npm notice name: pi-hermes-gateway-protocol
+npm notice version: 0.0.0
+npm notice filename: pi-hermes-gateway-protocol-0.0.0.tgz
+npm notice package size: 10.7 kB
+npm notice unpacked size: 45.6 kB
+npm notice shasum: 78abd72c67d5241ba461334784ee3aa55e4c004e
+npm notice integrity: sha512-hd5i86Q9MrAI+[...]TPPsao6x0uwRQ==
+npm notice total files: 34
+npm notice
+pi-hermes-gateway-protocol-0.0.0.tgz
+EXIT_PACK=0
+total 12
+drwxrwxr-x 2 damian-linux damian-linux    60 Sep 20 19:12 .
+drwxrwxr-x 3 damian-linux damian-linux    60 Sep 20 19:12 ..
+-rw-rw-r-- 1 damian-linux damian-linux 10737 Sep 20 19:12 pi-hermes-gateway-protocol-0.0.0.tgz
+=== TARBALL CONTENTS ===
+package/dist/adapter.d.ts
+package/dist/adapter.d.ts.map
+package/dist/adapter.js
+package/dist/adapter.js.map
+package/dist/check.d.ts
+package/dist/check.d.ts.map
+package/dist/check.js
+package/dist/check.js.map
+package/dist/delivery.d.ts
+package/dist/delivery.d.ts.map
+package/dist/delivery.js
+package/dist/delivery.js.map
+package/dist/errors.d.ts
+package/dist/errors.d.ts.map
+package/dist/errors.js
+package/dist/errors.js.map
+package/dist/index.d.ts
+package/dist/index.d.ts.map
+package/dist/index.js
+package/dist/index.js.map
+package/dist/jobs.d.ts
+package/dist/jobs.d.ts.map
+package/dist/jobs.js
+package/dist/jobs.js.map
+package/dist/limits.d.ts
+package/dist/limits.d.ts.map
+package/dist/limits.js
+package/dist/limits.js.map
+package/dist/wire.d.ts
+package/dist/wire.d.ts.map
+package/dist/wire.js
+package/dist/wire.js.map
+package/package.json
+package/README.md
+=== PACKED package.json ===
+{
+  "name": "pi-hermes-gateway-protocol",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "description": "Stateless wire/adapter/delivery protocol types and trust-boundary validators. Provisional local name; not an npm-scope claim.",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --experimental-strip-types --test test/*.test.ts"
+  },
+  "engines": {
+    "node": ">=24.20.0"
+  }
+}

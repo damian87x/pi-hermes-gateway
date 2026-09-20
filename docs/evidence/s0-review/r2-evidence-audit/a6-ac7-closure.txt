@@ -1,0 +1,41 @@
+=== A6 AC7 record-gap closure verification ===
+
+--- GAP 1 (MEDIUM): no literal diff-digest VALUE in evidence ---
+g7-receipt.md literal digests present:
+9d68ca943f130b237eab6a1b71edfbffa0c1f63619258e985e88ff0c6ab461af
+e148a206ce5b0e7b3fbf3cc6b44d40a11b3e94c2530bdc700dbfac2f8606a080
+independently recomputed  corrected = 9d68ca943f130b237eab6a1b71edfbffa0c1f63619258e985e88ff0c6ab461af
+independently recomputed  initial   = e148a206ce5b0e7b3fbf3cc6b44d40a11b3e94c2530bdc700dbfac2f8606a080
+=> both declared values MATCH git. Initial vs corrected candidates are explicitly distinguished.
+
+RESIDUAL: literal digest is NOT in any file TRACKED at the candidate:
+  (none - confirmed absent from tracked tree at 82d0de5)
+  g7-receipt.md is UNTRACKED (uncommitted supplement):
+?? docs/evidence/s0/g7-receipt.md
+
+--- GAP 2 (LOW): gates.md G7 row pointed at a nonexistent g7-receipt.md ---
+gates.md G7 row (tracked at candidate):
+13:| G7 | recorded after local commit in `docs/evidence/s0/g7-receipt.md` and worker-summary |
+target now exists: YES, 2400 bytes
+
+--- g7-receipt.md declared durable project-relative sources ---
+  RESOLVES  1679B  docs/evidence/s0/receipts/initial-worker.json
+  RESOLVES  1374B  docs/evidence/s0/receipts/fix-r1-worker.json
+  RESOLVES  1594B  docs/evidence/s0/receipts/ladder-r2.json
+  RESOLVES  1924B  docs/evidence/s0-review/r2-code-safety/g7-source-unchanged.txt
+  RESOLVES  398B  docs/evidence/s0-review/r2-conformance/g0-identity.txt
+  RESOLVES  430B  docs/evidence/s0-review/r2-outcome/raw/11-final-state.txt
+  RESOLVES  3158B  docs/evidence/s0-review/r2-code-safety/native-receipt.json
+  RESOLVES  3680B  docs/evidence/s0-review/r2-code-safety/native-result.json
+  RESOLVES  3234B  docs/evidence/s0-review/r2-spec/native-receipt.json
+  RESOLVES  3804B  docs/evidence/s0-review/r2-spec/native-result.json
+  RESOLVES  3328B  docs/evidence/s0-review/r2-conformance/native-receipt.json
+  RESOLVES  3781B  docs/evidence/s0-review/r2-conformance/native-result.json
+  RESOLVES  3092B  docs/evidence/s0-review/r2-outcome/native-receipt.json
+  RESOLVES  3645B  docs/evidence/s0-review/r2-outcome/native-result.json
+
+--- receipt provenance (originals live outside the project; not read per scope) ---
+  .pi/tasks/... raw.jsonl / raw.json / stderr.log pointers are outside apps/pi-hermes-gateway-s0 and were NOT read.
+  Provenance instead established internally: both receipt diffSha256 values recompute exactly from git,
+  receipt heads (0da0a1d, 82d0de5) are real commits, exitCode 0, observedModels xai/grok-4.6 recorded,
+  and finishedAt timestamps are strictly increasing across worker -> fix -> 4 review stages.

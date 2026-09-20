@@ -1,0 +1,23 @@
+{
+  "stage": "S0 worker",
+  "exitCode": 0,
+  "finishedAt": "2026-09-20T17:34:37.685370+00:00",
+  "cwd": "/home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s0",
+  "branch": "feat/s0-foundation",
+  "baseSha": "4035d5b60c4ed611f9a81b2f9ca850682b62fb7b",
+  "head": "0da0a1d2e2d71b482df98d186e743a2e3a9e9603",
+  "diffSha256": "e148a206ce5b0e7b3fbf3cc6b44d40a11b3e94c2530bdc700dbfac2f8606a080",
+  "observedModels": [
+    [
+      "xai",
+      "grok-4.6"
+    ]
+  ],
+  "summary": "**PASS** candidate `0da0a1d2e2d71b482df98d186e743a2e3a9e9603` (45 files; diff sha256 `e148a206ce5b0e7b3fbf3cc6b44d40a11b3e94c2530bdc700dbfac2f8606a080`)\nG1\u2013G6 exit 0: G3 35/35 pass 0 skip; G4 pack 34 files + clean ESM import; G5 distinct module roots; G7 SHA is this HEAD (`worker-summary.json` `candidateSha` is null by design)\nS0 only: private workspaces + `pi-hermes-gateway-protocol` validators; no daemon/scheduler/transport\nLimits recorded (64KiB frame / 32KiB payload / 4096 UTF-16 text / 60s request TTL / 24h `notAfter`); Node 24.20.0 `node:sqlite` observed, not implemented\nUnverified: other Node versions, linger, Pi isolation flags, npm scope/license, job `notAfter` anchoring\nNo push/PR. Summary: `docs/evidence/s0/worker-summary.json`",
+  "summaryTruncated": false,
+  "workerSummary": "/home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s0/docs/evidence/s0/worker-summary.json",
+  "raw": "/home/damian-linux/workspace/billioner-coder/.pi/tasks/pi-hermes-gateway-conductor/s0/raw.jsonl",
+  "stderr": "/home/damian-linux/workspace/billioner-coder/.pi/tasks/pi-hermes-gateway-conductor/s0/stderr.log",
+  "status": "",
+  "acceptance": "NOT REVIEWED"
+}

@@ -1,0 +1,31 @@
+=== EXACT DELTA vs tracked docs/evidence/s0/run-g1.sh (3 lines: ROOT, worktree pin, HEAD pin) ===
+--- docs/evidence/s0/run-g1.sh	2026-09-20 18:51:48.052280320 +0100
++++ /tmp/r2conf/run-g1-adapted.sh	2026-09-20 19:09:33.364107559 +0100
+@@ -1,15 +1,15 @@
+ #!/usr/bin/env bash
+ set -euo pipefail
+-ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
++ROOT="/home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s0-review-r2"
+ cd "$ROOT"
+ echo "ROOT=$ROOT"
+ echo "HEAD=$(git rev-parse HEAD)"
+ echo "BASE=$(git rev-parse origin/main)"
+ echo "BRANCH=$(git rev-parse --abbrev-ref HEAD)"
+ test "$(git rev-parse origin/main)" = "4035d5b60c4ed611f9a81b2f9ca850682b62fb7b"
+-test "$(git rev-parse --abbrev-ref HEAD)" = "feat/s0-foundation"
++test "$(git rev-parse HEAD)" = "82d0de5dae6229ff0983267e4b26bdafe99a4178"
+ case "$ROOT" in
+-  */apps/pi-hermes-gateway-s0) ;;
++  */apps/pi-hermes-gateway-s0-review-r2) ;;
+   *) echo "not the isolated s0 worktree"; exit 1 ;;
+ esac
+ test ! -d packages/gateway
+
+=== fresh execution ===
+ROOT=/home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s0-review-r2
+HEAD=82d0de5dae6229ff0983267e4b26bdafe99a4178
+BASE=4035d5b60c4ed611f9a81b2f9ca850682b62fb7b
+BRANCH=HEAD
+private/lifecycle/pi checks ok ['package.json', 'packages/protocol/package.json']
+G1_OK
+G1_EXIT=0

@@ -1,0 +1,27 @@
+=== A1 product identity ===
+HEAD=82d0de5dae6229ff0983267e4b26bdafe99a4178
+EXPECTED_CANDIDATE=82d0de5dae6229ff0983267e4b26bdafe99a4178
+BASE=4035d5b60c4ed611f9a81b2f9ca850682b62fb7b
+DIFF_SHA256_base..candidate=9d68ca943f130b237eab6a1b71edfbffa0c1f63619258e985e88ff0c6ab461af  -
+EXPECTED_DIFF=9d68ca943f130b237eab6a1b71edfbffa0c1f63619258e985e88ff0c6ab461af
+DIFF_SHA256_base..initial(0da0a1d)=e148a206ce5b0e7b3fbf3cc6b44d40a11b3e94c2530bdc700dbfac2f8606a080  -
+G7_RECEIPT_DECLARED_INITIAL=e148a206ce5b0e7b3fbf3cc6b44d40a11b3e94c2530bdc700dbfac2f8606a080
+
+=== A2 tracked source unchanged ===
+git diff HEAD lines = 0
+git diff --cached lines = 0
+tracked files at HEAD = 71
+
+=== A3 untracked containment (hook .omc excluded, untouched) ===
+non-hook untracked files = 72
+outside declared supplement roots = 0
+zero-byte among them = 0
+--- roots present ---
+docs/evidence/s0/conductor-closeout.md
+docs/evidence/s0/g7-receipt.md
+docs/evidence/s0/receipts
+docs/evidence/s0-review/r2-code-safety
+docs/evidence/s0-review/r2-conformance
+docs/evidence/s0-review/r2-evidence-audit
+docs/evidence/s0-review/r2-outcome
+docs/evidence/s0-review/r2-spec

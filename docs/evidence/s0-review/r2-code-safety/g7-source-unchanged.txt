@@ -1,0 +1,32 @@
+=== G7 source unchanged / evidence completeness ===
+HEAD=82d0de5dae6229ff0983267e4b26bdafe99a4178
+EXPECTED_CANDIDATE=82d0de5dae6229ff0983267e4b26bdafe99a4178
+BASE=4035d5b60c4ed611f9a81b2f9ca850682b62fb7b
+DIFF_SHA256=9d68ca943f130b237eab6a1b71edfbffa0c1f63619258e985e88ff0c6ab461af  -
+EXPECTED_DIFF=9d68ca943f130b237eab6a1b71edfbffa0c1f63619258e985e88ff0c6ab461af
+--- tracked modifications (git diff HEAD, must be empty) ---
+trackedDiffLines=0
+--- git status --porcelain ---
+?? .omc/
+?? docs/evidence/s0-review/r2-code-safety/
+--- prior evidence integrity (R1 + fix-r1 unmodified vs commit) ---
+0
+--- my new evidence files ---
+total 72
+drwxrwxr-x 2 damian-linux damian-linux 4096 Sep 20 18:57 .
+drwxrwxr-x 4 damian-linux damian-linux 4096 Sep 20 18:54 ..
+-rw-rw-r-- 1 damian-linux damian-linux 1064 Sep 20 18:55 g1-adaptation-delta.diff
+-rw-rw-r-- 1 damian-linux damian-linux  297 Sep 20 18:55 g1-containment-adapted.txt
+-rw-rw-r-- 1 damian-linux damian-linux   83 Sep 20 18:54 g2-npm-ci.txt
+-rw-rw-r-- 1 damian-linux damian-linux  779 Sep 20 18:55 g2-typecheck-build.txt
+-rw-rw-r-- 1 damian-linux damian-linux 2548 Sep 20 18:55 g3-npm-test.txt
+-rw-rw-r-- 1 damian-linux damian-linux 1568 Sep 20 18:55 g4-pack-import.txt
+-rw-rw-r-- 1 damian-linux damian-linux  512 Sep 20 18:55 g5-dual-import.txt
+-rw-rw-r-- 1 damian-linux damian-linux  260 Sep 20 18:55 g6-docs-license.txt
+-rw-rw-r-- 1 damian-linux damian-linux  626 Sep 20 18:57 g7-source-unchanged.txt
+-rw-rw-r-- 1 damian-linux damian-linux 2936 Sep 20 18:57 probe-carried-f3-f6.mjs
+-rw-rw-r-- 1 damian-linux damian-linux 2044 Sep 20 18:57 probe-carried-f3-f6.txt
+-rw-rw-r-- 1 damian-linux damian-linux 1572 Sep 20 18:57 probe-carried-f3-proto.mjs
+-rw-rw-r-- 1 damian-linux damian-linux 3908 Sep 20 18:56 probe-f1-f2.mjs
+-rw-rw-r-- 1 damian-linux damian-linux 8007 Sep 20 18:56 probe-f1-f2.txt
+-rw-rw-r-- 1 damian-linux damian-linux 1790 Sep 20 18:55 run-g1-r2-adapted.sh

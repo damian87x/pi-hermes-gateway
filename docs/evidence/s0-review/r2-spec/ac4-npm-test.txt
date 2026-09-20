@@ -1,0 +1,26 @@
+✔ rejects invalid localTime (0.15066ms)
+✔ validates job.inspect and delivery.enqueue bodies (0.251798ms)
+✔ rejects delivery.enqueue that fails static delivery rules (0.14986ms)
+✔ rejects nonexistent once-schedule calendar dates (0.234019ms)
+✔ accepts valid UTC once-schedule forms including leap day, month boundaries, fractional seconds, and end-of-day (0.237629ms)
+✔ wire validation also checks method bodies (0.463188ms)
+✔ accepts a supported wire request within limits (1.608113ms)
+✔ rejects unsupported protocol versions (0.195819ms)
+✔ rejects missing protocolVersion (0.166079ms)
+✔ rejects invalid request IDs (0.277539ms)
+✔ rejects unknown methods (0.217349ms)
+✔ rejects non-object bodies (0.194119ms)
+✔ rejects expired requests (0.201669ms)
+✔ rejects expiry beyond the bounded TTL (0.194019ms)
+✔ rejects oversized frames (0.217479ms)
+✔ rejects oversized payloads (1.862452ms)
+✔ rejects invalid caller clock nowMs (0.243919ms)
+ℹ tests 39
+ℹ suites 0
+ℹ pass 39
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 110.539652
+npm test exit=

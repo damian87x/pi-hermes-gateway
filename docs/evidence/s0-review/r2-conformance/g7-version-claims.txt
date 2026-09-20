@@ -1,0 +1,14 @@
+=== claims in docs/architecture.md, verified independently ===
+node: v24.20.0 at /usr/bin/node
+npm: 11.19.0
+project tsc: Version 5.9.3
+global tsc: Version 7.0.2
+pi: 0.85.1
+process.versions.sqlite = 3.53.4
+node:sqlite DatabaseSync = function
+@types/node present? NO
+=== installed dep tree ===
+pi-hermes-gateway@0.0.0 /home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s0-review-r2
+├── pi-hermes-gateway-protocol@0.0.0 -> ./packages/protocol
+└── typescript@5.9.3
+

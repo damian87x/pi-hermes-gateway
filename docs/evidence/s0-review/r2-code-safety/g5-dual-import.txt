@@ -1,0 +1,24 @@
+=== G5: npm run build -w pi-hermes-gateway-protocol && node packages/protocol/test/g5-dual-import.mjs ===
+
+> pi-hermes-gateway-protocol@0.0.0 build
+> tsc -p tsconfig.json
+
+{
+  "distinctModules": true,
+  "distinctFns": true,
+  "protocolVersion": 1,
+  "adapterApiVersion": 1,
+  "manifest": {
+    "adapterId": "fake-file",
+    "adapterApiVersion": 1,
+    "capabilities": [
+      "send.text"
+    ],
+    "configSchemaVersion": 1,
+    "maxTextLength": 32,
+    "receiptLevels": [
+      "accepted"
+    ]
+  }
+}
+G5_EXIT=0

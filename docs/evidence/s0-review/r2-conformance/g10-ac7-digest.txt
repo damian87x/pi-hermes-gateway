@@ -1,0 +1,14 @@
+=== where is g7-receipt.md referenced ===
+docs/evidence/s0/gates.md:13:| G7 | recorded after local commit in `docs/evidence/s0/g7-receipt.md` and worker-summary |
+docs/evidence/s0-review/r2-conformance/g9-ac7-structural.txt:6:MISSING docs/evidence/s0/g7-receipt.md
+grep: docs/evidence/s0-review/r2-conformance/g10-ac7-digest.txt: input file is also the output
+none
+
+=== diff digest recorded anywhere in tracked evidence? ===
+docs/evidence/s0/worker-summary.json:98:      "command": "git rev-parse HEAD && git status --short && git diff --stat origin/main && git diff origin/main | sha256sum",
+
+=== fix-r1 worker-summary keys ===
+status,candidateSha,candidateShaNote,baseSha,startCandidate,changedPaths,gates,regressions,unverified,blockers,nextAction
+
+=== remote push state: is candidate on origin? ===
+origin/main = 4035d5b60c4ed611f9a81b2f9ca850682b62fb7b

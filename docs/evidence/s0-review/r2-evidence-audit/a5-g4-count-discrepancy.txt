@@ -1,0 +1,27 @@
+=== A5 adjudication: r2-conformance G4 packedFiles=32 vs 34 elsewhere ===
+
+conformance summary.json gates[] G4 entry:
+  {"id": "G4-pack-import", "command": "node packages/protocol/test/g4-pack-import.mjs", "exitCode": 0, "counts": {"packedFiles": 32, "piOrTransportPkgs": 0}, "coverage": "AC2/AC4", "rawPath": "docs/evidence/s0-review/r2-conformance/g4-pack-import.txt"}
+
+-> it cites rawPath: docs/evidence/s0-review/r2-conformance/g4-pack-import.txt
+
+CITED raw log (conformance/g4-pack-import.txt): "files": 34, listing entries = 34
+code-safety/g4-pack-import.txt:                 "files": 34, listing entries = 34
+listings identical (sorted): True
+spec/ac4-pack-consumer.txt:                     count= 34, listing entries = 34
+outcome/raw/04-pack.txt:                        tar entries = 34; summary counts.files = 34
+
+spec listing == conformance listing:    True
+outcome listing == conformance listing: True
+
+COUNT BASIS: total=34 ; non-dist entries=['package/package.json', 'package/README.md'] ; dist-only subset = 32
+
+RULING: REPORTING / COUNT-BASIS ERROR, NOT a source or environment mismatch.
+ - `packedFiles: 32` is contradicted by the very raw log the same entry cites (files: 34, 34 listed paths).
+ - All four stages packed the SAME tarball pi-hermes-gateway-protocol-0.0.0.tgz with an IDENTICAL 34-entry listing.
+ - 32 is exactly the dist-only subset: 34 minus package/package.json and package/README.md.
+ - No file differs between stages; no toolchain/environment divergence is implied.
+ - Zero impact on the AC2/AC4 conclusion: the substantive assertions (0 src/test/tsconfig leakage,
+   0 Pi/transport packages, import exit 0) hold identically in every raw log.
+
+NOTE: the original reviewer report was NOT modified; this is an audit-side annotation only.

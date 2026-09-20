@@ -1,0 +1,32 @@
+{
+  "stage": "code-safety",
+  "exitCode": 0,
+  "finishedAt": "2026-09-20T17:59:33.726701+00:00",
+  "requestedModel": "opus",
+  "observedModelUsage": {
+    "claude-opus-5": {
+      "inputTokens": 48,
+      "outputTokens": 28619,
+      "cacheReadInputTokens": 1209470,
+      "cacheCreationInputTokens": 75050,
+      "webSearchRequests": 0,
+      "costUSD": 2.07095,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "thinkingTokens": 6160,
+      "canonicalModel": "claude-opus-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "sessionId": "bb4487b9-a0f7-420a-897e-315d68288326",
+  "candidateSha": "82d0de5dae6229ff0983267e4b26bdafe99a4178",
+  "verdict": "PASS",
+  "passedToNextStage": true,
+  "receiptProblems": [],
+  "summary": "**STAGE 1 CODE SAFETY \u2014 VERDICT: PASS** (candidate `82d0de5` only)\n\nSource identity verified independently: HEAD = pinned candidate, base resolves, diff SHA256 matches `9d68ca9\u2026`. Tracked tree clean (`git diff HEAD` = 0 lines); only untracked are hook-created `.omc/` (recorded, untouched) and my stage dir. Prior R1/fix-r1 evidence unmodified (0 files).\n\nG1\u2013G7 all rerun on this candidate, exit 0: G1 containment (adapted in temp, exact 4-line delta recorded, tracked script untouched); G2 typecheck+build (Node v24.20.0, tsc 5.9.3, 0 external deps); G3 **39/39 pass, 0 fail/skip** (was 35; coverage 88.05\u219288.50 line, 78.98\u219280.95 branch); G4 packed consumer import, 0 src/test files, 0 Pi/transport pulled; G5 distinct roots; G6 docs/license; G7 digest.\n\nF1 **FIXED**: 11 invalid clocks \u00d7 3 public entry points (`validateWireRequest`, `validateStaticDelivery`, `validateMethodBody`/delivery.enqueue) \u2014 0 leaks, stable `malformed`; expired and beyond-TTL still rejected with a valid clock. F2 **FIXED**: 15/15 nonexistent dates rejected, 13/13 valid UTC/fractional/leap/end-of-day `T24:00:00Z` forms preserved.\n\nOne new low finding I introduced no fix for (read-only stage): `jobs.ts:35` uses `Date.UTC(year,\u2026)`, whose legacy two-digit-year mapping falsely rejects ISO years 0000\u20130099 (verified `0050-06-15Z` rejected, `0100-01-01Z` accepted). Fail-closed, not an AC3 violation, non-blocking. F3/F4/F5 re-verified as carried and still open (F3 now also reaches `opts.nowMs` under pollution \u2014 does not weaken F1 on a clean prototype). F6 (unbounded `atUtc`) carried and escalated as an owner/architecture decision, not a technical fix.\n\nNo live daemon/Telegram proof was demanded or marked passed \u2014 out of scope at S0.\n\nEvidence + `summary.json`: `docs/evidence/s0-review/r2-code-safety/`. Next: release `82d0de5` to the three remaining independent review stages.",
+  "summaryTruncated": false,
+  "gateSummary": "/home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s0-review-r2/docs/evidence/s0-review/r2-code-safety/summary.json",
+  "nativeRaw": "/home/damian-linux/workspace/billioner-coder/.pi/tasks/pi-hermes-gateway-conductor/s0-review-r2/code-safety/raw.json",
+  "stderr": "/home/damian-linux/workspace/billioner-coder/.pi/tasks/pi-hermes-gateway-conductor/s0-review-r2/code-safety/stderr.log"
+}

@@ -1,0 +1,114 @@
+== CASE RESULTS (expect | gotOk | gotCode | detail) ==
+PASS [AC3] env.job.list.ok :: expect=ok gotOk=true code=- :: {"protocolVersion":1,"requestId":"req-1","method":"job.list","body":{},"expiresAt":1700000
+PASS [AC3] env.job.pause.ok :: expect=ok gotOk=true code=- :: {"protocolVersion":1,"requestId":"req-1","method":"job.pause","body":{"jobId":"job-1"},"ex
+PASS [AC3] env.delivery.inspect.ok :: expect=ok gotOk=true code=- :: {"protocolVersion":1,"requestId":"req-1","method":"delivery.inspect","body":{"deliveryId":
+PASS [AC3] env.job.create.once.ok :: expect=ok gotOk=true code=- :: {"protocolVersion":1,"requestId":"req-1","method":"job.create","body":{"kind":"static-text
+PASS [AC3] env.job.create.daily.ok :: expect=ok gotOk=true code=- :: {"protocolVersion":1,"requestId":"req-1","method":"job.create","body":{"kind":"static-text
+PASS [AC3] env.delivery.enqueue.ok :: expect=ok gotOk=true code=- :: {"protocolVersion":1,"requestId":"req-1","method":"delivery.enqueue","body":{"route":{"pro
+PASS [AC3] env.route.threadId.ok :: expect=ok gotOk=true code=- :: {"protocolVersion":1,"requestId":"req-1","method":"delivery.enqueue","body":{"route":{"pro
+PASS [AC3] env.version.missing :: expect=malformed gotOk=false code=malformed :: protocolVersion is required
+PASS [AC3] env.version.2 :: expect=unsupported_protocol_version gotOk=false code=unsupported_protocol_version :: protocolVersion 2 is not supported (expected 1)
+PASS [AC3] env.version.0 :: expect=unsupported_protocol_version gotOk=false code=unsupported_protocol_version :: protocolVersion 0 is not supported (expected 1)
+PASS [AC3] env.version.string :: expect=malformed gotOk=false code=malformed :: protocolVersion must be an integer
+PASS [AC3] env.not.object :: expect=malformed gotOk=false code=malformed :: request must be a plain object
+PASS [AC3] env.array :: expect=malformed gotOk=false code=malformed :: request must be a plain object
+PASS [AC3] env.null :: expect=malformed gotOk=false code=malformed :: request must be a plain object
+PASS [AC3] env.reqid.empty :: expect=invalid_request_id gotOk=false code=invalid_request_id :: requestId must match /^[A-Za-z0-9._:-]{1,128}$/ (max 128)
+PASS [AC3] env.reqid.badchar :: expect=invalid_request_id gotOk=false code=invalid_request_id :: requestId must match /^[A-Za-z0-9._:-]{1,128}$/ (max 128)
+PASS [AC3] env.reqid.129 :: expect=invalid_request_id gotOk=false code=invalid_request_id :: requestId must match /^[A-Za-z0-9._:-]{1,128}$/ (max 128)
+PASS [AC3] env.reqid.128.boundary :: expect=ok gotOk=true code=- :: {"protocolVersion":1,"requestId":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+PASS [AC3] env.method.unknown :: expect=unknown_method gotOk=false code=unknown_method :: unknown method job.nuke
+PASS [AC3] env.method.nonstring :: expect=unknown_method gotOk=false code=unknown_method :: method must be a known non-empty string
+PASS [AC3] env.body.nonobject :: expect=invalid_body gotOk=false code=invalid_body :: body must be a plain object
+PASS [AC3] env.body.array :: expect=invalid_body gotOk=false code=invalid_body :: body must be a plain object
+PASS [AC3] frame.65536.boundary.ok :: expect=ok gotOk=true code=- :: {"protocolVersion":1,"requestId":"req-1","method":"job.list","body":{},"expiresAt":1700000
+PASS [AC3] frame.65537.reject :: expect=frame_too_large gotOk=false code=frame_too_large :: frame exceeds 65536 bytes
+PASS [AC3] frame.negative :: expect=malformed gotOk=false code=malformed :: frameByteLength must be a non-negative integer
+PASS [AC3] frame.float :: expect=malformed gotOk=false code=malformed :: frameByteLength must be a non-negative integer
+PASS [AC3] payload.32768.boundary.ok :: expect=ok gotOk=true code=- :: {"protocolVersion":1,"requestId":"req-1","method":"job.list","body":{},"expiresAt":1700000
+PASS [AC3] payload.oversize.reject :: expect=payload_too_large gotOk=false code=payload_too_large :: body exceeds 32768 UTF-8 bytes
+PASS [AC3] payload.nonserializable :: expect=invalid_body gotOk=false code=invalid_body :: body is not JSON-serializable
+PASS [AC3] expiry.equal.now.reject :: expect=expired gotOk=false code=expired :: expiresAt must be > now and <= now + 60000ms
+PASS [AC3] expiry.past.reject :: expect=expired gotOk=false code=expired :: expiresAt must be > now and <= now + 60000ms
+PASS [AC3] expiry.now+1.ok :: expect=ok gotOk=true code=- :: {"protocolVersion":1,"requestId":"req-1","method":"job.list","body":{},"expiresAt":1700000
+PASS [AC3] expiry.ttl.60000.boundary.ok :: expect=ok gotOk=true code=- :: {"protocolVersion":1,"requestId":"req-1","method":"job.list","body":{},"expiresAt":1700000
+PASS [AC3] expiry.ttl.60001.reject :: expect=expired gotOk=false code=expired :: expiresAt must be > now and <= now + 60000ms
+PASS [AC3] expiry.float :: expect=expired gotOk=false code=expired :: expiresAt must be an integer unix millisecond timestamp
+PASS [AC3] clock.NaN :: expect=malformed gotOk=false code=malformed :: nowMs must be an integer unix millisecond timestamp
+PASS [AC3] clock.Infinity :: expect=malformed gotOk=false code=malformed :: nowMs must be an integer unix millisecond timestamp
+PASS [AC3] clock.string :: expect=malformed gotOk=false code=malformed :: nowMs must be an integer unix millisecond timestamp
+PASS [AC3] clock.float :: expect=malformed gotOk=false code=malformed :: nowMs must be an integer unix millisecond timestamp
+PASS [AC3] route.missing.profileId :: expect=invalid_route gotOk=false code=invalid_route :: profileId must be 1..256 chars matching /^[A-Za-z0-9._:@-]{1,256}$/
+PASS [AC3] route.badchar.chatId :: expect=invalid_route gotOk=false code=invalid_route :: chatId must be 1..256 chars matching /^[A-Za-z0-9._:@-]{1,256}$/
+PASS [AC3] route.257char.reject :: expect=invalid_route gotOk=false code=invalid_route :: chatId must be 1..256 chars matching /^[A-Za-z0-9._:@-]{1,256}$/
+PASS [AC3] route.256char.boundary.ok :: expect=ok gotOk=true code=- :: {"route":{"profileId":"owner","adapterId":"telegram","accountId":"acct-1","chatId":"cccccc
+PASS [AC3] text.empty.reject :: expect=invalid_body gotOk=false code=invalid_body :: text must be a non-empty string
+PASS [AC3] text.4096.boundary.ok :: expect=ok gotOk=true code=- :: {"route":{"profileId":"owner","adapterId":"telegram","accountId":"acct-1","chatId":"chat-1
+PASS [AC3] text.4097.reject :: expect=text_too_long gotOk=false code=text_too_long :: text exceeds 4096 UTF-16 code units (ECMAScript string length)
+PASS [AC3] notAfter.equal.now.reject :: expect=invalid_not_after gotOk=false code=invalid_not_after :: notAfter must be > now and <= now + 86400000ms (24h)
+PASS [AC3] notAfter.past.reject :: expect=invalid_not_after gotOk=false code=invalid_not_after :: notAfter must be > now and <= now + 86400000ms (24h)
+PASS [AC3] notAfter.24h.boundary.ok :: expect=ok gotOk=true code=- :: {"route":{"profileId":"owner","adapterId":"telegram","accountId":"acct-1","chatId":"chat-1
+PASS [AC3] notAfter.24h+1.reject :: expect=invalid_not_after gotOk=false code=invalid_not_after :: notAfter must be > now and <= now + 86400000ms (24h)
+PASS [AC3] notAfter.float.reject :: expect=invalid_not_after gotOk=false code=invalid_not_after :: notAfter must be an integer unix millisecond timestamp
+PASS [AC3] notAfter.string.reject :: expect=invalid_not_after gotOk=false code=invalid_not_after :: notAfter must be an integer unix millisecond timestamp
+PASS [AC3] sched.once.leap.2024-02-29.ok :: expect=ok gotOk=true code=- :: {"kind":"static-text","text":"hi","route":{"profileId":"owner","adapterId":"telegram","acc
+PASS [AC3] sched.once.nonleap.2025-02-29 :: expect=invalid_body gotOk=false code=invalid_body :: once schedule atUtc is not an existing calendar date
+PASS [AC3] sched.once.2026-02-30 :: expect=invalid_body gotOk=false code=invalid_body :: once schedule atUtc is not an existing calendar date
+PASS [AC3] sched.once.month13 :: expect=invalid_body gotOk=false code=invalid_body :: once schedule atUtc is not parseable
+PASS [AC3] sched.once.month00 :: expect=invalid_body gotOk=false code=invalid_body :: once schedule atUtc is not parseable
+PASS [AC3] sched.once.day00 :: expect=invalid_body gotOk=false code=invalid_body :: once schedule atUtc is not parseable
+PASS [AC3] sched.once.hour25 :: expect=invalid_body gotOk=false code=invalid_body :: once schedule atUtc is not parseable
+PASS [AC3] sched.once.millis.ok :: expect=ok gotOk=true code=- :: {"kind":"static-text","text":"hi","route":{"profileId":"owner","adapterId":"telegram","acc
+PASS [AC3] sched.once.noZ.reject :: expect=invalid_body gotOk=false code=invalid_body :: once schedule atUtc must be an ISO-8601 UTC timestamp ending in Z
+PASS [AC3] sched.once.offset.reject :: expect=invalid_body gotOk=false code=invalid_body :: once schedule atUtc must be an ISO-8601 UTC timestamp ending in Z
+PASS [AC3] sched.once.dst.gap.2026-03-29.ok :: expect=ok gotOk=true code=- :: {"kind":"static-text","text":"hi","route":{"profileId":"owner","adapterId":"telegram","acc
+PASS [AC3] sched.daily.00:00.ok :: expect=ok gotOk=true code=- :: {"kind":"static-text","text":"hi","route":{"profileId":"owner","adapterId":"telegram","acc
+PASS [AC3] sched.daily.23:59.ok :: expect=ok gotOk=true code=- :: {"kind":"static-text","text":"hi","route":{"profileId":"owner","adapterId":"telegram","acc
+PASS [AC3] sched.daily.24:00.reject :: expect=invalid_body gotOk=false code=invalid_body :: daily localTime must be HH:MM in 24-hour form
+PASS [AC3] sched.daily.23:60.reject :: expect=invalid_body gotOk=false code=invalid_body :: daily localTime must be HH:MM in 24-hour form
+PASS [AC3] sched.daily.7:30.reject :: expect=invalid_body gotOk=false code=invalid_body :: daily localTime must be HH:MM in 24-hour form
+PASS [AC3] sched.daily.tz.bogus :: expect=invalid_body gotOk=false code=invalid_body :: daily timeZone must be a valid IANA name
+PASS [AC3] sched.daily.tz.empty :: expect=invalid_body gotOk=false code=invalid_body :: daily timeZone must be a valid IANA name
+PASS [AC3] sched.type.unknown :: expect=invalid_body gotOk=false code=invalid_body :: schedule.type must be once or daily
+PASS [AC3] sched.missing :: expect=invalid_body gotOk=false code=invalid_body :: schedule is required
+PASS [AC3] job.create.kind.bad :: expect=invalid_body gotOk=false code=invalid_body :: v1 job.create kind must be static-text
+PASS [AC3-note] sched.once.past.OBSERVED-ACCEPTED :: expect=ok gotOk=true code=- :: {"kind":"static-text","text":"hi","route":{"profileId":"owner","adapterId":"telegram","acc
+PASS [AC3] adapter.valid.ok :: expect=ok gotOk=true code=- :: {"adapterId":"telegram","adapterApiVersion":1,"capabilities":["send.text"],"configSchemaVe
+PASS [AC4] adapter.api.2.reject :: expect=unsupported_adapter_api_version gotOk=false code=unsupported_adapter_api_version :: adapterApiVersion 2 is incompatible with host 1
+PASS [AC4] adapter.api.0.reject :: expect=unsupported_adapter_api_version gotOk=false code=unsupported_adapter_api_version :: adapterApiVersion 0 is incompatible with host 1
+PASS [AC4] adapter.api.string.reject :: expect=unsupported_adapter_api_version gotOk=false code=unsupported_adapter_api_version :: adapterApiVersion must be an integer
+PASS [AC4] adapter.cap.duplicate :: expect=duplicate_capability gotOk=false code=duplicate_capability :: duplicate capability send.text
+PASS [AC4] adapter.cap.unknown :: expect=invalid_capability gotOk=false code=invalid_capability :: unknown capability send.photo
+PASS [AC4] adapter.cap.empty :: expect=invalid_capability gotOk=false code=invalid_capability :: capabilities must be a non-empty array of known strings
+PASS [AC4] adapter.cap.nonstring :: expect=invalid_capability gotOk=false code=invalid_capability :: unknown capability [object Object]
+PASS [AC3] adapter.id.bad :: expect=invalid_adapter_id gotOk=false code=invalid_adapter_id :: adapterId must be 1..256 chars matching /^[A-Za-z0-9._:@-]{1,256}$/
+PASS [AC3] adapter.maxText.4097 :: expect=invalid_manifest gotOk=false code=invalid_manifest :: maxTextLength must be between 1 and 4096 UTF-16 code units
+PASS [AC3] adapter.maxText.0 :: expect=invalid_manifest gotOk=false code=invalid_manifest :: maxTextLength must be between 1 and 4096 UTF-16 code units
+PASS [AC3] adapter.cfgver.0 :: expect=invalid_manifest gotOk=false code=invalid_manifest :: configSchemaVersion must be a positive integer
+PASS [AC3] adapter.receipt.no-accepted :: expect=invalid_manifest gotOk=false code=invalid_manifest :: receiptLevels must include accepted
+PASS [AC3] adapter.receipt.duplicate :: expect=invalid_manifest gotOk=false code=invalid_manifest :: duplicate receipt level accepted
+PASS [AC3] adapter.receipt.unknown :: expect=invalid_manifest gotOk=false code=invalid_manifest :: unknown receipt level delivered
+PASS [AC3] adapter.not.object :: expect=malformed gotOk=false code=malformed :: adapter manifest must be an object
+
+== IDENTITY / CROSS-ROOT ==
+{
+  "protocolVersion": 1,
+  "adapterApiVersion": 1,
+  "axesIndependent_sourceSymbols": true,
+  "namespacesAreDistinctInstances": true,
+  "limitsObjectsAreDistinctInstances": true,
+  "limitsDeepEqual": true,
+  "methodsDeepEqual": true,
+  "literalObject_bothRootsAccept": true,
+  "literalObject_resultsDeepEqual": true,
+  "rootA_value_accepted_by_rootB": true,
+  "rootA_manifest_accepted_by_rootB": true,
+  "crossRoot_apiCompatible": true,
+  "crossRoot_apiIncompatible_v2": true,
+  "noPrototypeSharing": true,
+  "resultIsPlainSerializable": true
+}
+
+TOTAL=90 PASS=90 FAIL=0
+IDENTITY_FAIL=[]
+EXIT_PROBE=0
