@@ -186,3 +186,67 @@ test("default daemon clock advances and ticks within 60s", async () => {
   d.stop();
   cleanup(dir);
 });
+
+function hasInvalidRouteSendReject(gw: { store: { listAudit: () => { kind: string; payload_json: string }[] } }): boolean {
+  return gw.store.listAudit().some((r) => {
+    if (r.kind !== "delivery.send.rejected") return false;
+    const payload = JSON.parse(r.payload_json) as { reason?: string };
+    return payload.reason === "invalid_route";
+  });
+}
+
+test("job on revoked route: reopen tick does not send and audits refusal", () => {
+  const R2 = { ...ROUTE, chatId: "chat-2" };
+  const { gw, clock, dir } = openTestGw({ routes: [ROUTE, R2] });
+  const at = "2026-01-01T12:00:00.000Z";
+  const created = handle(
+    gw,
+    "job.create",
+    {
+      kind: "static-text",
+      text: "revoked-job",
+      route: R2,
+      schedule: { type: "once", atUtc: at },
+    },
+    clock.nowMs(),
+  );
+  assert.equal(created.ok, true);
+  gw.close();
+
+  const clock2 = new TestClock(Date.parse(at));
+  const { gw: gw2, adapter } = openTestGw({ clock: clock2, routes: [ROUTE], dir });
+  gw2.tick();
+  assert.equal(adapter.sent.length, 0);
+  assert.ok(hasInvalidRouteSendReject(gw2));
+  const occ = gw2.store.listOccurrences();
+  assert.ok(occ.length >= 1);
+  assert.ok(occ.every((row) => row.status === "skipped" || row.status === "refused"));
+  gw2.close();
+  cleanup(dir);
+});
+
+test("queued enqueue on revoked route: reopen tick does not send and audits refusal", () => {
+  const R2 = { ...ROUTE, chatId: "chat-2" };
+  const { gw, clock, dir } = openTestGw({ routes: [ROUTE, R2] });
+  gw.store.setMeta("dispatch_enabled", "0");
+  const enq = handle(
+    gw,
+    "delivery.enqueue",
+    { route: R2, text: "queued-revoked", notAfter: clock.nowMs() + 60_000 },
+    clock.nowMs(),
+  );
+  assert.equal(enq.ok, true);
+  assert.equal(gw.store.listDeliveries()[0]?.status, "queued");
+  gw.close();
+
+  const { gw: gw2, adapter } = openTestGw({ clock, routes: [ROUTE], dir });
+  gw2.store.setMeta("dispatch_enabled", "1");
+  gw2.tick();
+  assert.equal(adapter.sent.length, 0);
+  const delivery = gw2.store.listDeliveries()[0];
+  assert.ok(delivery);
+  assert.ok(delivery.status === "failed" || delivery.status === "refused");
+  assert.ok(hasInvalidRouteSendReject(gw2));
+  gw2.close();
+  cleanup(dir);
+});

@@ -352,8 +352,23 @@ export class Gateway {
     this.audit("occurrence.skipped", { jobId, occurrenceId, scheduledInstantMs, reason });
   }
 
+  private refuseInvalidRoute(row?: DeliveryRow, extra?: Record<string, unknown>): void {
+    if (row) {
+      this.store.setDeliveryStatus(row.delivery_id, "failed");
+      if (row.occurrence_id) this.store.setOccurrenceStatus(row.occurrence_id, "skipped");
+      this.audit("delivery.send.rejected", { deliveryId: row.delivery_id, reason: "invalid_route", ...extra });
+      return;
+    }
+    this.audit("delivery.send.rejected", { reason: "invalid_route", ...extra });
+  }
+
   private admitJobOccurrence(jobId: string, scheduledInstantMs: number, text: string, route: DeliveryRoute): void {
     if (this.store.findOccurrence(jobId, scheduledInstantMs)) return;
+    if (!this.routeAllowed(route).ok) {
+      this.recordSkipped(jobId, scheduledInstantMs, "invalid_route");
+      this.refuseInvalidRoute(undefined, { jobId, scheduledInstantMs });
+      return;
+    }
     const now = this.clock.nowMs();
     const notAfter = jobNotAfter(scheduledInstantMs, this.config.notAfterBoundMs);
     const occurrenceId = newId("occ");
@@ -424,6 +439,10 @@ export class Gateway {
       return;
     }
     const route = JSON.parse(row.route_json) as DeliveryRoute;
+    if (!this.routeAllowed(route).ok) {
+      this.refuseInvalidRoute(row);
+      return;
+    }
     if (row.source === "job") {
       const fuse = this.consumeFuses(route);
       if (!fuse.ok) {
@@ -440,6 +459,10 @@ export class Gateway {
     if (this.crashNext === "dispatch-intent") throw new InjectedCrash("dispatch-intent");
     this.store.setDispatchIntent(row.delivery_id);
     if (this.crashNext === "mid-send") this.adapter.crashMidSend = true;
+    if (!this.routeAllowed(route).ok) {
+      this.refuseInvalidRoute(row);
+      return;
+    }
     try {
       this.adapter.send({
         deliveryId: row.delivery_id,
