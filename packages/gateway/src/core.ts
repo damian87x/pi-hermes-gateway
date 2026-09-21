@@ -1,0 +1,496 @@
+import {
+  LIMITS,
+  fail,
+  ok,
+  validateDeliveryRoute,
+  validateWireRequest,
+  type DeliveryRoute,
+  type JobSchedule,
+  type ProtocolError,
+  type ProtocolResult,
+  type StaticTextJobCreate,
+  type WireRequest,
+} from "pi-hermes-gateway-protocol";
+import type { Clock } from "./clock.js";
+import { createFakeAdapter, type FakeAdapter } from "./fake-adapter.js";
+import { newId } from "./ids.js";
+import { dailyInstantsInRange, onceInstant } from "./schedule.js";
+import { Store, type DeliveryRow } from "./store.js";
+
+export type CatchUpPolicy = "skip" | "one-latest";
+
+export type CrashPoint = "claim" | "dispatch-intent" | "mid-send" | "before-receipt";
+
+export type GatewayConfig = {
+  routes: DeliveryRoute[];
+  catchUpPolicy: CatchUpPolicy;
+  notAfterBoundMs: number;
+  tickGraceMs: number;
+  tokenBucketCapacity: number;
+  tokenBucketRefillPerMs: number;
+  dailyCapPerRoute: number;
+};
+
+export const DEFAULT_CONFIG: Omit<GatewayConfig, "routes"> = {
+  catchUpPolicy: "skip",
+  notAfterBoundMs: LIMITS.maxNotAfterMs,
+  tickGraceMs: 60_000,
+  tokenBucketCapacity: 5,
+  tokenBucketRefillPerMs: 5 / 60_000,
+  dailyCapPerRoute: 20,
+};
+
+export type GatewayResponse =
+  | { ok: true; requestId: string; body: unknown }
+  | { ok: false; requestId?: string; error: ProtocolError };
+
+function routeKey(route: DeliveryRoute): string {
+  return `${route.profileId}/${route.adapterId}/${route.accountId}/${route.chatId}/${route.threadId ?? ""}`;
+}
+
+function sameRoute(a: DeliveryRoute, b: DeliveryRoute): boolean {
+  return routeKey(a) === routeKey(b);
+}
+
+function utcDay(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+export function jobNotAfter(scheduledInstantMs: number, boundMs: number): number {
+  return scheduledInstantMs + boundMs;
+}
+
+class InjectedCrash extends Error {
+  point: CrashPoint;
+  constructor(point: CrashPoint) {
+    super(`injected crash at ${point}`);
+    this.point = point;
+  }
+}
+
+export class Gateway {
+  readonly store: Store;
+  readonly clock: Clock;
+  readonly config: GatewayConfig;
+  readonly adapter: FakeAdapter;
+  crashNext: CrashPoint | null = null;
+
+  constructor(opts: { store: Store; clock: Clock; config: GatewayConfig; adapter: FakeAdapter }) {
+    this.store = opts.store;
+    this.clock = opts.clock;
+    this.config = opts.config;
+    this.adapter = opts.adapter;
+    if (this.config.notAfterBoundMs < 1 || this.config.notAfterBoundMs > LIMITS.maxNotAfterMs) {
+      throw new Error("notAfterBoundMs must be in (0, 24h]");
+    }
+  }
+
+  close(): void {
+    this.store.close();
+  }
+
+  // protocol caller: validateDeliveryRoute — owner-route allowlist compare
+  routeAllowed(input: unknown): ProtocolResult<DeliveryRoute> {
+    const parsed = validateDeliveryRoute(input);
+    if (!parsed.ok) return parsed;
+    const allowed = this.config.routes.some((r) => sameRoute(r, parsed.value));
+    if (!allowed) return fail("invalid_route", "route is not authorised");
+    return ok(parsed.value);
+  }
+
+  unauthorizedError(): ProtocolError {
+    return { code: "invalid_route", message: "route is not authorised" };
+  }
+
+  audit(kind: string, payload: unknown): void {
+    this.store.insertAudit(this.clock.nowMs(), kind, payload);
+  }
+
+  handleRequest(input: unknown, frameByteLength: number): GatewayResponse {
+    const nowMs = this.clock.nowMs();
+    // protocol caller: validateWireRequest — IPC/in-process request admission
+    const parsed = validateWireRequest(input, { nowMs, frameByteLength });
+    if (!parsed.ok) {
+      this.audit("request.rejected", { error: parsed.error });
+      return { ok: false, error: parsed.error };
+    }
+    const req = parsed.value;
+    const prior = this.store.getRequest(req.requestId);
+    if (prior) {
+      return JSON.parse(prior) as GatewayResponse;
+    }
+    const response = this.dispatchMethod(req);
+    this.store.putRequest(req.requestId, JSON.stringify(response), nowMs);
+    return response;
+  }
+
+  private dispatchMethod(req: WireRequest): GatewayResponse {
+    switch (req.method) {
+      case "job.create":
+        return this.jobCreate(req);
+      case "job.list":
+        return this.okBody(req, { jobs: this.store.listJobs() });
+      case "job.pause":
+        return this.jobStatus(req, "paused");
+      case "job.resume":
+        return this.jobStatus(req, "active");
+      case "job.cancel":
+        return this.jobStatus(req, "cancelled");
+      case "job.inspect":
+        return this.jobInspect(req);
+      case "delivery.enqueue":
+        return this.deliveryEnqueue(req);
+      case "delivery.inspect":
+        return this.deliveryInspect(req);
+      default:
+        return { ok: false, requestId: req.requestId, error: { code: "unknown_method", message: "unknown method" } };
+    }
+  }
+
+  private okBody(req: WireRequest, body: unknown): GatewayResponse {
+    return { ok: true, requestId: req.requestId, body };
+  }
+
+  private jobCreate(req: WireRequest): GatewayResponse {
+    const body = req.body as StaticTextJobCreate;
+    const route = this.routeAllowed(body.route);
+    this.audit("job.create.attempt", { requestId: req.requestId, route: body.route });
+    if (!route.ok) return { ok: false, requestId: req.requestId, error: this.unauthorizedError() };
+    if (body.text.length > this.adapter.manifest.maxTextLength) {
+      return {
+        ok: false,
+        requestId: req.requestId,
+        error: { code: "text_too_long", message: "text exceeds adapter maxTextLength" },
+      };
+    }
+    const jobId = newId("job");
+    const now = this.clock.nowMs();
+    this.store.insertJob({
+      job_id: jobId,
+      kind: body.kind,
+      text: body.text,
+      route_json: JSON.stringify(route.value),
+      schedule_json: JSON.stringify(body.schedule),
+      status: "active",
+      created_at_ms: now,
+      watermark_ms: now,
+    });
+    this.audit("job.create", { jobId, requestId: req.requestId });
+    return this.okBody(req, { jobId });
+  }
+
+  private jobStatus(req: WireRequest, status: string): GatewayResponse {
+    const jobId = (req.body as { jobId: string }).jobId;
+    const job = this.store.getJob(jobId);
+    if (!job) return { ok: false, requestId: req.requestId, error: { code: "invalid_body", message: "unknown job" } };
+    this.store.setJobStatus(jobId, status);
+    this.audit(`job.${status}`, { jobId });
+    return this.okBody(req, { jobId, status });
+  }
+
+  private jobInspect(req: WireRequest): GatewayResponse {
+    const jobId = (req.body as { jobId: string }).jobId;
+    const job = this.store.getJob(jobId);
+    if (!job) return { ok: false, requestId: req.requestId, error: { code: "invalid_body", message: "unknown job" } };
+    return this.okBody(req, { job, occurrences: this.store.listOccurrences(jobId) });
+  }
+
+  private deliveryEnqueue(req: WireRequest): GatewayResponse {
+    // protocol caller: validateStaticDelivery — operator delivery.enqueue (via validateWireRequest → validateMethodBody)
+    const body = req.body as { route: DeliveryRoute; text: string; notAfter: number };
+    this.audit("delivery.enqueue.attempt", { requestId: req.requestId, route: body.route });
+    const route = this.routeAllowed(body.route);
+    if (!route.ok) return { ok: false, requestId: req.requestId, error: this.unauthorizedError() };
+    if (body.text.length > this.adapter.manifest.maxTextLength) {
+      this.audit("delivery.enqueue.rejected", { reason: "text_too_long" });
+      return {
+        ok: false,
+        requestId: req.requestId,
+        error: { code: "text_too_long", message: "text exceeds adapter maxTextLength" },
+      };
+    }
+    const fuse = this.consumeFuses(route.value);
+    if (!fuse.ok) {
+      this.audit("delivery.enqueue.rejected", { reason: fuse.error.code, route: route.value });
+      return { ok: false, requestId: req.requestId, error: fuse.error };
+    }
+    const now = this.clock.nowMs();
+    if (now >= body.notAfter) {
+      const deliveryId = newId("dlv");
+      this.store.insertDelivery({
+        delivery_id: deliveryId,
+        job_id: null,
+        occurrence_id: null,
+        source: "enqueue",
+        route_json: JSON.stringify(route.value),
+        text: body.text,
+        not_after_ms: body.notAfter,
+        status: "expired",
+        request_id: req.requestId,
+        created_at_ms: now,
+        dispatch_intent: 0,
+      });
+      this.audit("delivery.expired", { deliveryId });
+      return this.okBody(req, { deliveryId, status: "expired" });
+    }
+    const deliveryId = newId("dlv");
+    this.store.insertDelivery({
+      delivery_id: deliveryId,
+      job_id: null,
+      occurrence_id: null,
+      source: "enqueue",
+      route_json: JSON.stringify(route.value),
+      text: body.text,
+      not_after_ms: body.notAfter,
+      status: "queued",
+      request_id: req.requestId,
+      created_at_ms: now,
+      dispatch_intent: 0,
+    });
+    this.audit("delivery.enqueue", { deliveryId, requestId: req.requestId });
+    this.processOutbox();
+    const row = this.store.getDelivery(deliveryId);
+    return this.okBody(req, { deliveryId, status: row?.status ?? "queued" });
+  }
+
+  private deliveryInspect(req: WireRequest): GatewayResponse {
+    const deliveryId = (req.body as { deliveryId: string }).deliveryId;
+    const row = this.store.getDelivery(deliveryId);
+    if (!row) return { ok: false, requestId: req.requestId, error: { code: "invalid_body", message: "unknown delivery" } };
+    return this.okBody(req, { delivery: row });
+  }
+
+  consumeFuses(route: DeliveryRoute): ProtocolResult<true> {
+    const now = this.clock.nowMs();
+    const cap = this.config.tokenBucketCapacity;
+    const refill = this.config.tokenBucketRefillPerMs;
+    const existing = this.store.getAccountFuse(route.accountId);
+    let tokens = existing?.tokens ?? cap;
+    const updated = existing?.updated_at_ms ?? now;
+    tokens = Math.min(cap, tokens + Math.max(0, now - updated) * refill);
+    if (tokens < 1) {
+      this.store.setAccountFuse(route.accountId, tokens, now);
+      return fail("rate_limited", "per-account token bucket exhausted");
+    }
+    const key = routeKey(route);
+    const day = utcDay(now);
+    const used = this.store.getRouteDay(key, day);
+    if (used >= this.config.dailyCapPerRoute) {
+      return fail("rate_limited", "per-route daily cap exhausted");
+    }
+    this.store.setAccountFuse(route.accountId, tokens - 1, now);
+    this.store.setRouteDay(key, day, used + 1);
+    return ok(true);
+  }
+
+  expectedInstants(schedule: JobSchedule, afterMs: number, toMs: number): number[] {
+    if (schedule.type === "once") {
+      const at = onceInstant(schedule.atUtc);
+      void afterMs;
+      return at <= toMs ? [at] : [];
+    }
+    return dailyInstantsInRange({
+      timeZone: schedule.timeZone,
+      localTime: schedule.localTime,
+      afterMs,
+      toMs,
+    });
+  }
+
+  tick(): void {
+    const now = this.clock.nowMs();
+    for (const job of this.store.listJobs()) {
+      if (job.status !== "active") continue;
+      const schedule = JSON.parse(job.schedule_json) as JobSchedule;
+      const instants = this.expectedInstants(schedule, job.watermark_ms, now);
+      const unique = instants.filter((ms) => !this.store.findOccurrence(job.job_id, ms));
+      const grace = this.config.tickGraceMs;
+      const onTime: number[] = [];
+      const missed: number[] = [];
+      for (const ms of unique) {
+        if (now - ms <= grace) onTime.push(ms);
+        else missed.push(ms);
+      }
+      for (const ms of onTime) this.admitJobOccurrence(job.job_id, ms, job.text, JSON.parse(job.route_json) as DeliveryRoute);
+      if (missed.length > 0) {
+        missed.sort((a, b) => a - b);
+        if (this.config.catchUpPolicy === "skip") {
+          for (const ms of missed) this.recordSkipped(job.job_id, ms, "missed");
+        } else {
+          for (const ms of missed.slice(0, -1)) this.recordSkipped(job.job_id, ms, "missed");
+          const latest = missed[missed.length - 1];
+          if (latest !== undefined) {
+            this.admitJobOccurrence(job.job_id, latest, job.text, JSON.parse(job.route_json) as DeliveryRoute);
+          }
+        }
+      }
+      this.store.setWatermark(job.job_id, now);
+    }
+    this.processOutbox();
+  }
+
+  private recordSkipped(jobId: string, scheduledInstantMs: number, reason: string): void {
+    if (this.store.findOccurrence(jobId, scheduledInstantMs)) return;
+    const occurrenceId = newId("occ");
+    this.store.insertOccurrence({
+      occurrence_id: occurrenceId,
+      job_id: jobId,
+      scheduled_instant_ms: scheduledInstantMs,
+      status: "skipped",
+    });
+    this.audit("occurrence.skipped", { jobId, occurrenceId, scheduledInstantMs, reason });
+  }
+
+  private admitJobOccurrence(jobId: string, scheduledInstantMs: number, text: string, route: DeliveryRoute): void {
+    if (this.store.findOccurrence(jobId, scheduledInstantMs)) return;
+    const now = this.clock.nowMs();
+    const notAfter = jobNotAfter(scheduledInstantMs, this.config.notAfterBoundMs);
+    const occurrenceId = newId("occ");
+    if (now >= notAfter) {
+      this.store.insertOccurrence({
+        occurrence_id: occurrenceId,
+        job_id: jobId,
+        scheduled_instant_ms: scheduledInstantMs,
+        status: "expired",
+      });
+      this.audit("occurrence.expired", { jobId, occurrenceId, scheduledInstantMs, notAfter });
+      return;
+    }
+    this.store.insertOccurrence({
+      occurrence_id: occurrenceId,
+      job_id: jobId,
+      scheduled_instant_ms: scheduledInstantMs,
+      status: "pending",
+    });
+    const deliveryId = newId("dlv");
+    this.store.insertDelivery({
+      delivery_id: deliveryId,
+      job_id: jobId,
+      occurrence_id: occurrenceId,
+      source: "job",
+      route_json: JSON.stringify(route),
+      text,
+      not_after_ms: notAfter,
+      status: "queued",
+      request_id: null,
+      created_at_ms: now,
+      dispatch_intent: 0,
+    });
+    this.audit("occurrence.admitted", { jobId, occurrenceId, deliveryId, scheduledInstantMs, notAfter });
+  }
+
+  processOutbox(): void {
+    if (!this.store.dispatchEnabled()) return;
+    for (const row of this.store.queuedDeliveries()) {
+      try {
+        this.dispatchOne(row);
+      } catch (err) {
+        if (err instanceof InjectedCrash) {
+          this.applyCrash(row, err.point);
+          this.crashNext = null;
+          return;
+        }
+        throw err;
+      }
+    }
+  }
+
+  private dispatchOne(row: DeliveryRow): void {
+    const now = this.clock.nowMs();
+    this.audit("delivery.send.attempt", { deliveryId: row.delivery_id });
+    if (this.crashNext === "claim") throw new InjectedCrash("claim");
+    if (row.occurrence_id) {
+      const occ = this.store.getOccurrence(row.occurrence_id);
+      if (occ && (occ.status === "interrupted" || occ.status === "commit-unknown" || occ.status === "skipped")) {
+        return;
+      }
+      if (occ) this.store.setOccurrenceStatus(occ.occurrence_id, "claimed");
+    }
+    if (now >= row.not_after_ms) {
+      this.store.setDeliveryStatus(row.delivery_id, "expired");
+      if (row.occurrence_id) this.store.setOccurrenceStatus(row.occurrence_id, "expired");
+      this.audit("delivery.expired", { deliveryId: row.delivery_id, notAfter: row.not_after_ms });
+      return;
+    }
+    const route = JSON.parse(row.route_json) as DeliveryRoute;
+    if (row.source === "job") {
+      const fuse = this.consumeFuses(route);
+      if (!fuse.ok) {
+        this.store.setDeliveryStatus(row.delivery_id, "failed");
+        this.audit("delivery.send.rejected", { deliveryId: row.delivery_id, reason: fuse.error.code });
+        return;
+      }
+    }
+    if (row.text.length > this.adapter.manifest.maxTextLength) {
+      this.store.setDeliveryStatus(row.delivery_id, "failed");
+      this.audit("delivery.send.rejected", { deliveryId: row.delivery_id, reason: "text_too_long" });
+      return;
+    }
+    if (this.crashNext === "dispatch-intent") throw new InjectedCrash("dispatch-intent");
+    this.store.setDispatchIntent(row.delivery_id);
+    if (this.crashNext === "mid-send") this.adapter.crashMidSend = true;
+    try {
+      this.adapter.send({
+        deliveryId: row.delivery_id,
+        route,
+        text: row.text,
+      });
+    } catch (err) {
+      if (this.crashNext === "mid-send") throw new InjectedCrash("mid-send");
+      throw err;
+    }
+    if (this.crashNext === "before-receipt") throw new InjectedCrash("before-receipt");
+    this.store.setDeliveryStatus(row.delivery_id, "accepted");
+    if (row.occurrence_id) this.store.setOccurrenceStatus(row.occurrence_id, "completed");
+    this.audit("delivery.accepted", { deliveryId: row.delivery_id });
+  }
+
+  private applyCrash(row: DeliveryRow, point: CrashPoint): void {
+    if (point === "claim") {
+      if (row.occurrence_id) this.store.setOccurrenceStatus(row.occurrence_id, "interrupted");
+      this.store.setDeliveryStatus(row.delivery_id, "failed");
+      this.audit("crash.claim", { deliveryId: row.delivery_id });
+      return;
+    }
+    this.store.setDispatchIntent(row.delivery_id);
+    this.store.setDeliveryStatus(row.delivery_id, "commit-unknown");
+    if (row.occurrence_id) this.store.setOccurrenceStatus(row.occurrence_id, "commit-unknown");
+    this.audit(`crash.${point}`, { deliveryId: row.delivery_id });
+  }
+
+  restoreQuarantine(backupTimeMs: number, recoveryTimeMs = this.clock.nowMs()): void {
+    this.store.applyRestoreQuarantine(backupTimeMs, recoveryTimeMs);
+    this.audit("restore.quarantine", { backupTimeMs, recoveryTimeMs });
+  }
+}
+
+export function openGateway(opts: {
+  dbPath: string;
+  clock: Clock;
+  routes: DeliveryRoute[];
+  catchUpPolicy?: CatchUpPolicy;
+  notAfterBoundMs?: number;
+  tickGraceMs?: number;
+  tokenBucketCapacity?: number;
+  tokenBucketRefillPerMs?: number;
+  dailyCapPerRoute?: number;
+  adapter?: FakeAdapter;
+}): { gateway: Gateway; backedUpTo: string | null } {
+  const store = new Store(opts.dbPath);
+  const { backedUpTo } = store.migrate();
+  const gateway = new Gateway({
+    store,
+    clock: opts.clock,
+    adapter: opts.adapter ?? createFakeAdapter(),
+    config: {
+      routes: opts.routes,
+      catchUpPolicy: opts.catchUpPolicy ?? DEFAULT_CONFIG.catchUpPolicy,
+      notAfterBoundMs: opts.notAfterBoundMs ?? DEFAULT_CONFIG.notAfterBoundMs,
+      tickGraceMs: opts.tickGraceMs ?? DEFAULT_CONFIG.tickGraceMs,
+      tokenBucketCapacity: opts.tokenBucketCapacity ?? DEFAULT_CONFIG.tokenBucketCapacity,
+      tokenBucketRefillPerMs: opts.tokenBucketRefillPerMs ?? DEFAULT_CONFIG.tokenBucketRefillPerMs,
+      dailyCapPerRoute: opts.dailyCapPerRoute ?? DEFAULT_CONFIG.dailyCapPerRoute,
+    },
+  });
+  return { gateway, backedUpTo };
+}

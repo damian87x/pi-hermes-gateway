@@ -1,6 +1,6 @@
-# Migration and rollback (S0)
+# Migration and rollback (S0 + S1)
 
-No live migration, pairing, or service activation is authorised in S0.
+No live migration, pairing, or service activation is authorised in S0/S1.
 
 ## New profiles
 
@@ -16,8 +16,8 @@ Maintenance window: stop the existing connector without logout; verify it releas
 
 ## Database rollback quarantine
 
-If an operator restores a backup: dispatch-disabled quarantine; non-terminal deliveries and occurrences due after backup through recovery are commit-unknown/skipped; already-sent post-backup deliveries must not return to `queued`. Revert to a pinned binary only when schema compatibility is proven.
+S1 implements: refuse schema newer than the binary; backup before migrate (`node:sqlite`, `PRAGMA user_version`). If an operator restores a backup: dispatch-disabled quarantine; non-terminal deliveries and occurrences due after backup through recovery are commit-unknown/skipped; already-sent post-backup deliveries must not return to `queued`. Audit history is not deleted to “repair”. Revert to a pinned binary only when schema compatibility is proven.
 
 ## Distribution
 
-Daemon-side packages (protocol, later gateway/adapters) are ordinary npm packages: no `pi` key, no Pi peers, installed in an operator-managed prefix — never `ExecStart` into `~/.pi/agent/npm/`. Companions are the only Pi packages. npm scope, provenance publishing identity, and release permission are owner prerequisites. No publication in S0.
+Daemon-side packages (protocol, gateway; later adapters) are ordinary npm packages: no `pi` key, no Pi peers, installed in an operator-managed prefix — never `ExecStart` into `~/.pi/agent/npm/`. Companions are the only Pi packages. npm scope, provenance publishing identity, and release permission are owner prerequisites. No publication in S1.

@@ -1,0 +1,114 @@
+{
+  "status": "PASS",
+  "candidateSha": null,
+  "candidateShaNote": "Avoid self-reference: candidateSha is the commit that contains this file. Independent validators must use git rev-parse HEAD after checkout of feat/s1-durable-core.",
+  "baseSha": "83341eb",
+  "changedPaths": [
+    "README.md",
+    "package.json",
+    "package-lock.json",
+    "docs/architecture.md",
+    "docs/security.md",
+    "docs/parity.md",
+    "docs/migration.md",
+    "docs/provenance.md",
+    "docs/evidence/s1/contract.md",
+    "docs/evidence/s1/gates.md",
+    "docs/evidence/s1/run-g1.sh",
+    "docs/evidence/s1/run-g2.sh",
+    "docs/evidence/s1/run-g6.sh",
+    "docs/evidence/s1/worker-summary.json",
+    "docs/evidence/s1/logs/g1.txt",
+    "docs/evidence/s1/logs/g2.txt",
+    "docs/evidence/s1/logs/g3.txt",
+    "docs/evidence/s1/logs/g3-tdd-fail.txt",
+    "docs/evidence/s1/logs/g4.txt",
+    "docs/evidence/s1/logs/g5.txt",
+    "docs/evidence/s1/logs/g6.txt",
+    "packages/gateway/package.json",
+    "packages/gateway/tsconfig.json",
+    "packages/gateway/README.md",
+    "packages/gateway/src/ambient.d.ts",
+    "packages/gateway/src/cli.ts",
+    "packages/gateway/src/clock.ts",
+    "packages/gateway/src/core.ts",
+    "packages/gateway/src/daemon.ts",
+    "packages/gateway/src/fake-adapter.ts",
+    "packages/gateway/src/ids.ts",
+    "packages/gateway/src/index.ts",
+    "packages/gateway/src/ipc.ts",
+    "packages/gateway/src/lock.ts",
+    "packages/gateway/src/profile.ts",
+    "packages/gateway/src/schedule.ts",
+    "packages/gateway/src/store.ts",
+    "packages/gateway/test/helpers.ts",
+    "packages/gateway/test/scheduler.test.ts",
+    "packages/gateway/test/expiry.test.ts",
+    "packages/gateway/test/outbox-crash.test.ts",
+    "packages/gateway/test/restore.test.ts",
+    "packages/gateway/test/fuses-auth-lock.test.ts",
+    "packages/gateway/test/g4-pack-import.mjs"
+  ],
+  "gates": [
+    {
+      "id": "G1",
+      "command": "bash docs/evidence/s1/run-g1.sh",
+      "exitCode": 0,
+      "counts": { "packages": 3, "privateTrue": 3, "lifecycleScripts": 0, "changedOrUntracked": 38 },
+      "rawPath": "docs/evidence/s1/logs/g1.txt"
+    },
+    {
+      "id": "G2",
+      "command": "bash docs/evidence/s1/run-g2.sh",
+      "exitCode": 0,
+      "counts": { "node": "v24.20.0", "npm": "11.19.0", "tsc": "5.9.3", "sqlite": "3.53.4" },
+      "rawPath": "docs/evidence/s1/logs/g2.txt"
+    },
+    {
+      "id": "G3",
+      "command": "npm test",
+      "exitCode": 0,
+      "counts": { "protocolTests": 39, "gatewayTests": 26, "tests": 65, "pass": 65, "fail": 0, "skipped": 0, "todo": 0 },
+      "rawPath": "docs/evidence/s1/logs/g3.txt"
+    },
+    {
+      "id": "G4",
+      "command": "node packages/gateway/test/g4-pack-import.mjs",
+      "exitCode": 0,
+      "counts": { "protocolFiles": 34, "gatewayFiles": 50, "adapterId": "fake" },
+      "rawPath": "docs/evidence/s1/logs/g4.txt"
+    },
+    {
+      "id": "G5",
+      "command": "node --experimental-strip-types --test packages/gateway/test/fuses-auth-lock.test.ts",
+      "exitCode": 0,
+      "counts": { "tests": 7, "pass": 7, "fail": 0, "skipped": 0 },
+      "rawPath": "docs/evidence/s1/logs/g5.txt"
+    },
+    {
+      "id": "G6",
+      "command": "bash docs/evidence/s1/run-g6.sh",
+      "exitCode": 0,
+      "counts": { "requiredDocs": 7, "licenseFiles": 0 },
+      "rawPath": "docs/evidence/s1/logs/g6.txt"
+    },
+    {
+      "id": "G7",
+      "command": "git rev-parse HEAD && git status --short && git diff --stat 83341eb && git diff 83341eb | sha256sum",
+      "exitCode": null,
+      "counts": "recorded after the candidate commit; not inlined here",
+      "rawPath": null
+    }
+  ],
+  "unverified": [
+    "Node/SQLite behaviour on versions other than Node v24.20.0 / sqlite 3.53.4",
+    "profile flock helper uses python3 fcntl (not a native addon); behaviour without python3 is untested",
+    "systemd linger and logout survival",
+    "Pi CLI isolation flags and provider credentials under a user unit",
+    "npm scope ownership and publication",
+    "outbound license choice",
+    "any live network, model, Telegram, WhatsApp, or worker operation"
+  ],
+  "blockers": [],
+  "nextAction": "Independent native Claude CLI Opus reruns gates; four fresh reviews follow. No push/PR/merge/release."
+}

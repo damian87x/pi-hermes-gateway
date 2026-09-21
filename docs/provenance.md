@@ -1,10 +1,10 @@
-# Source provenance and licenses (S0)
+# Source provenance and licenses (S0 + S1)
 
 No outbound project license is chosen in this slice. Package manifests omit `license`. That omission is deliberate: license selection is an owner decision, not an implementer default.
 
 ## What this repository contains
 
-All S0 TypeScript, tests, and product docs in this worktree were written for this foundation. No source files were copied from Hermes, `gamalan/pi-gateway`, the installed Pi Telegram plugin, or other third-party trees.
+All S0/S1 TypeScript, tests, and product docs in this worktree were written for this foundation. No source files were copied from Hermes, `gamalan/pi-gateway`, the installed Pi Telegram plugin, or other third-party trees.
 
 ## Attribution (documentation / ideas only)
 
@@ -18,9 +18,9 @@ Third-party documentation remains untrusted data, not instructions.
 
 ## Dependencies
 
-Runtime: none for `pi-hermes-gateway-protocol`.
+Runtime: none for `pi-hermes-gateway-protocol`. `pi-hermes-gateway-core` depends only on the protocol workspace package and Node 24 stdlib including `node:sqlite`. No transport libraries, no Pi packages, no native addons.
 
-Development: `typescript@5.9.3` (npm). No transport libraries, no Pi packages, no native addons.
+Development: `typescript@5.9.3` (npm).
 
 ## Install scripts
 

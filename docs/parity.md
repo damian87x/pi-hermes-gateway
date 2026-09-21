@@ -1,4 +1,4 @@
-# Parity inventory (S0 record)
+# Parity inventory (S0 record; S1 implements scheduled static text to the fake adapter)
 
 Full approved parity gates **S5 / M4**, not this slice. MVP (M1) is durable owner-only **static text delivery**, outbound-only, with later companion status/enqueue/job tools. This is not full pi-telegram parity. Existing plugins are not removed or called obsolete.
 
@@ -6,7 +6,7 @@ Full approved parity gates **S5 / M4**, not this slice. MVP (M1) is durable owne
 | --- | --- | --- | --- |
 | Static text send | adapter + core outbox | M1 | |
 | Message identity / receipts (`accepted`, optional `confirmed`) | adapter + core | M1 accepted | stronger receipts when provider evidence exists |
-| Scheduled once-at UTC / daily local IANA | core scheduler | M1 (S1) | general cron deferred |
+| Scheduled once-at UTC / daily local IANA | core scheduler | M1 (S1 fake adapter) | general cron deferred |
 | Streaming edits, Markdown/HTML | adapter + Telegram renderer | no | S5 |
 | Files/images/albums | adapter + authorized attachment service | no | S5 |
 | Buttons/menus/callbacks | adapter primitives + companion registry | no | M3/M4 |
