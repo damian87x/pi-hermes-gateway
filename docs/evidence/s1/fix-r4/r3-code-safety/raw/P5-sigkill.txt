@@ -1,0 +1,32 @@
+cmd: node /tmp/r3cs/p5-sigkill.mjs dist
+{
+ "after-send-before-receipt": {
+  "childSignal": "SIGKILL",
+  "childStderr": "",
+  "sendsBeforeKill": 1,
+  "statusOnReopen": [
+   "commit-unknown"
+  ],
+  "sendsAfterReopen": 0,
+  "finalDeliveries": [
+   "commit-unknown"
+  ],
+  "crashRecoverAudit": 1,
+  "totalSends": 1
+ },
+ "claim": {
+  "childSignal": "SIGKILL",
+  "childStderr": "",
+  "sendsBeforeKill": 0,
+  "statusOnReopen": [
+   "accepted"
+  ],
+  "sendsAfterReopen": 1,
+  "finalDeliveries": [
+   "accepted"
+  ],
+  "crashRecoverAudit": 0,
+  "totalSends": 1
+ }
+}
+EXIT=0

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { dailyInstantsInRange, zonedLocalInstant } from "../dist/index.js";
+import { dailyInstantsInRange, DEFAULT_CONFIG, DEFAULT_TICK_INTERVAL_MS, zonedLocalInstant } from "../dist/index.js";
 import { TestClock } from "../dist/index.js";
 import { cleanup, handle, openTestGw, ROUTE } from "./helpers.ts";
 
@@ -182,6 +182,36 @@ test("suspend past two due slots with one-latest: single unexpired catch-up", ()
   assert.equal(skipped.length, 1);
   assert.equal(done.length, 1);
   assert.equal(done[0]?.scheduled_instant_ms, Date.UTC(2026, 0, 3, 9, 0, 0));
+  gw.close();
+  cleanup(dir);
+});
+
+test("interval-sized gap plus millisecond lateness still sends under skip", () => {
+  const interval = DEFAULT_TICK_INTERVAL_MS;
+  const grace = DEFAULT_CONFIG.tickGraceMs;
+  assert.ok(grace > interval, "grace must exceed tick interval");
+  const S = Date.UTC(2026, 0, 1, 12, 0, 0);
+  const clock = new TestClock(S - 1);
+  const { gw, dir, adapter } = openTestGw({ clock, catchUpPolicy: "skip" });
+  handle(
+    gw,
+    "job.create",
+    {
+      kind: "static-text",
+      text: "noon",
+      route: ROUTE,
+      schedule: { type: "daily", localTime: "12:00", timeZone: "UTC" },
+    },
+    clock.nowMs(),
+  );
+  gw.tick();
+  assert.equal(adapter.sent.length, 0);
+  clock.add(interval + 2);
+  gw.tick();
+  assert.equal(adapter.sent.length, 1);
+  const occ = gw.store.listOccurrences();
+  assert.equal(occ.length, 1);
+  assert.equal(occ[0]?.status, "completed");
   gw.close();
   cleanup(dir);
 });

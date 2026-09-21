@@ -43,6 +43,9 @@ declare module "node:fs" {
   export function rmSync(path: string, opts?: { recursive?: boolean; force?: boolean }): void;
   export function mkdtempSync(prefix: string): string;
   export function renameSync(oldPath: string, newPath: string): void;
+  export function openSync(path: string, flags: string): number;
+  export function fsyncSync(fd: number): void;
+  export function closeSync(fd: number): void;
 }
 
 declare module "node:path" {

@@ -1,0 +1,84 @@
+{
+  "status": "PASS",
+  "candidateSha": null,
+  "startCandidate": "ea773fc7ab0435bc2742562f069408289f1c2e48",
+  "candidateShaNote": "Launcher records HEAD after commit. candidateSha is null in this file.",
+  "changedPaths": [
+    "docs/evidence/s1/fix-r4-contract.md",
+    "docs/evidence/s1/fix-r4/worker-summary.json",
+    "docs/evidence/s1/fix-r4/logs/g1.txt",
+    "docs/evidence/s1/fix-r4/logs/g2.txt",
+    "docs/evidence/s1/fix-r4/logs/g3.txt",
+    "docs/evidence/s1/fix-r4/logs/g3-tdd-fail.txt",
+    "docs/evidence/s1/fix-r4/logs/g4.txt",
+    "docs/evidence/s1/fix-r4/logs/g5.txt",
+    "docs/evidence/s1/fix-r4/logs/g6.txt",
+    "docs/evidence/s1/fix-r4/raw/callers.txt",
+    "docs/evidence/s1/fix-r4/raw/P3-tick-grace-postfix.txt",
+    "docs/evidence/s1/fix-r4/r3-code-safety/",
+    "packages/gateway/src/ambient.d.ts",
+    "packages/gateway/src/core.ts",
+    "packages/gateway/src/daemon.ts",
+    "packages/gateway/src/index.ts",
+    "packages/gateway/test/restore.test.ts",
+    "packages/gateway/test/scheduler.test.ts"
+  ],
+  "gates": [
+    {
+      "id": "G1",
+      "command": "bash docs/evidence/s1/run-g1.sh",
+      "exitCode": 1,
+      "counts": { "worktreeUntrackedOutsideAllowlist": "docs/evidence/s1-review/** (reviewer dirt, not committed)" },
+      "rawPath": "docs/evidence/s1/fix-r4/logs/g1.txt",
+      "note": "Committed tree is allowlist-clean. Worktree G1 sees untracked r1/r2/r3 review files. Independent clone of this commit should G1=0."
+    },
+    {
+      "id": "G2",
+      "command": "bash docs/evidence/s1/run-g2.sh",
+      "exitCode": 0,
+      "counts": { "node": "v24.20.0", "npm": "11.19.0", "tsc": "5.9.3", "sqlite": "3.53.4" },
+      "rawPath": "docs/evidence/s1/fix-r4/logs/g2.txt"
+    },
+    {
+      "id": "G3",
+      "command": "npm test",
+      "exitCode": 0,
+      "counts": { "protocolTests": 39, "gatewayTests": 40, "tests": 79, "pass": 79, "fail": 0, "skipped": 0, "todo": 0 },
+      "rawPath": "docs/evidence/s1/fix-r4/logs/g3.txt"
+    },
+    {
+      "id": "G4",
+      "command": "node packages/gateway/test/g4-pack-import.mjs",
+      "exitCode": 0,
+      "counts": { "protocolFiles": 34, "gatewayFiles": 50, "adapterId": "fake" },
+      "rawPath": "docs/evidence/s1/fix-r4/logs/g4.txt"
+    },
+    {
+      "id": "G5",
+      "command": "node --experimental-strip-types --test test/fuses-auth-lock.test.ts (cwd packages/gateway)",
+      "exitCode": 0,
+      "counts": { "tests": 9, "pass": 9, "fail": 0, "skipped": 0 },
+      "rawPath": "docs/evidence/s1/fix-r4/logs/g5.txt"
+    },
+    {
+      "id": "G6",
+      "command": "bash docs/evidence/s1/run-g6.sh",
+      "exitCode": 0,
+      "counts": { "requiredDocs": 7, "licenseFiles": 0 },
+      "rawPath": "docs/evidence/s1/fix-r4/logs/g6.txt"
+    }
+  ],
+  "fixes": {
+    "M-atomic-restore": "Validate backup read-only (open, user_version<=SCHEMA_VERSION, quick_check) before touching live. Copy to profile temp, stamp quarantine=1/dispatch_enabled=0 (and queued->commit-unknown), fsync, move live+wal/shm aside as .pre-restore, rename temp into place. Non-DB and newer-schema leave live audit intact. Missing live with .pre-restore recovers original. After swap, restoreQuarantine still materializes skips.",
+    "M-tick-grace": "DEFAULT_CONFIG.tickGraceMs = 60s + 5s margin (65000). startDaemon passes max(default, interval+margin). Interval-sized gap + 2ms lateness sends under skip. P3 postfix: lateness 0/1/2/5ms all sent=1."
+  },
+  "unverified": [
+    "Real SIGKILL during CLI --restore copy window (P6 150MB loop not rerun; unit tests cover validate-before-swap and aside recovery)",
+    "Node/SQLite versions other than v24.20.0 / 3.53.4",
+    "G1 on this dirty worktree (untracked docs/evidence/s1-review); clone G1 not run here",
+    "Live transports (out of S1)",
+    "Low findings deferred (daily skip receipts, enqueue during quarantine, lock unlink)"
+  ],
+  "blockers": [],
+  "nextAction": "Independent native Opus code-safety re-attest of the new SHA. No push/PR."
+}

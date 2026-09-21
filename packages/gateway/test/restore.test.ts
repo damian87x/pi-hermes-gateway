@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { copyFileSync, existsSync } from "node:fs";
+import { copyFileSync, existsSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { DatabaseSync } from "node:sqlite";
@@ -235,15 +235,105 @@ test("explicit restore copies backup and quarantines before tick", () => {
     restoreFromBackup: backup,
     backupTimeMs: backupTime,
   });
-  assert.equal(d2.gateway.store.getMeta("quarantine"), "1");
-  assert.equal(d2.gateway.store.dispatchEnabled(), false);
-  assert.equal(d2.adapter.sent.length, 0);
-  assert.equal(d2.gateway.store.listDeliveries().every((row) => row.status !== "queued"), true);
-  const occ = d2.gateway.store.listOccurrences();
-  assert.equal(occ.length, 1);
-  assert.equal(occ[0]?.status, "skipped");
-  d2.stop();
+  try {
+    assert.equal(d2.gateway.store.getMeta("quarantine"), "1");
+    assert.equal(d2.gateway.store.dispatchEnabled(), false);
+    assert.equal(d2.adapter.sent.length, 0);
+    assert.equal(d2.gateway.store.listDeliveries().every((row) => row.status !== "queued"), true);
+    const occ = d2.gateway.store.listOccurrences();
+    assert.equal(occ.length, 1);
+    assert.equal(occ[0]?.status, "skipped");
+    assert.equal(existsSync(join(dir, "gateway.sqlite.pre-restore")), true);
+  } finally {
+    d2.stop();
+    cleanup(dir);
+  }
+});
+
+function seedProfile(dir: string): number {
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
+  writeFileSync(join(dir, "config.json"), JSON.stringify({ routes: [ROUTE] }), { mode: 0o600 });
+  const clock = new TestClock(Date.UTC(2026, 0, 1, 10, 0, 0));
+  const d = startDaemon({ profileDir: dir, routes: [ROUTE], clock, bindSocket: false, tickIntervalMs: 60_000 });
+  for (let i = 0; i < 3; i++) {
+    handle(d.gateway, "delivery.enqueue", { route: ROUTE, text: `live-${i}`, notAfter: clock.nowMs() + 60_000 }, clock.nowMs());
+  }
+  const audit = d.gateway.store.listAudit().length;
+  d.stop();
+  return audit;
+}
+
+function liveAuditCount(dbPath: string): number {
+  const db = new DatabaseSync(dbPath);
+  const n = Number(db.prepare("SELECT count(*) AS n FROM audit").get()?.n);
+  db.close();
+  return n;
+}
+
+test("non-db backup restore leaves live DB intact", () => {
+  const dir = tmpDir();
+  const before = seedProfile(dir);
+  const bad = join(dir, "bad-backup.sqlite");
+  writeFileSync(bad, "this is not sqlite\n".repeat(20));
+  assert.throws(() => {
+    startDaemon({
+      profileDir: dir,
+      routes: [ROUTE],
+      clock: new TestClock(Date.UTC(2026, 0, 1, 11, 0, 0)),
+      bindSocket: false,
+      restoreFromBackup: bad,
+      backupTimeMs: 0,
+    });
+  }, /not a database/);
+  assert.equal(liveAuditCount(join(dir, "gateway.sqlite")), before);
   cleanup(dir);
+});
+
+test("newer-schema backup restore leaves live DB intact", () => {
+  const dir = tmpDir();
+  const before = seedProfile(dir);
+  const bad = join(dir, "bad-backup.sqlite");
+  const db = new DatabaseSync(bad);
+  db.exec("CREATE TABLE x(a); PRAGMA user_version = 99;");
+  db.close();
+  assert.throws(() => {
+    startDaemon({
+      profileDir: dir,
+      routes: [ROUTE],
+      clock: new TestClock(Date.UTC(2026, 0, 1, 11, 0, 0)),
+      bindSocket: false,
+      restoreFromBackup: bad,
+      backupTimeMs: 0,
+    });
+  }, /newer than binary/);
+  assert.equal(liveAuditCount(join(dir, "gateway.sqlite")), before);
+  cleanup(dir);
+});
+
+test("interrupted restore with live moved aside recovers original DB", () => {
+  const dir = tmpDir();
+  const before = seedProfile(dir);
+  const live = join(dir, "gateway.sqlite");
+  copyFileSync(live, `${live}.pre-restore`);
+  unlinkSync(live);
+  for (const extra of [`${live}-wal`, `${live}-shm`]) {
+    if (existsSync(extra)) unlinkSync(extra);
+  }
+  const d = startDaemon({
+    profileDir: dir,
+    routes: [ROUTE],
+    clock: new TestClock(Date.UTC(2026, 0, 1, 11, 0, 0)),
+    bindSocket: false,
+    tickIntervalMs: 60_000,
+  });
+  try {
+    assert.equal(d.gateway.store.listAudit().length, before);
+    assert.notEqual(d.gateway.store.getMeta("quarantine"), "1");
+  } finally {
+    d.stop();
+    cleanup(dir);
+  }
 });
 
 test("backup is taken before migrate from v0", () => {

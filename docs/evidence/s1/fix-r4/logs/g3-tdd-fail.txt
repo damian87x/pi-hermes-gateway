@@ -1,0 +1,122 @@
+✔ restore quarantine: queued becomes commit-unknown and is not sent (5.526842ms)
+✔ already-sent delivery is not resurrected as queued (1.915258ms)
+✔ refuse schema newer than binary (1.753836ms)
+✔ post-backup sent slot is not resurrected as queued under skip (15.654776ms)
+✔ post-backup sent slot is not resurrected as queued under one-latest (5.124028ms)
+✔ once job backup in tick lag is not resent after restore+resume under one-latest (3.14227ms)
+✔ tick refuses admission while quarantined until explicit resume (2.863827ms)
+✖ explicit restore copies backup and quarantines before tick (6.158147ms)
+✖ non-db backup restore leaves live DB intact (3.434372ms)
+✖ newer-schema backup restore leaves live DB intact (3.560623ms)
+✖ interrupted restore with live moved aside recovers original DB (3.968537ms)
+✔ backup is taken before migrate from v0 (0.922828ms)
+✔ once-at UTC fires on the scheduled instant (5.36761ms)
+✔ daily local IANA time fires (13.787868ms)
+✔ DST gap: skip nonexistent local time (4.748265ms)
+✔ DST fold: first occurrence only (0.498105ms)
+✔ DST AU/NZ first fold, gaps, and adjacent valid local times vs brute-force oracle (137.510611ms)
+✔ suspend past two due slots with skip: no burst (3.075588ms)
+✔ suspend past two due slots with one-latest: single unexpired catch-up (3.320151ms)
+✖ interval-sized gap plus millisecond lateness still sends under skip (0.471724ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 15
+ℹ fail 5
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 266.115079
+
+✖ failing tests:
+
+test at packages/gateway/test/restore.test.ts:202:1
+✖ explicit restore copies backup and quarantines before tick (6.158147ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s1/packages/gateway/test/restore.test.ts:246:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1397:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:969:18)
+      at Test.postRun (node:internal/test_runner/test:1537:19)
+      at Test.run (node:internal/test_runner/test:1462:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at packages/gateway/test/restore.test.ts:274:1
+✖ non-db backup restore leaves live DB intact (3.434372ms)
+  Error: file is not a database
+      at liveAuditCount (file:///home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s1/packages/gateway/test/restore.test.ts:269:23)
+      at TestContext.<anonymous> (file:///home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s1/packages/gateway/test/restore.test.ts:289:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1397:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:969:18)
+      at Test.postRun (node:internal/test_runner/test:1537:19)
+      at Test.run (node:internal/test_runner/test:1462:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    code: 'ERR_SQLITE_ERROR',
+    errcode: 26,
+    errstr: 'file is not a database'
+  }
+
+test at packages/gateway/test/restore.test.ts:293:1
+✖ newer-schema backup restore leaves live DB intact (3.560623ms)
+  Error: no such table: audit
+      at liveAuditCount (file:///home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s1/packages/gateway/test/restore.test.ts:269:23)
+      at TestContext.<anonymous> (file:///home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s1/packages/gateway/test/restore.test.ts:310:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1397:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:969:18)
+      at Test.postRun (node:internal/test_runner/test:1537:19)
+      at Test.run (node:internal/test_runner/test:1462:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    code: 'ERR_SQLITE_ERROR',
+    errcode: 1,
+    errstr: 'SQL logic error'
+  }
+
+test at packages/gateway/test/restore.test.ts:314:1
+✖ interrupted restore with live moved aside recovers original DB (3.968537ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 12
+  
+      at TestContext.<anonymous> (file:///home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s1/packages/gateway/test/restore.test.ts:331:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1397:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:969:18)
+      at Test.postRun (node:internal/test_runner/test:1537:19)
+      at Test.run (node:internal/test_runner/test:1462:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 12,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at packages/gateway/test/scheduler.test.ts:189:1
+✖ interval-sized gap plus millisecond lateness still sends under skip (0.471724ms)
+  AssertionError [ERR_ASSERTION]: grace must exceed tick interval
+      at TestContext.<anonymous> (file:///home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s1/packages/gateway/test/scheduler.test.ts:192:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1397:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:969:18)
+      at Test.postRun (node:internal/test_runner/test:1537:19)
+      at Test.run (node:internal/test_runner/test:1462:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

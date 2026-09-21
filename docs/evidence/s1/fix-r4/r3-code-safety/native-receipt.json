@@ -1,0 +1,32 @@
+{
+  "stage": "code-safety",
+  "exitCode": 0,
+  "finishedAt": "2026-09-21T11:42:47.651009+00:00",
+  "requestedModel": "opus",
+  "observedModelUsage": {
+    "claude-opus-5": {
+      "inputTokens": 50,
+      "outputTokens": 58858,
+      "cacheReadInputTokens": 1747485,
+      "cacheCreationInputTokens": 129760,
+      "webSearchRequests": 0,
+      "costUSD": 3.6430425000000004,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 31022,
+      "canonicalModel": "claude-opus-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "sessionId": "b83d8740-dd5d-46f4-b397-6755d215d254",
+  "candidateSha": "ea773fc7ab0435bc2742562f069408289f1c2e48",
+  "verdict": "REJECT",
+  "passedToNextStage": false,
+  "receiptProblems": [],
+  "summary": "**Code-safety verdict: REJECT.** This candidate fixes H5 and all the earlier High and Medium defects, but I found a new Medium in the restore path that breaks frozen policy 3. Candidate `ea773fc` is confirmed: the diff hash matches and tracked files are unchanged. The only other untracked file is `.omc/project-memory.json` from the hook, which I left alone.\n- **Gates:** G1\u2013G7 all exit 0. G1 ran in a /tmp clone with the base SHA written out in full, which was the only change. G3 passed 75 of 75 tests with none skipped.\n- **Earlier defects, all fixed:**\n  - DST matched a brute-force check with 0 mismatches over 126,720 local minutes in 17 zones, AU/NZ included.\n  - H5: a once-job restored under one-latest re-sent 0 times in 4 of 4 cases.\n  - Restore moves the watermark forward, the daemon uses the system clock with a tick of 60 seconds or less, and the lock uses Node only.\n  - A real SIGKILL mid-send leaves the delivery as commit-unknown, and dispatch only resumes on the operator's command.\n- **Medium, `daemon.ts:101`:** restore copies the backup over the live DB before checking it. A backup with a newer schema, or a file that isn't a database, destroys the live DB and its 12 audit rows. Killing a real `--restore` corrupted the live DB in 11 of 28 trials. A crash between the copy and the quarantine write re-sends an already-sent slot. I simulated that one; no real kill landed in that gap.\n- **Medium, `core.ts:312`:** the grace period (60 s) equals the tick interval (60 s). A tick that runs 2 ms late skips an on-time slot under the default skip policy, and idle Node timers already ran 1 ms late on 3 of 12 ticks.\n- **Three Lows:** no skip record for a daily slot before the backup time; new deliveries are accepted during quarantine; deleting the lock file allows a second instance.\n- **Evidence:** everything is in `docs/evidence/s1-review/r3-code-safety/`, starting with `summary.json`. Live transports are out of scope and were not tested.\n\nThe next decision is yours: another fix round for the restore swap and the grace margin, or an owner waiver.",
+  "summaryTruncated": false,
+  "gateSummary": "/home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s1-review-r3/docs/evidence/s1-review/r3-code-safety/summary.json",
+  "nativeRaw": "/home/damian-linux/workspace/billioner-coder/.pi/tasks/pi-hermes-gateway-conductor/s1-review-r3/code-safety/raw.json",
+  "stderr": "/home/damian-linux/workspace/billioner-coder/.pi/tasks/pi-hermes-gateway-conductor/s1-review-r3/code-safety/stderr.log"
+}

@@ -4,6 +4,7 @@ export {
   openGateway,
   jobNotAfter,
   DEFAULT_CONFIG,
+  TICK_GRACE_MARGIN_MS,
   type CatchUpPolicy,
   type CrashPoint,
   type GatewayConfig,

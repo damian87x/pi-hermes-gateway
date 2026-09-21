@@ -31,10 +31,12 @@ export type GatewayConfig = {
   dailyCapPerRoute: number;
 };
 
+export const TICK_GRACE_MARGIN_MS = 5_000;
+
 export const DEFAULT_CONFIG: Omit<GatewayConfig, "routes"> = {
   catchUpPolicy: "skip",
   notAfterBoundMs: LIMITS.maxNotAfterMs,
-  tickGraceMs: 60_000,
+  tickGraceMs: 60_000 + TICK_GRACE_MARGIN_MS,
   tokenBucketCapacity: 5,
   tokenBucketRefillPerMs: 5 / 60_000,
   dailyCapPerRoute: 20,

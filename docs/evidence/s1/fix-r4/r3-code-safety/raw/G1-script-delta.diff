@@ -1,0 +1,8 @@
+7c7
+< echo "BASE=$(git rev-parse 83341eb)"
+---
+> echo "BASE=$(git rev-parse 83341eba427341f5705ea941f85b5626217c8503)"
+38c38
+< diff = subprocess.check_output(["git", "diff", "--name-only", "83341eb"], text=True)
+---
+> diff = subprocess.check_output(["git", "diff", "--name-only", "83341eba427341f5705ea941f85b5626217c8503"], text=True)

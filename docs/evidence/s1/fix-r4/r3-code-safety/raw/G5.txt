@@ -1,0 +1,19 @@
+cmd: node --experimental-strip-types --test test/fuses-auth-lock.test.ts (cwd packages/gateway)
+✔ per-account token bucket refuses extra sends with audit (4.466175ms)
+✔ per-route daily cap refuses with audit (1.7503ms)
+✔ unauthorized route error is indistinguishable and audited (1.613119ms)
+✔ no IPC method creates routes; unknown method is rejected (1.139126ms)
+✔ request dedup returns the first response without a second send (2.057772ms)
+✔ wrong profile mode fails closed (0.564153ms)
+✔ second daemon fails to lock and does not remove the first socket (2.701416ms)
+✔ profile lock is node-only; holder death releases; no split-brain while held (23.952457ms)
+✔ default daemon clock advances and ticks within 60s (222.392563ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 350.666628
+EXIT=0

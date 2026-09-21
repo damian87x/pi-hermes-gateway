@@ -1,0 +1,47 @@
+cmd: node /tmp/r3cs/p6-restore-destructive.mjs dist
+{
+ "not-a-db": {
+  "restoreError": "file is not a database",
+  "liveAuditRowsBefore": 12,
+  "liveAuditRowsAfter": "unreadable: file is not a database",
+  "profileFiles": [
+   "bad-backup.sqlite",
+   "gateway.sqlite",
+   "gateway.sqlite.pre-migrate-v0-to-v1.bak",
+   "profile.lock"
+  ]
+ },
+ "newer-schema": {
+  "restoreError": "schema version 99 is newer than binary 1",
+  "liveAuditRowsBefore": 12,
+  "liveAuditRowsAfter": "unreadable: no such table: audit",
+  "profileFiles": [
+   "bad-backup.sqlite",
+   "gateway.sqlite",
+   "gateway.sqlite-shm",
+   "gateway.sqlite-wal",
+   "gateway.sqlite.pre-migrate-v0-to-v1.bak",
+   "profile.lock"
+  ]
+ },
+ "missing": {
+  "restoreError": "restore backup not found",
+  "liveAuditRowsBefore": 12,
+  "liveAuditRowsAfter": 12,
+  "profileFiles": [
+   "gateway.sqlite",
+   "gateway.sqlite.pre-migrate-v0-to-v1.bak",
+   "profile.lock"
+  ]
+ },
+ "randomKillDuringCliRestore": {
+  "trials": {
+   "quarantined": 8,
+   "unquarantinedRestored": 0,
+   "original": 3,
+   "unreadable": 5
+  },
+  "backupBytes": 157573120
+ }
+}
+EXIT=0

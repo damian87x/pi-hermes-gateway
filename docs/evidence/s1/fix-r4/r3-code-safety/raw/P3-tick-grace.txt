@@ -1,0 +1,47 @@
+cmd: node /tmp/r3cs/p3-tick-grace.mjs dist
+{
+ "DEFAULT_TICK_INTERVAL_MS": 60000,
+ "tickGraceMs": 60000,
+ "catchUpPolicy": "skip",
+ "lateness_0ms": {
+  "sent": 1,
+  "occ": [
+   "completed"
+  ]
+ },
+ "lateness_1ms": {
+  "sent": 1,
+  "occ": [
+   "completed"
+  ]
+ },
+ "lateness_2ms": {
+  "sent": 0,
+  "occ": [
+   "skipped"
+  ]
+ },
+ "lateness_5ms": {
+  "sent": 0,
+  "occ": [
+   "skipped"
+  ]
+ },
+ "realSetInterval250Gaps": [
+  250,
+  250,
+  251,
+  250,
+  250,
+  250,
+  251,
+  250,
+  250,
+  251,
+  250,
+  250
+ ],
+ "maxLatenessMs": 1,
+ "ticksLate": 3
+}
+EXIT=0
