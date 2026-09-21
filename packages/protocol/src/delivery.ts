@@ -14,6 +14,7 @@ export type StaticDelivery = {
   route: DeliveryRoute;
   text: string;
   notAfter: number;
+  requireApproval: boolean;
 };
 
 export function validateDeliveryRoute(input: unknown): ProtocolResult<DeliveryRoute> {
@@ -68,9 +69,13 @@ export function validateStaticDelivery(
       `notAfter must be > now and <= now + ${LIMITS.maxNotAfterMs}ms (24h)`,
     );
   }
+  if (input.requireApproval !== undefined && typeof input.requireApproval !== "boolean") {
+    return fail("invalid_body", "requireApproval must be a boolean");
+  }
   return ok({
     route: route.value,
     text: input.text,
     notAfter: input.notAfter,
+    requireApproval: input.requireApproval === true,
   });
 }

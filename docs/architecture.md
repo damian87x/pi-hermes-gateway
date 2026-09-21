@@ -47,7 +47,7 @@ Measured on this library, not left as TODO:
 | max text | 4096 | ECMAScript string length (UTF-16 code units) |
 | request `expiresAt` | `(now, now+60s]` | unix ms |
 | delivery `notAfter` | `(now, now+24h]` | unix ms; mandatory, no unbounded default |
-| methods | `job.create/list/pause/resume/cancel/inspect`, `delivery.enqueue/inspect` | allowlist |
+| methods | `job.create/list/pause/resume/cancel/inspect`, `delivery.enqueue/inspect` | allowlist; optional `requireApproval` on create/enqueue |
 
 Capability `send.text` is the only v1 capability string. Duplicate or unknown capability names are rejected. Adapters must declare `receiptLevels` including `accepted`.
 
@@ -65,6 +65,7 @@ The protocol package does not schedule, persist, or send. S1 `packages/gateway` 
 - **Catch-up:** Default **skip** missed slots (missed/skipped receipt). Optional **one latest** missed occurrence runs only if still within its scheduledInstant-anchored `notAfter`. Never burst every missed slot. DST: skip nonexistent local times; first fold occurrence only.
 - **Restore:** Refuse schema newer than the binary. Backup before migrate. Explicit restore starts dispatch-disabled quarantine: non-terminal deliveries become `commit-unknown`; occurrences due after backup through recovery become `skipped`. Already-sent rows are not resurrected as `queued`. Audit rows are preserved.
 - **Transport:** Fake adapter is the default (`adapterId=fake`). Gateway talks a structural `{ manifest, send }` object (no class/Symbol identity). Telegram, WhatsApp, and Slack send-only adapters load via explicit module path; WhatsApp uses an injected send function and discards inbound; Slack uses injected `post` to `chat.postMessage` on a mock origin. `notAfter`/size stay gateway-enforced. No live network in this slice, no auto-chunking.
+- **Approvals:** `requireApproval: true` on `job.create` / `delivery.enqueue` stores `pending-approval`. Tick/dispatch skip those rows until owner-local `pi-hermes-gateway-core --profile DIR approve <id>` (profile SQLite, not dashboard HTTP). `job.resume` cannot activate a pending-approval job. Dashboard remains GET-only.
 - **Lifecycle:** Exclusive Node-only SQLite lock on a persistent profile lock file before opening the gateway DB or binding the socket. Process death releases the lock. Second process on the same profile exits nonzero and must not disturb the first socket. Default daemon clock is the system clock; `tick()` runs at start and on an interval ≤60s. TestClock is injected only in tests.
 
 ## Open items deferred (not guessed)

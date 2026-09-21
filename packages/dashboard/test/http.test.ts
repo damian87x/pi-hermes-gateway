@@ -106,6 +106,10 @@ test("mutating HTTP methods are 405 and do not enqueue", async () => {
       const res = await fetch(`${url}/api/status`, { method, body: method === "DELETE" ? undefined : "{}" });
       assert.equal(res.status, 405, method);
     }
+    const approve = await fetch(`${url}/approve`, { method: "POST", body: "{}" });
+    assert.equal(approve.status, 405);
+    const apiApprove = await fetch(`${url}/api/approve`, { method: "POST", body: "{}" });
+    assert.equal(apiApprove.status, 405);
   } finally {
     await dash.close();
     rmSync(dir, { recursive: true, force: true });

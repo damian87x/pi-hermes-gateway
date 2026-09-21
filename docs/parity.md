@@ -14,12 +14,12 @@ Full approved parity gates **S5 / M4**, not this slice. MVP (M1) is durable owne
 | Activity/status/tool-progress | companion events + adapter render | no | S5 |
 | Voice in/out | optional explicit STT/TTS providers | no | S5 |
 | Generative Apps / custom plugin registrations | explicit bridge | no | S5 |
-| Approvals/permission prompts | explicit challenge mapping | no | M3/M4 |
+| Approvals/permission prompts | explicit challenge mapping | CLI `approve` + `requireApproval` pending rows (no HTTP mutate) | M3/M4 inbound pairing |
 | Inbound execution | refuse-by-default + pairing | no | M3 |
 | Isolated model report jobs | gateway worker | no | M2 |
 | WhatsApp send | adapter-whatsapp | M1b send-only injected send | live socket / inbound later |
 | Slack send | adapter-slack | send-only `chat.postMessage` (mock HTTP) | Events API / Socket Mode later |
-| Local job dashboard | dashboard plugin | GET-only loopback HTTP over SQLite (host allowlist) | no mutating/control endpoints |
+| Local job dashboard | dashboard plugin | GET-only loopback HTTP over SQLite (host allowlist; may list pending-approval) | no mutating/control endpoints |
 | Existing-account cutover | migration procedure | no | M5 |
 
 Capability negotiation is explicit and additive within a protocol major. Unsupported results must be visible. No silent truncation or auto-chunking of oversized text in M1.

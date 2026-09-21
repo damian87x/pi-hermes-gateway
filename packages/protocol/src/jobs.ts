@@ -12,6 +12,7 @@ export type StaticTextJobCreate = {
   text: string;
   route: DeliveryRoute;
   schedule: JobSchedule;
+  requireApproval: boolean;
 };
 
 export type JobIdBody = { jobId: string };
@@ -73,12 +74,16 @@ function validateJobCreate(body: Record<string, unknown>, nowMs: number): Protoc
   else if (body.schedule.type === "daily") schedule = validateDailySchedule(body.schedule);
   else return fail("invalid_body", "schedule.type must be once or daily");
   if (!schedule.ok) return schedule;
+  if (body.requireApproval !== undefined && typeof body.requireApproval !== "boolean") {
+    return fail("invalid_body", "requireApproval must be a boolean");
+  }
   void nowMs;
   return ok({
     kind: "static-text",
     text: body.text,
     route: route.value,
     schedule: schedule.value,
+    requireApproval: body.requireApproval === true,
   });
 }
 

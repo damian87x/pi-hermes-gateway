@@ -18,6 +18,26 @@ import { newId } from "./ids.js";
 import { dailyInstantsInRange, onceInstant } from "./schedule.js";
 import { Store, type DeliveryRow } from "./store.js";
 
+export type ApproveResult = ProtocolResult<{ kind: "job" | "delivery"; id: string; status: string }>;
+
+export function approvePending(store: Store, id: string, nowMs: number): ApproveResult {
+  const job = store.getJob(id);
+  if (job) {
+    if (job.status !== "pending-approval") return fail("invalid_body", "job is not pending approval");
+    store.setJobStatus(id, "active");
+    store.insertAudit(nowMs, "job.approved", { jobId: id });
+    return ok({ kind: "job", id, status: "active" });
+  }
+  const row = store.getDelivery(id);
+  if (row) {
+    if (row.status !== "pending-approval") return fail("invalid_body", "delivery is not pending approval");
+    store.setDeliveryStatus(id, "queued");
+    store.insertAudit(nowMs, "delivery.approved", { deliveryId: id });
+    return ok({ kind: "delivery", id, status: "queued" });
+  }
+  return fail("invalid_body", "unknown id");
+}
+
 export type CatchUpPolicy = "skip" | "one-latest";
 
 export type CrashPoint = "claim" | "dispatch-intent" | "mid-send" | "before-receipt";
@@ -190,7 +210,7 @@ export class Gateway {
       text: body.text,
       route_json: JSON.stringify(route.value),
       schedule_json: JSON.stringify(body.schedule),
-      status: "active",
+      status: body.requireApproval ? "pending-approval" : "active",
       created_at_ms: now,
       watermark_ms: now,
     });
@@ -202,6 +222,13 @@ export class Gateway {
     const jobId = (req.body as { jobId: string }).jobId;
     const job = this.store.getJob(jobId);
     if (!job) return { ok: false, requestId: req.requestId, error: { code: "invalid_body", message: "unknown job" } };
+    if (status === "active" && job.status === "pending-approval") {
+      return {
+        ok: false,
+        requestId: req.requestId,
+        error: { code: "invalid_body", message: "job is pending approval" },
+      };
+    }
     this.store.setJobStatus(jobId, status);
     this.audit(`job.${status}`, { jobId });
     return this.okBody(req, { jobId, status });
@@ -216,7 +243,7 @@ export class Gateway {
 
   private deliveryEnqueue(req: WireRequest): GatewayResponse {
     // protocol caller: validateStaticDelivery — operator delivery.enqueue (via validateWireRequest → validateMethodBody)
-    const body = req.body as { route: DeliveryRoute; text: string; notAfter: number };
+    const body = req.body as { route: DeliveryRoute; text: string; notAfter: number; requireApproval?: boolean };
     this.audit("delivery.enqueue.attempt", { requestId: req.requestId, route: body.route });
     const route = this.routeAllowed(body.route);
     if (!route.ok) return { ok: false, requestId: req.requestId, error: this.unauthorizedError() };
@@ -252,6 +279,7 @@ export class Gateway {
       this.audit("delivery.expired", { deliveryId });
       return this.okBody(req, { deliveryId, status: "expired" });
     }
+    const pending = body.requireApproval === true;
     const deliveryId = newId("dlv");
     this.store.insertDelivery({
       delivery_id: deliveryId,
@@ -261,15 +289,19 @@ export class Gateway {
       route_json: JSON.stringify(route.value),
       text: body.text,
       not_after_ms: body.notAfter,
-      status: "queued",
+      status: pending ? "pending-approval" : "queued",
       request_id: req.requestId,
       created_at_ms: now,
       dispatch_intent: 0,
     });
-    this.audit("delivery.enqueue", { deliveryId, requestId: req.requestId });
-    this.processOutbox();
+    this.audit("delivery.enqueue", { deliveryId, requestId: req.requestId, requireApproval: pending });
+    if (!pending) this.processOutbox();
     const row = this.store.getDelivery(deliveryId);
-    return this.okBody(req, { deliveryId, status: row?.status ?? "queued" });
+    return this.okBody(req, { deliveryId, status: row?.status ?? (pending ? "pending-approval" : "queued") });
+  }
+
+  approve(id: string): ApproveResult {
+    return approvePending(this.store, id, this.clock.nowMs());
   }
 
   private deliveryInspect(req: WireRequest): GatewayResponse {

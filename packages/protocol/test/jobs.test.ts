@@ -77,6 +77,51 @@ test("rejects invalid localTime", () => {
   if (!result.ok) assert.equal(result.error.code, "invalid_body");
 });
 
+test("accepts optional requireApproval on job.create and keeps it on the parsed body", () => {
+  const body = {
+    kind: "static-text",
+    text: "ping",
+    route,
+    schedule: { type: "once", atUtc: "2026-09-21T00:00:00.000Z" },
+    requireApproval: true,
+  };
+  const result = validateMethodBody("job.create", body, { nowMs: NOW });
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal((result.value as { requireApproval?: boolean }).requireApproval, true);
+  }
+  const omitted = validateMethodBody(
+    "job.create",
+    {
+      kind: "static-text",
+      text: "ping",
+      route,
+      schedule: { type: "once", atUtc: "2026-09-21T00:00:00.000Z" },
+    },
+    { nowMs: NOW },
+  );
+  assert.equal(omitted.ok, true);
+  if (omitted.ok) {
+    assert.equal((omitted.value as { requireApproval?: boolean }).requireApproval, false);
+  }
+});
+
+test("rejects non-boolean requireApproval on job.create", () => {
+  const result = validateMethodBody(
+    "job.create",
+    {
+      kind: "static-text",
+      text: "ping",
+      route,
+      schedule: { type: "once", atUtc: "2026-09-21T00:00:00.000Z" },
+      requireApproval: "yes",
+    },
+    { nowMs: NOW },
+  );
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.error.code, "invalid_body");
+});
+
 test("validates job.inspect and delivery.enqueue bodies", () => {
   const inspect = validateMethodBody("job.inspect", { jobId: "job-1" }, { nowMs: NOW });
   assert.equal(inspect.ok, true);

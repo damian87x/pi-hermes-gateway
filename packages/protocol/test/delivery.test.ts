@@ -101,6 +101,21 @@ test("rejects notAfter beyond 24 hours", () => {
   if (!result.ok) assert.equal(result.error.code, "invalid_not_after");
 });
 
+test("accepts optional requireApproval on static delivery", () => {
+  const result = validateStaticDelivery(validDelivery({ requireApproval: true }), { nowMs: NOW });
+  assert.equal(result.ok, true);
+  if (result.ok) assert.equal(result.value.requireApproval, true);
+  const omitted = validateStaticDelivery(validDelivery(), { nowMs: NOW });
+  assert.equal(omitted.ok, true);
+  if (omitted.ok) assert.equal(omitted.value.requireApproval, false);
+});
+
+test("rejects non-boolean requireApproval on static delivery", () => {
+  const result = validateStaticDelivery(validDelivery({ requireApproval: "yes" }), { nowMs: NOW });
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.error.code, "invalid_body");
+});
+
 test("rejects invalid caller clock nowMs", () => {
   const input = validDelivery();
   for (const nowMs of [undefined, NaN, "1", 1.5, Infinity, null, {}]) {

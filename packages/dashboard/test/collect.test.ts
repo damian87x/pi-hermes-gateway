@@ -48,6 +48,21 @@ test("collectStatus truncates text fields", () => {
   }
 });
 
+test("collectStatus lists pending-approval jobs and deliveries", () => {
+  const { dir, dbPath } = makeProfile({ jobs: 1, occurrences: 0, deliveries: 1 });
+  try {
+    const db = new DatabaseSync(dbPath);
+    db.prepare("UPDATE jobs SET status = ? WHERE job_id = ?").run("pending-approval", "job-0");
+    db.prepare("UPDATE deliveries SET status = ? WHERE delivery_id = ?").run("pending-approval", "dlv-0");
+    db.close();
+    const status = collectStatus(dbPath);
+    assert.equal(status.jobs[0]?.status, "pending-approval");
+    assert.equal(status.deliveries[0]?.status, "pending-approval");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("collectStatus throws when the profile DB is missing", () => {
   const { dir } = makeProfile({ jobs: 0, occurrences: 0, deliveries: 0 });
   try {

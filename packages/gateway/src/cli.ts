@@ -4,7 +4,10 @@ import { join } from "node:path";
 import process from "node:process";
 import { loadSendAdapter } from "./adapter-loader.js";
 import type { SendAdapter } from "./adapter.js";
+import { approvePending } from "./core.js";
 import { startDaemon } from "./daemon.js";
+import { profilePaths } from "./profile.js";
+import { Store } from "./store.js";
 import type { DeliveryRoute } from "pi-hermes-gateway-protocol";
 
 function arg(name: string): string | undefined {
@@ -13,12 +16,54 @@ function arg(name: string): string | undefined {
   return process.argv[idx + 1];
 }
 
+function commandIndex(name: string): number {
+  const args = process.argv.slice(2);
+  for (let i = 0; i < args.length; i += 1) {
+    const cur = args[i];
+    if (cur === "--profile" || cur === "--restore") {
+      i += 1;
+      continue;
+    }
+    if (cur === name) return i + 2;
+  }
+  return -1;
+}
+
 const profileArg = arg("--profile");
 if (!profileArg) {
-  process.stderr.write("usage: pi-hermes-gateway-core --profile DIR [--restore BACKUP] [--resume-dispatch]\n");
+  process.stderr.write(
+    "usage: pi-hermes-gateway-core --profile DIR [--restore BACKUP] [--resume-dispatch]\n       pi-hermes-gateway-core --profile DIR approve <id>\n",
+  );
   process.exit(2);
 }
 const profileDir: string = profileArg;
+
+const approveAt = commandIndex("approve");
+if (approveAt !== -1) {
+  const id = process.argv[approveAt + 1];
+  if (!id || id.startsWith("--")) {
+    process.stderr.write("usage: pi-hermes-gateway-core --profile DIR approve <id>\n");
+    process.exit(2);
+  }
+  const { dbPath } = profilePaths(profileDir);
+  if (!existsSync(dbPath)) {
+    process.stderr.write("missing gateway.sqlite\n");
+    process.exit(2);
+  }
+  const store = new Store(dbPath);
+  try {
+    store.migrate();
+    const result = approvePending(store, id, Date.now());
+    if (!result.ok) {
+      process.stderr.write(`${result.error.message}\n`);
+      process.exit(1);
+    }
+    process.stderr.write(`approved ${result.value.kind} ${result.value.id} -> ${result.value.status}\n`);
+  } finally {
+    store.close();
+  }
+  process.exit(0);
+}
 
 const restoreFromBackup = arg("--restore");
 const resumeDispatch = process.argv.includes("--resume-dispatch");
