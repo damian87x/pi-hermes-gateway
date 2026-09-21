@@ -21,7 +21,7 @@ import { createFakeAdapter, type FakeAdapter } from "./fake-adapter.js";
 import { acquireProfileLock, type HeldLock } from "./lock.js";
 import { listenIpc } from "./ipc.js";
 import { assertSocketMode, ensureProfileDir, profilePaths, unlinkOwnedSocket } from "./profile.js";
-import { SCHEMA_VERSION, Store } from "./store.js";
+import { SCHEMA_VERSION } from "./store.js";
 
 export const DEFAULT_TICK_INTERVAL_MS = 60_000;
 
@@ -121,22 +121,45 @@ function recoverInterruptedRestore(dbPath: string): void {
   unlinkIfExists(journal);
 }
 
-function replaceDbWithBackup(dbPath: string, backupPath: string): void {
+export type RestoreMaterialize = {
+  clock: Clock;
+  routes: DeliveryRoute[];
+  catchUpPolicy?: CatchUpPolicy;
+  backupTimeMs?: number;
+  tickGraceMs?: number;
+};
+
+function finishRestorePending(gw: Gateway, clock: Clock): void {
+  const backupTimeMs = Number(gw.store.getMeta("backup_time_ms") ?? 0);
+  const recoveryTimeMs = Number(gw.store.getMeta("recovery_time_ms") ?? clock.nowMs());
+  gw.restoreQuarantine(backupTimeMs, recoveryTimeMs);
+  gw.store.setMeta("restore_pending", "0");
+}
+
+export function replaceDbWithBackup(dbPath: string, backupPath: string, materialize: RestoreMaterialize): void {
   validateBackupReadOnly(backupPath);
   const tempPath = `${dbPath}.restore-tmp`;
   unlinkIfExists(tempPath);
   for (const extra of sidecars(tempPath)) unlinkIfExists(extra);
   copyFileSync(backupPath, tempPath);
-  const tmp = new Store(tempPath);
+  const backupTimeMs = materialize.backupTimeMs ?? statSync(backupPath).mtimeMs;
+  const recoveryTimeMs = materialize.clock.nowMs();
+  const { gateway: tmpGw } = openGateway({
+    dbPath: tempPath,
+    clock: materialize.clock,
+    routes: materialize.routes,
+    adapter: createFakeAdapter(),
+    ...(materialize.catchUpPolicy ? { catchUpPolicy: materialize.catchUpPolicy } : {}),
+    ...(materialize.tickGraceMs !== undefined ? { tickGraceMs: materialize.tickGraceMs } : {}),
+  });
   try {
-    tmp.migrate();
-    tmp.setMeta("quarantine", "1");
-    tmp.setMeta("dispatch_enabled", "0");
-    tmp.db
-      .prepare("UPDATE deliveries SET status = 'commit-unknown' WHERE status IN ('queued', 'dispatching')")
-      .run();
+    tmpGw.store.setMeta("restore_pending", "1");
+    tmpGw.store.setMeta("backup_time_ms", String(backupTimeMs));
+    tmpGw.store.setMeta("recovery_time_ms", String(recoveryTimeMs));
+    tmpGw.restoreQuarantine(backupTimeMs, recoveryTimeMs);
+    tmpGw.store.setMeta("restore_pending", "0");
   } finally {
-    tmp.close();
+    tmpGw.close();
   }
   for (const extra of sidecars(tempPath)) unlinkIfExists(extra);
   fsyncPath(tempPath);
@@ -183,12 +206,20 @@ export function startDaemon(opts: {
     if (intervalMs > DEFAULT_TICK_INTERVAL_MS || intervalMs < 1) {
       throw new Error("tick interval must be in (0, 60s]");
     }
-    if (!opts.restoreFromBackup) recoverInterruptedRestore(paths.dbPath);
-    if (opts.restoreFromBackup) replaceDbWithBackup(paths.dbPath, opts.restoreFromBackup);
-    if (opts.bindSocket !== false) unlinkOwnedSocket(paths.socketPath);
-    const adapter = opts.adapter ?? createFakeAdapter();
     const clock = opts.clock ?? new SystemClock();
     const tickGraceMs = Math.max(DEFAULT_CONFIG.tickGraceMs, intervalMs + TICK_GRACE_MARGIN_MS);
+    if (!opts.restoreFromBackup) recoverInterruptedRestore(paths.dbPath);
+    if (opts.restoreFromBackup) {
+      replaceDbWithBackup(paths.dbPath, opts.restoreFromBackup, {
+        clock,
+        routes: opts.routes,
+        tickGraceMs,
+        ...(opts.catchUpPolicy ? { catchUpPolicy: opts.catchUpPolicy } : {}),
+        ...(opts.backupTimeMs !== undefined ? { backupTimeMs: opts.backupTimeMs } : {}),
+      });
+    }
+    if (opts.bindSocket !== false) unlinkOwnedSocket(paths.socketPath);
+    const adapter = opts.adapter ?? createFakeAdapter();
     const opened = openGateway({
       dbPath: paths.dbPath,
       clock,
@@ -199,11 +230,17 @@ export function startDaemon(opts: {
     });
     const gw = opened.gateway;
     gateway = gw;
-    if (opts.restoreFromBackup) {
+    if (gw.store.getMeta("restore_pending") === "1") {
+      if (opts.resumeDispatch) throw new Error("restore materialization pending");
+      finishRestorePending(gw, clock);
+    } else if (opts.restoreFromBackup && gw.store.getMeta("backup_time_ms") == null) {
       const backupTimeMs = opts.backupTimeMs ?? statSync(opts.restoreFromBackup).mtimeMs;
       gw.restoreQuarantine(backupTimeMs, clock.nowMs());
     }
-    if (opts.resumeDispatch) gw.resumeDispatch();
+    if (opts.resumeDispatch) {
+      if (gw.store.getMeta("restore_pending") === "1") throw new Error("restore materialization pending");
+      gw.resumeDispatch();
+    }
     let server: Server | undefined;
     if (opts.bindSocket !== false) {
       server = listenIpc(paths.socketPath, gw);

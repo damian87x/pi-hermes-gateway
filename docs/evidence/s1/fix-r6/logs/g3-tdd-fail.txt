@@ -1,0 +1,70 @@
+✔ restore quarantine: queued becomes commit-unknown and is not sent (5.510665ms)
+✔ already-sent delivery is not resurrected as queued (1.889606ms)
+✔ refuse schema newer than binary (1.726484ms)
+✔ post-backup sent slot is not resurrected as queued under skip (15.523632ms)
+✔ post-backup sent slot is not resurrected as queued under one-latest (4.883573ms)
+✔ once job backup in tick lag is not resent after restore+resume under one-latest (3.382239ms)
+✔ tick refuses admission while quarantined until explicit resume (2.109736ms)
+✔ explicit restore copies backup and quarantines before tick (6.292667ms)
+✔ non-db backup restore leaves live DB intact (3.447369ms)
+✔ newer-schema backup restore leaves live DB intact (3.388289ms)
+✔ interrupted restore with live moved aside recovers original DB (3.383689ms)
+✔ interrupted second restore recovers the most recent live DB (4.387692ms)
+✔ absent live DB with leftover .pre-restore and no journal does not revive it (3.934201ms)
+✖ kill after restore swap then resume sends 0 extra under one-latest (7.73819ms)
+✖ kill after restore swap then resume sends 0 extra under skip within grace (6.537918ms)
+✔ backup is taken before migrate from v0 (0.919202ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 14
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 173.426183
+
+✖ failing tests:
+
+test at packages/gateway/test/restore.test.ts:485:1
+✖ kill after restore swap then resume sends 0 extra under one-latest (7.73819ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  1 !== 0
+  
+      at killAfterRestoreSwapThenResume (file:///home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s1/packages/gateway/test/restore.test.ts:474:12)
+      at TestContext.<anonymous> (file:///home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s1/packages/gateway/test/restore.test.ts:486:3)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1397:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:969:18)
+      at Test.postRun (node:internal/test_runner/test:1537:19)
+      at Test.run (node:internal/test_runner/test:1462:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at packages/gateway/test/restore.test.ts:489:1
+✖ kill after restore swap then resume sends 0 extra under skip within grace (6.537918ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  1 !== 0
+  
+      at killAfterRestoreSwapThenResume (file:///home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s1/packages/gateway/test/restore.test.ts:474:12)
+      at TestContext.<anonymous> (file:///home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s1/packages/gateway/test/restore.test.ts:490:3)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1397:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:969:18)
+      at Test.postRun (node:internal/test_runner/test:1537:19)
+      at Test.run (node:internal/test_runner/test:1462:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

@@ -1,0 +1,119 @@
+
+> pi-hermes-gateway@0.0.0 test
+> npm run test -w pi-hermes-gateway-protocol && npm run test -w pi-hermes-gateway-core
+
+
+> pi-hermes-gateway-protocol@0.0.0 test
+> npm run build && node --experimental-strip-types --test test/*.test.ts
+
+
+> pi-hermes-gateway-protocol@0.0.0 build
+> tsc -p tsconfig.json
+
+✔ accepts a declared M1 text adapter manifest (1.339813ms)
+✔ rejects unsupported adapter API versions (0.174331ms)
+✔ rejects duplicate capability definitions (0.12071ms)
+✔ rejects unknown capability definitions (0.11689ms)
+✔ rejects empty capability lists (0.12195ms)
+✔ rejects duplicate receipt levels (0.12237ms)
+✔ requires accepted receipt level (0.114321ms)
+✔ rejects maxTextLength outside protocol bounds (0.12234ms)
+✔ rejects invalid adapterId (0.175481ms)
+✔ accepts a static owner-route text delivery (0.925483ms)
+✔ accepts optional threadId (0.15049ms)
+✔ rejects missing route fields (0.145791ms)
+✔ rejects empty or oversized route fields (0.11792ms)
+✔ rejects empty text (0.12318ms)
+✔ rejects oversized text using UTF-16 code units (0.11419ms)
+✔ rejects notAfter at or before now (0.1256ms)
+✔ rejects notAfter beyond 24 hours (0.116751ms)
+✔ rejects invalid caller clock nowMs (0.18199ms)
+✔ accepts job.create static-text once-at body (1.161513ms)
+✔ accepts job.create daily local schedule with IANA zone (10.577988ms)
+✔ rejects worker job kinds in S0/M1 protocol (0.144851ms)
+✔ rejects unknown IANA time zones (0.19895ms)
+✔ rejects invalid localTime (0.132521ms)
+✔ validates job.inspect and delivery.enqueue bodies (0.20813ms)
+✔ rejects delivery.enqueue that fails static delivery rules (0.117091ms)
+✔ rejects nonexistent once-schedule calendar dates (0.22893ms)
+✔ accepts valid UTC once-schedule forms including leap day, month boundaries, fractional seconds, and end-of-day (0.268461ms)
+✔ wire validation also checks method bodies (0.447321ms)
+✔ accepts a supported wire request within limits (1.089383ms)
+✔ rejects unsupported protocol versions (0.152551ms)
+✔ rejects missing protocolVersion (0.13097ms)
+✔ rejects invalid request IDs (0.203081ms)
+✔ rejects unknown methods (0.215451ms)
+✔ rejects non-object bodies (0.18769ms)
+✔ rejects expired requests (0.150501ms)
+✔ rejects expiry beyond the bounded TTL (0.13079ms)
+✔ rejects oversized frames (0.143981ms)
+✔ rejects oversized payloads (1.513104ms)
+✔ rejects invalid caller clock nowMs (0.171111ms)
+ℹ tests 39
+ℹ suites 0
+ℹ pass 39
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 107.515027
+
+> pi-hermes-gateway-core@0.0.0 test
+> npm run build && node --experimental-strip-types --test test/*.test.ts
+
+
+> pi-hermes-gateway-core@0.0.0 build
+> tsc -p tsconfig.json
+
+✔ S0 validateStaticDelivery cannot express scheduledInstant-anchored notAfter for a future slot (0.975043ms)
+✔ job delivery notAfter anchors to scheduledInstant, not catch-up now (4.661062ms)
+✔ expired job occurrence is never sent late (1.701454ms)
+✔ operator enqueue keeps protocol now-relative notAfter and rejects overdue dispatch (1.852535ms)
+✔ per-account token bucket refuses extra sends with audit (5.515324ms)
+✔ per-route daily cap refuses with audit (1.885435ms)
+✔ unauthorized route error is indistinguishable and audited (2.134226ms)
+✔ no IPC method creates routes; unknown method is rejected (1.533564ms)
+✔ request dedup returns the first response without a second send (2.168515ms)
+✔ wrong profile mode fails closed (0.716592ms)
+✔ second daemon fails to lock and does not remove the first socket (3.026728ms)
+✔ profile lock is node-only; holder death releases; no split-brain while held (25.550268ms)
+✔ default daemon clock advances and ticks within 60s (222.115924ms)
+✔ crash at claim: interrupted, not accepted, later tick does not send (4.640752ms)
+✔ crash at dispatch-intent: commit-unknown never auto-retried (1.842865ms)
+✔ crash mid-send: commit-unknown never auto-retried (1.806535ms)
+✔ crash before receipt write: commit-unknown even if adapter observed send (1.813435ms)
+✔ oversized adapter payload is rejected without send (1.796955ms)
+✔ open converts leftover dispatching rows to commit-unknown with audit (2.700307ms)
+✔ SIGKILL child leaving dispatching is recovered on open (28.545026ms)
+✔ restore quarantine: queued becomes commit-unknown and is not sent (7.421259ms)
+✔ already-sent delivery is not resurrected as queued (2.525326ms)
+✔ refuse schema newer than binary (2.194556ms)
+✔ post-backup sent slot is not resurrected as queued under skip (17.030286ms)
+✔ post-backup sent slot is not resurrected as queued under one-latest (5.588765ms)
+✔ once job backup in tick lag is not resent after restore+resume under one-latest (3.667ms)
+✔ tick refuses admission while quarantined until explicit resume (2.276686ms)
+✔ explicit restore copies backup and quarantines before tick (6.749758ms)
+✔ non-db backup restore leaves live DB intact (3.79618ms)
+✔ newer-schema backup restore leaves live DB intact (3.80565ms)
+✔ interrupted restore with live moved aside recovers original DB (3.69146ms)
+✔ interrupted second restore recovers the most recent live DB (4.577513ms)
+✔ absent live DB with leftover .pre-restore and no journal does not revive it (4.199131ms)
+✔ kill after restore swap then resume sends 0 extra under one-latest (7.63271ms)
+✔ kill after restore swap then resume sends 0 extra under skip within grace (7.55381ms)
+✔ backup is taken before migrate from v0 (1.121803ms)
+✔ once-at UTC fires on the scheduled instant (5.203984ms)
+✔ daily local IANA time fires (14.568068ms)
+✔ DST gap: skip nonexistent local time (4.596722ms)
+✔ DST fold: first occurrence only (0.471581ms)
+✔ DST AU/NZ first fold, gaps, and adjacent valid local times vs brute-force oracle (141.708969ms)
+✔ suspend past two due slots with skip: no burst (3.251239ms)
+✔ suspend past two due slots with one-latest: single unexpired catch-up (3.926751ms)
+✔ interval-sized gap plus millisecond lateness still sends under skip (3.554679ms)
+ℹ tests 44
+ℹ suites 0
+ℹ pass 44
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 369.149827

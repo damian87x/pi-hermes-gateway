@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync, chmodSync } from "node:fs";
-import { createFakeAdapter, openGateway, SCHEMA_VERSION, startDaemon, TestClock } from "../dist/index.js";
+import { createFakeAdapter, openGateway, replaceDbWithBackup, SCHEMA_VERSION, startDaemon, TestClock } from "../dist/index.js";
 import { cleanup, handle, openTestGw, ROUTE, tmpDir } from "./helpers.ts";
 
 test("restore quarantine: queued becomes commit-unknown and is not sent", () => {
@@ -404,6 +404,90 @@ test("absent live DB with leftover .pre-restore and no journal does not revive i
     d.stop();
     cleanup(dir);
   }
+});
+
+function killAfterRestoreSwapThenResume(policy: "skip" | "one-latest") {
+  const dir = tmpDir();
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
+  writeFileSync(join(dir, "config.json"), JSON.stringify({ routes: [ROUTE], catchUpPolicy: policy }), { mode: 0o600 });
+  const clock = new TestClock(Date.UTC(2026, 0, 1, 11, 0, 0));
+  const d1 = startDaemon({
+    profileDir: dir,
+    routes: [ROUTE],
+    clock,
+    catchUpPolicy: policy,
+    bindSocket: false,
+    tickIntervalMs: 60_000,
+  });
+  handle(
+    d1.gateway,
+    "job.create",
+    {
+      kind: "static-text",
+      text: "slot",
+      route: ROUTE,
+      schedule: { type: "daily", localTime: "12:00", timeZone: "UTC" },
+    },
+    clock.nowMs(),
+  );
+  const backupTime = clock.nowMs();
+  d1.gateway.store.db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+  const backup = join(dir, "backup.sqlite");
+  copyFileSync(join(dir, "gateway.sqlite"), backup);
+  clock.set(Date.UTC(2026, 0, 1, 12, 0, 0));
+  d1.gateway.tick();
+  assert.equal(d1.adapter.sent.length, 1);
+  d1.stop();
+
+  const clock2 = new TestClock(Date.UTC(2026, 0, 1, 12, 0, 30));
+  replaceDbWithBackup(join(dir, "gateway.sqlite"), backup, {
+    clock: clock2,
+    routes: [ROUTE],
+    catchUpPolicy: policy,
+    backupTimeMs: backupTime,
+    tickGraceMs: 65_000,
+  });
+  const plain = startDaemon({
+    profileDir: dir,
+    routes: [ROUTE],
+    clock: clock2,
+    catchUpPolicy: policy,
+    bindSocket: false,
+    tickIntervalMs: 60_000,
+  });
+  try {
+    assert.equal(plain.adapter.sent.length, 0);
+  } finally {
+    plain.stop();
+  }
+  const resumed = startDaemon({
+    profileDir: dir,
+    routes: [ROUTE],
+    clock: clock2,
+    catchUpPolicy: policy,
+    bindSocket: false,
+    tickIntervalMs: 60_000,
+    resumeDispatch: true,
+  });
+  try {
+    assert.equal(resumed.adapter.sent.length, 0);
+    const occ = resumed.gateway.store.listOccurrences();
+    assert.equal(occ.length, 1);
+    assert.equal(occ[0]?.status, "skipped");
+    assert.equal(occ[0]?.scheduled_instant_ms, Date.UTC(2026, 0, 1, 12, 0, 0));
+  } finally {
+    resumed.stop();
+    cleanup(dir);
+  }
+}
+
+test("kill after restore swap then resume sends 0 extra under one-latest", () => {
+  killAfterRestoreSwapThenResume("one-latest");
+});
+
+test("kill after restore swap then resume sends 0 extra under skip within grace", () => {
+  killAfterRestoreSwapThenResume("skip");
 });
 
 test("backup is taken before migrate from v0", () => {

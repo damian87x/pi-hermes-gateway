@@ -11,7 +11,13 @@ export {
   type GatewayResponse,
 } from "./core.js";
 export { createFakeAdapter, type FakeAdapter } from "./fake-adapter.js";
-export { startDaemon, DEFAULT_TICK_INTERVAL_MS, type Daemon } from "./daemon.js";
+export {
+  startDaemon,
+  replaceDbWithBackup,
+  DEFAULT_TICK_INTERVAL_MS,
+  type Daemon,
+  type RestoreMaterialize,
+} from "./daemon.js";
 export { acquireProfileLock } from "./lock.js";
 export { zonedLocalInstant, dailyInstantsInRange, onceInstant } from "./schedule.js";
 export { SCHEMA_VERSION, Store } from "./store.js";
