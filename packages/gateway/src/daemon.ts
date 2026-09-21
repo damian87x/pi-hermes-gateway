@@ -16,8 +16,9 @@ import type { Server } from "node:net";
 import { DatabaseSync } from "node:sqlite";
 import type { Clock } from "./clock.js";
 import { SystemClock } from "./clock.js";
+import type { SendAdapter } from "./adapter.js";
 import { DEFAULT_CONFIG, openGateway, TICK_GRACE_MARGIN_MS, type CatchUpPolicy, type Gateway } from "./core.js";
-import { createFakeAdapter, type FakeAdapter } from "./fake-adapter.js";
+import { createFakeAdapter } from "./fake-adapter.js";
 import { acquireProfileLock, type HeldLock } from "./lock.js";
 import { listenIpc } from "./ipc.js";
 import { assertSocketMode, ensureProfileDir, profilePaths, unlinkOwnedSocket } from "./profile.js";
@@ -27,7 +28,7 @@ export const DEFAULT_TICK_INTERVAL_MS = 60_000;
 
 export type Daemon = {
   gateway: Gateway;
-  adapter: FakeAdapter;
+  adapter: SendAdapter;
   stop(): void;
 };
 
@@ -188,7 +189,7 @@ export function startDaemon(opts: {
   clock?: Clock;
   catchUpPolicy?: CatchUpPolicy;
   bindSocket?: boolean;
-  adapter?: FakeAdapter;
+  adapter?: SendAdapter;
   restoreFromBackup?: string;
   backupTimeMs?: number;
   resumeDispatch?: boolean;

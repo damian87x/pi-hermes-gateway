@@ -1,0 +1,67 @@
+{
+  "status": "PASS",
+  "candidateSha": null,
+  "candidateShaNote": "Avoid self-reference: candidateSha is the commit that contains this file. Independent validators must use git rev-parse HEAD after checkout of feat/s1-durable-core.",
+  "baseSha": "d9bb734ec860eb4c401ca8d80b4f907e3171f937",
+  "changedPaths": [
+    "README.md",
+    "package.json",
+    "package-lock.json",
+    "docs/architecture.md",
+    "docs/evidence/s2s3/contract.md",
+    "docs/evidence/s2s3/worker-summary.json",
+    "packages/gateway/README.md",
+    "packages/gateway/src/adapter-loader.ts",
+    "packages/gateway/src/adapter.ts",
+    "packages/gateway/src/ambient.d.ts",
+    "packages/gateway/src/cli.ts",
+    "packages/gateway/src/core.ts",
+    "packages/gateway/src/daemon.ts",
+    "packages/gateway/src/fake-adapter.ts",
+    "packages/gateway/src/index.ts",
+    "packages/gateway/test/adapter-seam.test.ts",
+    "packages/adapter-telegram/package.json",
+    "packages/adapter-telegram/tsconfig.json",
+    "packages/adapter-telegram/README.md",
+    "packages/adapter-telegram/src/ambient.d.ts",
+    "packages/adapter-telegram/src/index.ts",
+    "packages/adapter-telegram/test/send.test.ts",
+    "packages/adapter-telegram/test/g4-pack-import.mjs",
+    "packages/pi-companion/package.json",
+    "packages/pi-companion/tsconfig.json",
+    "packages/pi-companion/README.md",
+    "packages/pi-companion/src/ambient.d.ts",
+    "packages/pi-companion/src/client.ts",
+    "packages/pi-companion/src/extension.ts",
+    "packages/pi-companion/src/index.ts",
+    "packages/pi-companion/test/unavailable.test.ts",
+    "packages/pi-companion/test/g4-pack-import.mjs"
+  ],
+  "gates": [
+    {
+      "id": "typecheck",
+      "command": "npm run typecheck",
+      "exitCode": 0
+    },
+    {
+      "id": "test",
+      "command": "npm test",
+      "exitCode": 0,
+      "counts": {
+        "protocol": { "tests": 39, "pass": 39, "fail": 0 },
+        "gateway": { "tests": 56, "pass": 56, "fail": 0 },
+        "adapterTelegram": { "tests": 6, "pass": 6, "fail": 0 },
+        "piCompanion": { "tests": 3, "pass": 3, "fail": 0 },
+        "priorS1": 91
+      }
+    }
+  ],
+  "unverified": [
+    "live Telegram Bot API",
+    "Pi install of companion into a real ~/.pi home",
+    "systemd linger and logout survival",
+    "npm scope ownership and publication"
+  ],
+  "blockers": [],
+  "nextAction": "Local commit on feat/s1-durable-core. No push/PR/merge/release. No live bot/token/pairing."
+}

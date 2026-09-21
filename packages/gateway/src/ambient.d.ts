@@ -53,6 +53,7 @@ declare module "node:path" {
   export function dirname(path: string): string;
   export function basename(path: string): string;
   export function resolve(...parts: string[]): string;
+  export function isAbsolute(path: string): boolean;
 }
 
 declare module "node:os" {
@@ -126,6 +127,7 @@ declare module "node:process" {
 
 declare module "node:url" {
   export function fileURLToPath(url: string | URL): string;
+  export function pathToFileURL(path: string): URL;
 }
 
 declare module "node:assert/strict" {

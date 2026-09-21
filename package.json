@@ -6,12 +6,14 @@
   "description": "Local unpublished workspace for a pluggable Pi messaging gateway. Package names are provisional identifiers, not npm-scope claims.",
   "workspaces": [
     "packages/protocol",
-    "packages/gateway"
+    "packages/gateway",
+    "packages/adapter-telegram",
+    "packages/pi-companion"
   ],
   "scripts": {
-    "build": "npm run build -w pi-hermes-gateway-protocol && npm run build -w pi-hermes-gateway-core",
-    "typecheck": "npm run build -w pi-hermes-gateway-protocol && npm run typecheck -w pi-hermes-gateway-protocol && npm run typecheck -w pi-hermes-gateway-core",
-    "test": "npm run test -w pi-hermes-gateway-protocol && npm run test -w pi-hermes-gateway-core"
+    "build": "npm run build -w pi-hermes-gateway-protocol && npm run build -w pi-hermes-gateway-core && npm run build -w pi-hermes-gateway-adapter-telegram && npm run build -w pi-hermes-gateway-companion",
+    "typecheck": "npm run build -w pi-hermes-gateway-protocol && npm run typecheck -w pi-hermes-gateway-protocol && npm run typecheck -w pi-hermes-gateway-core && npm run typecheck -w pi-hermes-gateway-adapter-telegram && npm run typecheck -w pi-hermes-gateway-companion",
+    "test": "npm run test -w pi-hermes-gateway-protocol && npm run test -w pi-hermes-gateway-core && npm run test -w pi-hermes-gateway-adapter-telegram && npm run test -w pi-hermes-gateway-companion"
   },
   "engines": {
     "node": ">=24.20.0"

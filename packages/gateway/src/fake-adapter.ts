@@ -2,24 +2,18 @@ import {
   ADAPTER_API_VERSION,
   LIMITS,
   validateAdapterManifest,
-  type AdapterManifest,
-  type DeliveryRoute,
 } from "pi-hermes-gateway-protocol";
 import { writeFileSync } from "node:fs";
+import type { SendAdapter, SendEnvelope } from "./adapter.js";
 
-export type FakeSendEnvelope = {
-  deliveryId: string;
-  route: DeliveryRoute;
-  text: string;
-};
+export type FakeSendEnvelope = SendEnvelope;
 
 export type FakeReceipt = {
   receiptLevel: "accepted";
   providerMessageId: string;
 };
 
-export type FakeAdapter = {
-  manifest: AdapterManifest;
+export type FakeAdapter = SendAdapter & {
   sent: FakeSendEnvelope[];
   crashMidSend: boolean;
   sinkPath: string | null;

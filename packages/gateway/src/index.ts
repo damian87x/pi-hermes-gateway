@@ -12,6 +12,13 @@ export {
 } from "./core.js";
 export { createFakeAdapter, type FakeAdapter } from "./fake-adapter.js";
 export {
+  isSendAdapter,
+  type SendAdapter,
+  type SendEnvelope,
+  type SendReceipt,
+} from "./adapter.js";
+export { loadSendAdapter } from "./adapter-loader.js";
+export {
   startDaemon,
   replaceDbWithBackup,
   DEFAULT_TICK_INTERVAL_MS,

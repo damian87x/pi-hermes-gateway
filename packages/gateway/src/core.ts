@@ -12,7 +12,8 @@ import {
   type WireRequest,
 } from "pi-hermes-gateway-protocol";
 import type { Clock } from "./clock.js";
-import { createFakeAdapter, type FakeAdapter } from "./fake-adapter.js";
+import type { SendAdapter, SendReceipt } from "./adapter.js";
+import { createFakeAdapter } from "./fake-adapter.js";
 import { newId } from "./ids.js";
 import { dailyInstantsInRange, onceInstant } from "./schedule.js";
 import { Store, type DeliveryRow } from "./store.js";
@@ -74,10 +75,10 @@ export class Gateway {
   readonly store: Store;
   readonly clock: Clock;
   readonly config: GatewayConfig;
-  readonly adapter: FakeAdapter;
+  readonly adapter: SendAdapter;
   crashNext: CrashPoint | null = null;
 
-  constructor(opts: { store: Store; clock: Clock; config: GatewayConfig; adapter: FakeAdapter }) {
+  constructor(opts: { store: Store; clock: Clock; config: GatewayConfig; adapter: SendAdapter }) {
     this.store = opts.store;
     this.clock = opts.clock;
     this.config = opts.config;
@@ -472,8 +473,9 @@ export class Gateway {
       this.refuseInvalidRoute(row);
       return;
     }
+    let receipt: SendReceipt;
     try {
-      this.adapter.send({
+      receipt = this.adapter.send({
         deliveryId: row.delivery_id,
         route,
         text: row.text,
@@ -483,6 +485,15 @@ export class Gateway {
       throw err;
     }
     if (this.crashNext === "before-receipt") throw new InjectedCrash("before-receipt");
+    if (receipt.receiptLevel === "commit-unknown") {
+      this.store.setDeliveryStatus(row.delivery_id, "commit-unknown");
+      if (row.occurrence_id) this.store.setOccurrenceStatus(row.occurrence_id, "commit-unknown");
+      this.audit("delivery.commit-unknown", {
+        deliveryId: row.delivery_id,
+        reason: receipt.reason ?? "unknown",
+      });
+      return;
+    }
     this.store.setDeliveryStatus(row.delivery_id, "accepted");
     if (row.occurrence_id) this.store.setOccurrenceStatus(row.occurrence_id, "completed");
     this.audit("delivery.accepted", { deliveryId: row.delivery_id });
@@ -569,7 +580,7 @@ export function openGateway(opts: {
   tokenBucketCapacity?: number;
   tokenBucketRefillPerMs?: number;
   dailyCapPerRoute?: number;
-  adapter?: FakeAdapter;
+  adapter?: SendAdapter;
 }): { gateway: Gateway; backedUpTo: string | null } {
   const store = new Store(opts.dbPath);
   const { backedUpTo } = store.migrate();
