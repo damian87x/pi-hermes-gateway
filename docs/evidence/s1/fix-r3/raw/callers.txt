@@ -1,0 +1,4 @@
+expectedInstants callers: Gateway.tick only (core.ts).
+restoreQuarantine callers: startDaemon (restoreFromBackup), restore.test.ts.
+Once jobs keep void afterMs in expectedInstants so a past atUtc still fires on first tick
+(watermark is create-time). Fix is restoreQuarantine once window: at <= recoveryTimeMs.

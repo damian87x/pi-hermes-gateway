@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync, chmodSync, writeFileSync } from "node:fs";
-import { openGateway, SCHEMA_VERSION, startDaemon, TestClock } from "../dist/index.js";
+import { createFakeAdapter, openGateway, SCHEMA_VERSION, startDaemon, TestClock } from "../dist/index.js";
 import { cleanup, handle, openTestGw, ROUTE, tmpDir } from "./helpers.ts";
 
 test("restore quarantine: queued becomes commit-unknown and is not sent", () => {
@@ -120,6 +120,55 @@ test("post-backup sent slot is not resurrected as queued under skip", () => {
 
 test("post-backup sent slot is not resurrected as queued under one-latest", () => {
   postBackupSentSlot("one-latest");
+});
+
+test("once job backup in tick lag is not resent after restore+resume under one-latest", () => {
+  const atUtc = "2026-06-01T12:00:00.000Z";
+  const T = Date.parse(atUtc);
+  const clock = new TestClock(T - 3_600_000);
+  const { gw, dir, adapter } = openTestGw({ clock, catchUpPolicy: "one-latest" });
+  handle(
+    gw,
+    "job.create",
+    {
+      kind: "static-text",
+      text: "once-lag",
+      route: ROUTE,
+      schedule: { type: "once", atUtc },
+    },
+    clock.nowMs(),
+  );
+  clock.set(T + 30_000);
+  gw.store.db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+  const backup = join(dir, "backup.sqlite");
+  copyFileSync(join(dir, "gateway.sqlite"), backup);
+  const backupTime = clock.nowMs();
+  clock.set(T + 60_000);
+  gw.tick();
+  assert.equal(adapter.sent.length, 1);
+  gw.close();
+
+  copyFileSync(backup, join(dir, "gateway.sqlite"));
+  const clock2 = new TestClock(T + 600_000);
+  const adapter2 = createFakeAdapter();
+  const { gateway: gw2 } = openGateway({
+    dbPath: join(dir, "gateway.sqlite"),
+    clock: clock2,
+    routes: [ROUTE],
+    catchUpPolicy: "one-latest",
+    adapter: adapter2,
+  });
+  gw2.restoreQuarantine(backupTime, clock2.nowMs());
+  gw2.resumeDispatch();
+  gw2.tick();
+  assert.equal(adapter2.sent.length, 0);
+  assert.equal(gw2.store.listDeliveries().length, 0);
+  const occ = gw2.store.listOccurrences();
+  assert.equal(occ.length, 1);
+  assert.equal(occ[0]?.status, "skipped");
+  assert.equal(occ[0]?.scheduled_instant_ms, T);
+  gw2.close();
+  cleanup(dir);
 });
 
 test("tick refuses admission while quarantined until explicit resume", () => {

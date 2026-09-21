@@ -467,7 +467,7 @@ export class Gateway {
         schedule.type === "once"
           ? (() => {
               const at = onceInstant(schedule.atUtc);
-              return at > backupTimeMs && at <= recoveryTimeMs ? [at] : [];
+              return at <= recoveryTimeMs ? [at] : [];
             })()
           : this.expectedInstants(schedule, backupTimeMs, recoveryTimeMs);
       for (const ms of instants) {
