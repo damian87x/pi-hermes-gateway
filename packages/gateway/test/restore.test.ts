@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { copyFileSync, existsSync, unlinkSync } from "node:fs";
+import { copyFileSync, existsSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { DatabaseSync } from "node:sqlite";
-import { mkdirSync, chmodSync, writeFileSync } from "node:fs";
+import { mkdirSync, chmodSync } from "node:fs";
 import { createFakeAdapter, openGateway, SCHEMA_VERSION, startDaemon, TestClock } from "../dist/index.js";
 import { cleanup, handle, openTestGw, ROUTE, tmpDir } from "./helpers.ts";
 
@@ -311,7 +311,75 @@ test("newer-schema backup restore leaves live DB intact", () => {
   cleanup(dir);
 });
 
+function parkLiveAside(live: string, aside: string): void {
+  renameSync(live, aside);
+  for (const extra of ["-wal", "-shm"]) {
+    if (existsSync(`${live}${extra}`)) renameSync(`${live}${extra}`, `${aside}${extra}`);
+  }
+}
+
 test("interrupted restore with live moved aside recovers original DB", () => {
+  const dir = tmpDir();
+  const before = seedProfile(dir);
+  const live = join(dir, "gateway.sqlite");
+  const aside = `${live}.pre-restore`;
+  parkLiveAside(live, aside);
+  writeFileSync(`${live}.restore-journal`, aside);
+  const d = startDaemon({
+    profileDir: dir,
+    routes: [ROUTE],
+    clock: new TestClock(Date.UTC(2026, 0, 1, 11, 0, 0)),
+    bindSocket: false,
+    tickIntervalMs: 60_000,
+  });
+  try {
+    assert.equal(d.gateway.store.listAudit().length, before);
+    assert.notEqual(d.gateway.store.getMeta("quarantine"), "1");
+  } finally {
+    d.stop();
+    cleanup(dir);
+  }
+});
+
+test("interrupted second restore recovers the most recent live DB", () => {
+  const dir = tmpDir();
+  const firstAudit = seedProfile(dir);
+  const live = join(dir, "gateway.sqlite");
+  copyFileSync(live, `${live}.pre-restore`);
+  const clock = new TestClock(Date.UTC(2026, 0, 1, 11, 0, 0));
+  const d1 = startDaemon({
+    profileDir: dir,
+    routes: [ROUTE],
+    clock,
+    bindSocket: false,
+    tickIntervalMs: 60_000,
+  });
+  handle(d1.gateway, "delivery.enqueue", { route: ROUTE, text: "second-live", notAfter: clock.nowMs() + 60_000 }, clock.nowMs());
+  const secondAudit = d1.gateway.store.listAudit().length;
+  assert.ok(secondAudit > firstAudit);
+  d1.stop();
+  const aside2 = `${live}.pre-restore-999`;
+  parkLiveAside(live, aside2);
+  writeFileSync(`${live}.restore-journal`, aside2);
+  const d2 = startDaemon({
+    profileDir: dir,
+    routes: [ROUTE],
+    clock: new TestClock(Date.UTC(2026, 0, 1, 11, 30, 0)),
+    bindSocket: false,
+    tickIntervalMs: 60_000,
+  });
+  try {
+    assert.equal(d2.gateway.store.listAudit().length, secondAudit);
+    assert.equal(d2.gateway.store.listDeliveries().some((row) => row.text === "second-live"), true);
+    assert.notEqual(d2.gateway.store.getMeta("quarantine"), "1");
+    assert.equal(existsSync(`${live}.pre-restore`), true);
+  } finally {
+    d2.stop();
+    cleanup(dir);
+  }
+});
+
+test("absent live DB with leftover .pre-restore and no journal does not revive it", () => {
   const dir = tmpDir();
   const before = seedProfile(dir);
   const live = join(dir, "gateway.sqlite");
@@ -328,8 +396,10 @@ test("interrupted restore with live moved aside recovers original DB", () => {
     tickIntervalMs: 60_000,
   });
   try {
-    assert.equal(d.gateway.store.listAudit().length, before);
-    assert.notEqual(d.gateway.store.getMeta("quarantine"), "1");
+    assert.notEqual(d.gateway.store.listAudit().length, before);
+    assert.equal(d.gateway.store.listDeliveries().length, 0);
+    assert.equal(existsSync(`${live}.pre-restore`), true);
+    assert.equal(liveAuditCount(`${live}.pre-restore`), before);
   } finally {
     d.stop();
     cleanup(dir);

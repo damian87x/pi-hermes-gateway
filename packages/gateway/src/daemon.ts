@@ -5,9 +5,11 @@ import {
   existsSync,
   fsyncSync,
   openSync,
+  readFileSync,
   renameSync,
   statSync,
   unlinkSync,
+  writeFileSync,
 } from "node:fs";
 import { dirname } from "node:path";
 import type { Server } from "node:net";
@@ -67,15 +69,56 @@ function validateBackupReadOnly(backupPath: string): void {
   }
 }
 
+function journalPath(dbPath: string): string {
+  return `${dbPath}.restore-journal`;
+}
+
+function writeRestoreJournal(dbPath: string, aside: string): void {
+  const journal = journalPath(dbPath);
+  const tmp = `${journal}.tmp`;
+  writeFileSync(tmp, aside);
+  fsyncPath(tmp);
+  renameSync(tmp, journal);
+  try {
+    fsyncPath(dirname(dbPath));
+  } catch {
+    /* directory fsync is best-effort */
+  }
+}
+
+function checkpointLiveWal(dbPath: string): void {
+  if (!existsSync(dbPath)) return;
+  try {
+    const db = new DatabaseSync(dbPath);
+    try {
+      db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+    } finally {
+      db.close();
+    }
+  } catch {
+    /* torn live DB must not block a validated backup swap */
+  }
+}
+
 function recoverInterruptedRestore(dbPath: string): void {
-  const aside = `${dbPath}.pre-restore`;
-  if (existsSync(dbPath) || !existsSync(aside)) return;
+  const journal = journalPath(dbPath);
+  if (!existsSync(journal)) return;
+  if (existsSync(dbPath)) {
+    unlinkIfExists(journal);
+    return;
+  }
+  const aside = readFileSync(journal, "utf8").trim();
+  if (!aside || !existsSync(aside)) {
+    unlinkIfExists(journal);
+    return;
+  }
   renameSync(aside, dbPath);
   for (const extra of ["-wal", "-shm"]) {
     if (existsSync(`${aside}${extra}`) && !existsSync(`${dbPath}${extra}`)) {
       renameSync(`${aside}${extra}`, `${dbPath}${extra}`);
     }
   }
+  unlinkIfExists(journal);
 }
 
 function replaceDbWithBackup(dbPath: string, backupPath: string): void {
@@ -97,15 +140,18 @@ function replaceDbWithBackup(dbPath: string, backupPath: string): void {
   }
   for (const extra of sidecars(tempPath)) unlinkIfExists(extra);
   fsyncPath(tempPath);
+  checkpointLiveWal(dbPath);
   if (existsSync(dbPath)) {
     let aside = `${dbPath}.pre-restore`;
     if (existsSync(aside)) aside = `${dbPath}.pre-restore-${Date.now()}`;
+    writeRestoreJournal(dbPath, aside);
     renameSync(dbPath, aside);
     for (const extra of ["-wal", "-shm"]) {
       if (existsSync(`${dbPath}${extra}`)) renameSync(`${dbPath}${extra}`, `${aside}${extra}`);
     }
   }
   renameSync(tempPath, dbPath);
+  unlinkIfExists(journalPath(dbPath));
   try {
     fsyncPath(dirname(dbPath));
   } catch {

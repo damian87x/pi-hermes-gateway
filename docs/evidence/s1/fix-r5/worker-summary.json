@@ -1,0 +1,76 @@
+{
+  "status": "PASS",
+  "candidateSha": null,
+  "startCandidate": "e1ea846e60bbee2c1abb310512a96cf94bf3e871",
+  "candidateShaNote": "Launcher records HEAD after commit. candidateSha is null in this file.",
+  "changedPaths": [
+    "docs/evidence/s1/fix-r5-contract.md",
+    "docs/evidence/s1/fix-r5/worker-summary.json",
+    "docs/evidence/s1/fix-r5/logs/g1.txt",
+    "docs/evidence/s1/fix-r5/logs/g2.txt",
+    "docs/evidence/s1/fix-r5/logs/g3.txt",
+    "docs/evidence/s1/fix-r5/logs/g3-tdd-fail.txt",
+    "docs/evidence/s1/fix-r5/logs/g4.txt",
+    "docs/evidence/s1/fix-r5/logs/g5.txt",
+    "docs/evidence/s1/fix-r5/logs/g6.txt",
+    "packages/gateway/src/daemon.ts",
+    "packages/gateway/test/restore.test.ts"
+  ],
+  "gates": [
+    {
+      "id": "G1",
+      "command": "bash docs/evidence/s1/run-g1.sh",
+      "exitCode": 1,
+      "counts": { "worktreeUntrackedOutsideAllowlist": "docs/evidence/s1-review/** (reviewer dirt, not committed)" },
+      "rawPath": "docs/evidence/s1/fix-r5/logs/g1.txt",
+      "note": "Committed tree is allowlist-clean. Worktree G1 sees untracked r1-r4 review files. Independent clone of this commit should G1=0."
+    },
+    {
+      "id": "G2",
+      "command": "bash docs/evidence/s1/run-g2.sh",
+      "exitCode": 0,
+      "counts": { "node": "v24.20.0", "npm": "11.19.0", "tsc": "5.9.3", "sqlite": "3.53.4" },
+      "rawPath": "docs/evidence/s1/fix-r5/logs/g2.txt"
+    },
+    {
+      "id": "G3",
+      "command": "npm test",
+      "exitCode": 0,
+      "counts": { "protocolTests": 39, "gatewayTests": 42, "tests": 81, "pass": 81, "fail": 0, "skipped": 0, "todo": 0 },
+      "rawPath": "docs/evidence/s1/fix-r5/logs/g3.txt"
+    },
+    {
+      "id": "G4",
+      "command": "node packages/gateway/test/g4-pack-import.mjs",
+      "exitCode": 0,
+      "counts": { "protocolFiles": 34, "gatewayFiles": 50, "adapterId": "fake" },
+      "rawPath": "docs/evidence/s1/fix-r5/logs/g4.txt"
+    },
+    {
+      "id": "G5",
+      "command": "node --experimental-strip-types --test test/fuses-auth-lock.test.ts (cwd packages/gateway)",
+      "exitCode": 0,
+      "counts": { "tests": 9, "pass": 9, "fail": 0, "skipped": 0 },
+      "rawPath": "docs/evidence/s1/fix-r5/logs/g5.txt"
+    },
+    {
+      "id": "G6",
+      "command": "bash docs/evidence/s1/run-g6.sh",
+      "exitCode": 0,
+      "counts": { "requiredDocs": 7, "licenseFiles": 0 },
+      "rawPath": "docs/evidence/s1/fix-r5/logs/g6.txt"
+    }
+  ],
+  "fixes": {
+    "M-second-restore-resurrection": "Before parking live, fsync a restore journal naming the unique aside (.pre-restore or .pre-restore-<ts>). Plain start recovers only that aside. No journal: leftover .pre-restore is not revived. Journal cleared after swap or when live already exists. WAL checkpoint(TRUNCATE) before the rename so sidecars cannot pair with the wrong main file."
+  },
+  "unverified": [
+    "Real SIGKILL P8/P9 probes not rerun here (unit tests cover second-restore journal recovery and no-journal non-revival)",
+    "Node/SQLite versions other than v24.20.0 / 3.53.4",
+    "G1 on this dirty worktree (untracked docs/evidence/s1-review); clone G1 not run here",
+    "Live transports (out of S1)",
+    "Lows deferred except WAL checkpoint on the same swap (daily skip receipts, enqueue during quarantine, lock unlink)"
+  ],
+  "blockers": [],
+  "nextAction": "Independent native Opus code-safety re-attest of the new SHA. No push/PR."
+}
