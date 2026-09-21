@@ -163,6 +163,39 @@ test("suspend past two due slots with skip: no burst", () => {
   cleanup(dir);
 });
 
+test("DST-shortened day: one-latest wake within grace sends 1 not 2", () => {
+  // Europe/Berlin 2026-03-29 spring-forward: 09:00 CET 28th = 08:00Z, 09:00 CEST 29th = 07:00Z (23h).
+  const s1 = Date.UTC(2026, 2, 28, 8, 0, 0);
+  const s2 = Date.UTC(2026, 2, 29, 7, 0, 0);
+  const clock = new TestClock(s1 - 3_600_000);
+  const { gw, dir, adapter } = openTestGw({ clock, catchUpPolicy: "one-latest" });
+  handle(
+    gw,
+    "job.create",
+    {
+      kind: "static-text",
+      text: "dst-latest",
+      route: ROUTE,
+      schedule: { type: "daily", localTime: "09:00", timeZone: "Europe/Berlin" },
+    },
+    clock.nowMs(),
+  );
+  gw.tick();
+  clock.set(s2 + 30_000);
+  gw.tick();
+  assert.equal(adapter.sent.length, 1);
+  const occ = gw.store.listOccurrences();
+  assert.equal(occ.length, 2);
+  const skipped = occ.filter((o) => o.status === "skipped");
+  const done = occ.filter((o) => o.status === "completed");
+  assert.equal(skipped.length, 1);
+  assert.equal(done.length, 1);
+  assert.equal(skipped[0]?.scheduled_instant_ms, s1);
+  assert.equal(done[0]?.scheduled_instant_ms, s2);
+  gw.close();
+  cleanup(dir);
+});
+
 test("suspend past two due slots with one-latest: single unexpired catch-up", () => {
   const clock = new TestClock(Date.UTC(2026, 0, 1, 10, 0, 0));
   const { gw, dir, adapter } = openTestGw({ clock, catchUpPolicy: "one-latest" });

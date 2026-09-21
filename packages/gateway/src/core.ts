@@ -325,7 +325,8 @@ export class Gateway {
       for (const ms of onTime) this.admitJobOccurrence(job.job_id, ms, job.text, JSON.parse(job.route_json) as DeliveryRoute);
       if (missed.length > 0) {
         missed.sort((a, b) => a - b);
-        if (this.config.catchUpPolicy === "skip") {
+        const skipMissed = this.config.catchUpPolicy === "skip" || onTime.length > 0;
+        if (skipMissed) {
           for (const ms of missed) this.recordSkipped(job.job_id, ms, "missed");
         } else {
           for (const ms of missed.slice(0, -1)) this.recordSkipped(job.job_id, ms, "missed");
