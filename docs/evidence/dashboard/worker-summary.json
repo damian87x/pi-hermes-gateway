@@ -1,0 +1,55 @@
+{
+  "status": "PASS",
+  "candidateSha": null,
+  "candidateShaNote": "Avoid self-reference: candidateSha is the commit that contains this file. Independent validators must use git rev-parse HEAD after checkout of feat/s1-durable-core.",
+  "baseSha": "ff9d5cc9e2da3824025d12a805adda49cc0c44f6",
+  "changedPaths": [
+    "README.md",
+    "docs/architecture.md",
+    "docs/parity.md",
+    "docs/security.md",
+    "docs/evidence/dashboard/contract.md",
+    "docs/evidence/dashboard/worker-summary.json",
+    "package-lock.json",
+    "package.json",
+    "packages/dashboard/README.md",
+    "packages/dashboard/package.json",
+    "packages/dashboard/src/ambient.d.ts",
+    "packages/dashboard/src/index.ts",
+    "packages/dashboard/test/collect.test.ts",
+    "packages/dashboard/test/g4-pack-import.mjs",
+    "packages/dashboard/test/helpers.ts",
+    "packages/dashboard/test/http.test.ts",
+    "packages/dashboard/tsconfig.json"
+  ],
+  "gates": [
+    {
+      "id": "typecheck",
+      "command": "npm run typecheck",
+      "exitCode": 0
+    },
+    {
+      "id": "test",
+      "command": "npm test",
+      "exitCode": 0,
+      "counts": {
+        "protocol": { "tests": 39, "pass": 39, "fail": 0 },
+        "gateway": { "tests": 57, "pass": 57, "fail": 0 },
+        "adapterTelegram": { "tests": 10, "pass": 10, "fail": 0 },
+        "adapterWhatsapp": { "tests": 13, "pass": 13, "fail": 0 },
+        "adapterSlack": { "tests": 13, "pass": 13, "fail": 0 },
+        "piCompanion": { "tests": 3, "pass": 3, "fail": 0 },
+        "dashboard": { "tests": 12, "pass": 12, "fail": 0 },
+        "prior": 135,
+        "added": 12
+      }
+    }
+  ],
+  "unverified": [
+    "live pairing / Slack / Telegram send",
+    "binding dashboard off loopback",
+    "npm scope ownership and publication"
+  ],
+  "blockers": [],
+  "nextAction": "Local commit on feat/s1-durable-core. No push/PR/merge/release. No live send."
+}

@@ -19,6 +19,7 @@ Full approved parity gates **S5 / M4**, not this slice. MVP (M1) is durable owne
 | Isolated model report jobs | gateway worker | no | M2 |
 | WhatsApp send | adapter-whatsapp | M1b send-only injected send | live socket / inbound later |
 | Slack send | adapter-slack | send-only `chat.postMessage` (mock HTTP) | Events API / Socket Mode later |
+| Local job dashboard | dashboard plugin | GET-only loopback HTTP over SQLite (host allowlist) | no mutating/control endpoints |
 | Existing-account cutover | migration procedure | no | M5 |
 
 Capability negotiation is explicit and additive within a protocol major. Unsupported results must be visible. No silent truncation or auto-chunking of oversized text in M1.

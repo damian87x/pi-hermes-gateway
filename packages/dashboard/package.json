@@ -1,0 +1,26 @@
+{
+  "name": "pi-hermes-gateway-dashboard",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "description": "GET-only local dashboard over gateway SQLite jobs. Provisional local name; not an npm-scope claim.",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --experimental-strip-types --test test/*.test.ts && node test/g4-pack-import.mjs"
+  },
+  "engines": {
+    "node": ">=24.20.0"
+  }
+}

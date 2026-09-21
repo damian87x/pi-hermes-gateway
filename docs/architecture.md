@@ -6,7 +6,7 @@ Historical planning checkout name `pi-messaging-gateway` is superseded by this r
 
 ## Current packages
 
-`packages/protocol` (S0), `packages/gateway` (S1 durable core + structural send adapter; fake default), `packages/adapter-telegram` (S3 send-only Bot API `sendMessage`, npm-only), `packages/adapter-whatsapp` (S4 send-only injected send; no live socket), `packages/adapter-slack` (send-only `chat.postMessage`, injected post, mock HTTP), and `packages/pi-companion` (S2 Pi package socket client). Do not create telegram-companion here.
+`packages/protocol` (S0), `packages/gateway` (S1 durable core + structural send adapter; fake default), `packages/adapter-telegram` (S3 send-only Bot API `sendMessage`, npm-only), `packages/adapter-whatsapp` (S4 send-only injected send; no live socket), `packages/adapter-slack` (send-only `chat.postMessage`, injected post, mock HTTP), `packages/pi-companion` (S2 Pi package socket client), and `packages/dashboard` (GET-only loopback HTTP viewer over profile SQLite; not a Pi package). Do not create telegram-companion here.
 
 The protocol package is a stateless ESM library: compiled `dist` plus declarations, explicit `exports`/`files`, no Pi peer, no `pi` manifest, no transport dependency, no secrets, no runtime singleton, no class/`Symbol` identity, no import side effects. `protocolVersion` (IPC wire) and `adapterApiVersion` (adapter loader) are independent integers, both `1` in this slice.
 
@@ -32,7 +32,7 @@ The protocol package is a stateless ESM library: compiled `dist` plus declaratio
 - **M5** optional existing-account cutover.
 - S6 (distribution) repeats at each publishable milestone.
 
-S0 is not M1 completion. S1 durable core with fake adapter is implemented in `packages/gateway`. S2 companion, S3 telegram send-only, S4 WhatsApp send-only (injected send, inbound discarded), and Slack send-only (`chat.postMessage`, injected post) are implemented as separate packages; fake remains the gateway default. Live sockets, S5, and S6 are not implemented here.
+S0 is not M1 completion. S1 durable core with fake adapter is implemented in `packages/gateway`. S2 companion, S3 telegram send-only, S4 WhatsApp send-only (injected send, inbound discarded), Slack send-only (`chat.postMessage`, injected post), and the GET-only dashboard plugin are implemented as separate packages; fake remains the gateway default. Live sockets, S5, and S6 are not implemented here.
 
 ## v1 protocol limits (concrete)
 
