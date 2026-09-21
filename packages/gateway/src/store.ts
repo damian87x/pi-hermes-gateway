@@ -248,6 +248,12 @@ export class Store {
     return this.db.prepare("SELECT * FROM deliveries WHERE delivery_id = ?").get(id) as DeliveryRow | undefined;
   }
 
+  getDeliveryByRequestId(requestId: string): DeliveryRow | undefined {
+    return this.db
+      .prepare("SELECT * FROM deliveries WHERE request_id = ?")
+      .get(requestId) as DeliveryRow | undefined;
+  }
+
   listDeliveries(): DeliveryRow[] {
     return this.db.prepare("SELECT * FROM deliveries ORDER BY created_at_ms").all() as DeliveryRow[];
   }

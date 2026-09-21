@@ -121,6 +121,14 @@ export class Gateway {
     if (prior) {
       return JSON.parse(prior) as GatewayResponse;
     }
+    if (req.method === "delivery.enqueue") {
+      const existing = this.store.getDeliveryByRequestId(req.requestId);
+      if (existing) {
+        const response = this.okBody(req, { deliveryId: existing.delivery_id, status: existing.status });
+        this.store.putRequest(req.requestId, JSON.stringify(response), nowMs);
+        return response;
+      }
+    }
     const response = this.dispatchMethod(req);
     this.store.putRequest(req.requestId, JSON.stringify(response), nowMs);
     return response;

@@ -44,8 +44,16 @@ export function listenIpc(socketPath: string, gateway: Gateway): Server {
         sock.write(encodeFrame({ ok: false, error: { code: "malformed", message: "request is not JSON" } }));
         return;
       }
-      const response = gateway.handleRequest(parsed, payload.byteLength);
-      sock.write(encodeFrame(response));
+      try {
+        const response = gateway.handleRequest(parsed, payload.byteLength);
+        sock.write(encodeFrame(response));
+      } catch {
+        try {
+          sock.write(encodeFrame({ ok: false, error: { code: "internal", message: "request handler failed" } }));
+        } catch {
+          sock.end();
+        }
+      }
     });
   });
   server.listen(socketPath);
