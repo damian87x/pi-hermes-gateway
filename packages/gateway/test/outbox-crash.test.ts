@@ -192,6 +192,70 @@ test("retry same requestId with delivery but no request_log returns existing sta
   cleanup(dir);
 });
 
+test("SIGKILL after job insert before request_log: same requestId retry gives 1 job and 1 send per slot", async () => {
+  const dir = tmpDir();
+  const dbPath = join(dir, "gateway.sqlite");
+  const indexUrl = new URL("../dist/index.js", import.meta.url).href;
+  const t0 = Date.UTC(2026, 0, 1, 11, 0, 0);
+  const body = {
+    kind: "static-text",
+    text: "daily",
+    route: ROUTE,
+    schedule: { type: "daily", timeZone: "UTC", localTime: "12:00" },
+  };
+  const req = { protocolVersion: PROTOCOL_VERSION, requestId: "job-kill-1", method: "job.create", expiresAt: t0 + 30_000, body };
+  const child = spawn(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `
+      import { openGateway, TestClock } from ${JSON.stringify(indexUrl)};
+      const { gateway } = openGateway({
+        dbPath: ${JSON.stringify(dbPath)},
+        clock: new TestClock(${t0}),
+        routes: [${JSON.stringify(ROUTE)}],
+      });
+      const insertJob = gateway.store.insertJob.bind(gateway.store);
+      gateway.store.insertJob = (row) => {
+        insertJob(row);
+        console.log("job-inserted");
+      };
+      gateway.store.putRequest = () => process.kill(process.pid, "SIGKILL");
+      const req = ${JSON.stringify(req)};
+      gateway.handleRequest(req, Buffer.byteLength(JSON.stringify(req)));
+      console.log("not-killed");
+      `,
+    ],
+    { stdio: ["ignore", "pipe", "pipe"] },
+  );
+  let stdout = "";
+  child.stdout?.on("data", (chunk: Uint8Array | string) => {
+    stdout += String(chunk);
+  });
+  const signal = await new Promise((resolve) => child.once("exit", (_code, sig) => resolve(sig)));
+  assert.equal(signal, "SIGKILL");
+  assert.ok(stdout.includes("job-inserted"));
+  assert.ok(!stdout.includes("not-killed"));
+
+  const clock = new TestClock(t0 + 1_000);
+  const adapter = createFakeAdapter();
+  const { gateway } = openGateway({ dbPath, clock, routes: [ROUTE], adapter });
+  const first = handle(gateway, "job.create", body, clock.nowMs(), "job-kill-1");
+  const second = handle(gateway, "job.create", body, clock.nowMs(), "job-kill-1");
+  assert.equal(first.ok, true);
+  assert.deepEqual(second, first);
+  assert.equal(gateway.store.listJobs().length, 1);
+  clock.set(Date.UTC(2026, 0, 1, 12, 0, 10));
+  gateway.tick();
+  assert.equal(adapter.sent.length, 1);
+  clock.set(Date.UTC(2026, 0, 2, 12, 0, 10));
+  gateway.tick();
+  assert.equal(adapter.sent.length, 2);
+  gateway.close();
+  cleanup(dir);
+});
+
 test("IPC handleRequest exception returns error frame and keeps listening", async () => {
   const dir = tmpDir();
   const sock = join(dir, "gw.sock");

@@ -1,0 +1,44 @@
+{
+  "role": "S1 critic-fixer (critic checks and applies the fix)",
+  "verdict": "PASS",
+  "candidateSha": null,
+  "candidateShaNote": "Launcher records HEAD after commit. candidateSha is null in this file.",
+  "startCandidate": "a0105907d617c0e8b55105a6812d6a5dace51c1c",
+  "finding": {
+    "source": "docs/evidence/s1-review/r10-code-safety/summary.json (independent Opus r10, P5-B)",
+    "severity": "Medium",
+    "problem": "job.create requestId dedup not crash-consistent: insertJob + audit autocommitted before request_log; SIGKILL in the gap then same-requestId retry created a second job and 2 sends per daily slot.",
+    "status": "FIXED"
+  },
+  "fix": {
+    "approach": "job row + audit + request_log in one SQLite transaction (BEGIN IMMEDIATE ... COMMIT). No schema change.",
+    "changes": [
+      "packages/gateway/src/store.ts: add Store.transaction(fn) (BEGIN IMMEDIATE, COMMIT, ROLLBACK on throw)",
+      "packages/gateway/src/core.ts: handleRequest wraps job.create dispatch + putRequest in store.transaction",
+      "packages/gateway/test/outbox-crash.test.ts: real-SIGKILL regression"
+    ],
+    "notChanged": "delivery.enqueue path (already deduped via deliveries.request_id; sends cannot sit inside a transaction). r10 Lows (fuse-before-insert, IPC oversize acc, enqueue during quarantine) not folded: not touched by this edit."
+  },
+  "regression": {
+    "test": "SIGKILL after job insert before request_log: same requestId retry gives 1 job and 1 send per slot",
+    "method": "child process opens gateway, runs job.create; insertJob completes (stdout job-inserted), putRequest raises real SIGKILL. Parent reopens DB, retries same requestId twice, ticks 2026-01-01 12:00:10 and 2026-01-02 12:00:10.",
+    "preFix": "FAIL at outbox-crash.test.ts:248 listJobs().length actual 2 expected 1",
+    "postFix": "PASS: 1 job, identical responses for both retries, 1 send per slot (2 slots -> 2 sends)",
+    "rawPathPreFix": "docs/evidence/s1/critic-fix/logs/g3-tdd-fail.txt"
+  },
+  "gates": [
+    { "id": "G1", "command": "bash docs/evidence/s1/run-g1.sh", "exitCode": 1, "rawPath": "docs/evidence/s1/critic-fix/logs/g1.txt", "note": "Fails only on untracked reviewer dirt docs/evidence/s1-review/** and .omc/** (not committed). All committed paths inside allowlist. Same as fix-r10." },
+    { "id": "G2", "command": "bash docs/evidence/s1/run-g2.sh", "exitCode": 0, "rawPath": "docs/evidence/s1/critic-fix/logs/g2.txt" },
+    { "id": "G3", "command": "npm test", "exitCode": 0, "counts": { "protocol": 39, "gateway": 52, "tests": 91, "pass": 91, "fail": 0 }, "rawPath": "docs/evidence/s1/critic-fix/logs/g3.txt" },
+    { "id": "typecheck", "command": "npm run typecheck", "exitCode": 0, "rawPath": "docs/evidence/s1/critic-fix/logs/typecheck.txt" },
+    { "id": "build", "command": "npm run build", "exitCode": 0, "rawPath": "docs/evidence/s1/critic-fix/logs/build.txt" },
+    { "id": "G4", "command": "node packages/gateway/test/g4-pack-import.mjs", "exitCode": 0, "rawPath": "docs/evidence/s1/critic-fix/logs/g4.txt" },
+    { "id": "G5", "command": "cd packages/gateway && node --experimental-strip-types --test test/fuses-auth-lock.test.ts", "exitCode": 0, "counts": { "tests": 11, "pass": 11, "fail": 0 }, "rawPath": "docs/evidence/s1/critic-fix/logs/g5.txt" },
+    { "id": "G6", "command": "bash docs/evidence/s1/run-g6.sh", "exitCode": 0, "rawPath": "docs/evidence/s1/critic-fix/logs/g6.txt" }
+  ],
+  "unverified": [
+    "Power-loss durability / fsync ordering (process SIGKILL only)",
+    "Fresh independent code-safety re-attest of the new HEAD"
+  ],
+  "scope": "No transports, no push, no systemd. Local commit on feat/s1-durable-core only."
+}

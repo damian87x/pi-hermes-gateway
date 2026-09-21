@@ -1,0 +1,17 @@
+
+> pi-hermes-gateway@0.0.0 typecheck
+> npm run build -w pi-hermes-gateway-protocol && npm run typecheck -w pi-hermes-gateway-protocol && npm run typecheck -w pi-hermes-gateway-core
+
+
+> pi-hermes-gateway-protocol@0.0.0 build
+> tsc -p tsconfig.json
+
+
+> pi-hermes-gateway-protocol@0.0.0 typecheck
+> tsc -p tsconfig.json --noEmit
+
+
+> pi-hermes-gateway-core@0.0.0 typecheck
+> tsc -p tsconfig.json --noEmit
+
+exit=0

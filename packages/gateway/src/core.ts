@@ -129,6 +129,14 @@ export class Gateway {
         return response;
       }
     }
+    if (req.method === "job.create") {
+      // job row, audit and request_log commit together so a crash cannot leave a job without its dedup entry
+      return this.store.transaction(() => {
+        const response = this.dispatchMethod(req);
+        this.store.putRequest(req.requestId, JSON.stringify(response), nowMs);
+        return response;
+      });
+    }
     const response = this.dispatchMethod(req);
     this.store.putRequest(req.requestId, JSON.stringify(response), nowMs);
     return response;
