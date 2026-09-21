@@ -485,12 +485,12 @@ export class Gateway {
       throw err;
     }
     if (this.crashNext === "before-receipt") throw new InjectedCrash("before-receipt");
-    if (receipt.receiptLevel === "commit-unknown") {
+    if (receipt?.receiptLevel !== "accepted") {
       this.store.setDeliveryStatus(row.delivery_id, "commit-unknown");
       if (row.occurrence_id) this.store.setOccurrenceStatus(row.occurrence_id, "commit-unknown");
       this.audit("delivery.commit-unknown", {
         deliveryId: row.delivery_id,
-        reason: receipt.reason ?? "unknown",
+        reason: receipt?.reason ?? "unknown",
       });
       return;
     }

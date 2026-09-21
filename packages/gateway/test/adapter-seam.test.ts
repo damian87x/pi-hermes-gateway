@@ -107,6 +107,41 @@ test("adapter commit-unknown receipt is persisted and never auto-retried", () =>
   cleanup(dir);
 });
 
+test("unconfirmed adapter receipt (async/malformed) is commit-unknown, never accepted", () => {
+  const dir = tmpDir();
+  const { gw, clock } = openTestGw({ dir });
+  gw.close();
+  const manifestResult = validateAdapterManifest({
+    adapterId: "plain",
+    adapterApiVersion: ADAPTER_API_VERSION,
+    capabilities: ["send.text"],
+    configSchemaVersion: 1,
+    maxTextLength: LIMITS.maxTextChars,
+    receiptLevels: ["accepted"],
+  });
+  if (!manifestResult.ok) throw new Error(manifestResult.error.message);
+  const receipts: unknown[] = [new Promise(() => {}), {}, undefined];
+  const adapter = {
+    manifest: manifestResult.value,
+    send() {
+      return receipts.shift() as { receiptLevel: "accepted" };
+    },
+  };
+  const opened = openGateway({
+    dbPath: join(dir, "unconfirmed.sqlite"),
+    clock,
+    routes: [ROUTE],
+    adapter,
+  });
+  for (const text of ["a", "b", "c"]) {
+    handle(opened.gateway, "delivery.enqueue", { route: ROUTE, text, notAfter: clock.nowMs() + 60_000 }, clock.nowMs());
+  }
+  const statuses = opened.gateway.store.listDeliveries().map((row) => row.status);
+  assert.deepEqual(statuses, ["commit-unknown", "commit-unknown", "commit-unknown"]);
+  opened.gateway.close();
+  cleanup(dir);
+});
+
 test("loadSendAdapter imports a module path factory without class identity", async () => {
   const dir = tmpDir();
   mkdirSync(dir, { recursive: true });
