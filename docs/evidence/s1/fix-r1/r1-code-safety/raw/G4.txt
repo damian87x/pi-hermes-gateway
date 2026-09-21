@@ -1,0 +1,74 @@
+
+> pi-hermes-gateway-protocol@0.0.0 build
+> tsc -p tsconfig.json
+
+
+> pi-hermes-gateway-core@0.0.0 build
+> tsc -p tsconfig.json
+
+
+added 2 packages, and audited 3 packages in 784ms
+
+found 0 vulnerabilities
+{
+  "protocolFiles": 34,
+  "gatewayFiles": 50,
+  "imported": {
+    "protocolVersion": 1,
+    "adapterId": "fake",
+    "maxTextLength": 4096
+  },
+  "gatewayListing": [
+    "package/dist/cli.js",
+    "package/dist/clock.js",
+    "package/dist/core.js",
+    "package/dist/daemon.js",
+    "package/dist/fake-adapter.js",
+    "package/dist/ids.js",
+    "package/dist/index.js",
+    "package/dist/ipc.js",
+    "package/dist/lock.js",
+    "package/dist/profile.js",
+    "package/dist/schedule.js",
+    "package/dist/store.js",
+    "package/package.json",
+    "package/dist/cli.d.ts.map",
+    "package/dist/cli.js.map",
+    "package/dist/clock.d.ts.map",
+    "package/dist/clock.js.map",
+    "package/dist/core.d.ts.map",
+    "package/dist/core.js.map",
+    "package/dist/daemon.d.ts.map",
+    "package/dist/daemon.js.map",
+    "package/dist/fake-adapter.d.ts.map",
+    "package/dist/fake-adapter.js.map",
+    "package/dist/ids.d.ts.map",
+    "package/dist/ids.js.map",
+    "package/dist/index.d.ts.map",
+    "package/dist/index.js.map",
+    "package/dist/ipc.d.ts.map",
+    "package/dist/ipc.js.map",
+    "package/dist/lock.d.ts.map",
+    "package/dist/lock.js.map",
+    "package/dist/profile.d.ts.map",
+    "package/dist/profile.js.map",
+    "package/dist/schedule.d.ts.map",
+    "package/dist/schedule.js.map",
+    "package/dist/store.d.ts.map",
+    "package/dist/store.js.map",
+    "package/README.md",
+    "package/dist/cli.d.ts",
+    "package/dist/clock.d.ts",
+    "package/dist/core.d.ts",
+    "package/dist/daemon.d.ts",
+    "package/dist/fake-adapter.d.ts",
+    "package/dist/ids.d.ts",
+    "package/dist/index.d.ts",
+    "package/dist/ipc.d.ts",
+    "package/dist/lock.d.ts",
+    "package/dist/profile.d.ts",
+    "package/dist/schedule.d.ts",
+    "package/dist/store.d.ts"
+  ]
+}
+EXIT=0

@@ -1,0 +1,53 @@
+## .node / binding.gyp / prebuild files in clone node_modules and packages:
+(end)
+## node:sqlite builtin check
+isBuiltin(node:sqlite)= true process.versions.sqlite= 3.53.4
+## imports in gateway dist (external specifiers)
+      3 from "./clock.js"
+      2 from "./core.js"
+      2 from "./daemon.js"
+      3 from "./fake-adapter.js"
+      1 from "./ids.js"
+      2 from "./ipc.js"
+      2 from "./lock.js"
+      1 from "node:child_process"
+      1 from "node:crypto"
+      6 from "node:fs"
+      1 from "node:net"
+      2 from "node:path"
+      3 from "node:process"
+      1 from "node:sqlite"
+      3 from "pi-hermes-gateway-protocol"
+      2 from "./profile.js"
+      2 from "./schedule.js"
+      2 from "./store.js"
+## gateway package deps
+{"dependencies":{"pi-hermes-gateway-protocol":"0.0.0"},"scripts":{"build":"tsc -p tsconfig.json","typecheck":"tsc -p tsconfig.json --noEmit","test":"npm run build && node --experimental-strip-types --test test/*.test.ts"}}
+## lock packages
+[
+  '',
+  'node_modules/pi-hermes-gateway-core',
+  'node_modules/pi-hermes-gateway-protocol',
+  'node_modules/typescript',
+  'packages/gateway',
+  'packages/protocol'
+]
+## spawn/exec usage in src
+/tmp/s1r1-clone/packages/gateway/src/ambient.d.ts:12:    exec(sql: string): void;
+/tmp/s1r1-clone/packages/gateway/src/ambient.d.ts:62:declare module "node:child_process" {
+/tmp/s1r1-clone/packages/gateway/src/ambient.d.ts:67:    on(ev: "exit" | "error" | "spawn", fn: (...args: unknown[]) => void): void;
+/tmp/s1r1-clone/packages/gateway/src/ambient.d.ts:73:  export function spawn(
+/tmp/s1r1-clone/packages/gateway/src/ambient.d.ts:78:  export function spawnSync(
+/tmp/s1r1-clone/packages/gateway/src/ambient.d.ts:83:  export function execFileSync(
+/tmp/s1r1-clone/packages/gateway/src/lock.ts:1:import { spawn } from "node:child_process";
+/tmp/s1r1-clone/packages/gateway/src/lock.ts:40:  const child = spawn("python3", ["-c", LOCKER, lockPath], {
+/tmp/s1r1-clone/packages/gateway/src/schedule.ts:98:  const hm = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(opts.localTime);
+/tmp/s1r1-clone/packages/gateway/src/store.ts:112:    this.db.exec("PRAGMA journal_mode = WAL;");
+/tmp/s1r1-clone/packages/gateway/src/store.ts:113:    this.db.exec("PRAGMA foreign_keys = ON;");
+/tmp/s1r1-clone/packages/gateway/src/store.ts:135:      this.db.exec(MIGRATION_V1);
+/tmp/s1r1-clone/packages/gateway/src/store.ts:136:      this.db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+/tmp/s1r1-clone/packages/gateway/src/store.ts:145:      this.db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+## network usage in src
+/tmp/s1r1-clone/packages/gateway/src/ambient.d.ts:90:declare module "node:net" {
+/tmp/s1r1-clone/packages/gateway/src/daemon.ts:2:import type { Server } from "node:net";
+/tmp/s1r1-clone/packages/gateway/src/ipc.ts:1:import { createServer, createConnection, type Server, type Socket } from "node:net";

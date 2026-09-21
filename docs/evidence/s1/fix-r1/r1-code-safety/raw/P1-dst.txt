@@ -1,0 +1,16 @@
+{"tz":"Europe/London","local":"2026-3-29 1:30","label":"gap","got":null,"expectedFirst":null,"ok":true}
+{"tz":"Europe/London","local":"2026-10-25 1:30","label":"fold","got":"2026-10-25T00:30:00.000Z","expectedFirst":"2026-10-25T00:30:00.000Z","ok":true}
+{"tz":"America/New_York","local":"2026-3-8 2:30","label":"gap","got":null,"expectedFirst":null,"ok":true}
+{"tz":"America/New_York","local":"2026-11-1 1:30","label":"fold","got":"2026-11-01T05:30:00.000Z","expectedFirst":"2026-11-01T05:30:00.000Z","ok":true}
+{"tz":"Europe/Berlin","local":"2026-10-25 2:30","label":"fold","got":"2026-10-25T00:30:00.000Z","expectedFirst":"2026-10-25T00:30:00.000Z","ok":true}
+{"tz":"Australia/Sydney","local":"2026-4-5 2:30","label":"fold","got":"2026-04-04T16:30:00.000Z","expectedFirst":"2026-04-04T15:30:00.000Z","ok":false}
+{"tz":"Australia/Sydney","local":"2026-4-5 1:30","label":"pre-fold valid","got":null,"expectedFirst":"2026-04-04T14:30:00.000Z","ok":false}
+{"tz":"Australia/Sydney","local":"2026-10-4 2:30","label":"gap","got":null,"expectedFirst":null,"ok":true}
+{"tz":"Australia/Sydney","local":"2026-10-4 1:30","label":"pre-gap valid","got":null,"expectedFirst":"2026-10-03T15:30:00.000Z","ok":false}
+{"tz":"Pacific/Auckland","local":"2026-4-5 2:30","label":"fold","got":"2026-04-04T14:30:00.000Z","expectedFirst":"2026-04-04T13:30:00.000Z","ok":false}
+{"tz":"Pacific/Auckland","local":"2026-4-5 1:30","label":"pre-fold valid","got":null,"expectedFirst":"2026-04-04T12:30:00.000Z","ok":false}
+{"tz":"Pacific/Auckland","local":"2026-9-27 2:30","label":"gap","got":null,"expectedFirst":null,"ok":true}
+{"tz":"Pacific/Auckland","local":"2026-9-27 1:30","label":"pre-gap valid","got":null,"expectedFirst":"2026-09-26T13:30:00.000Z","ok":false}
+{"tz":"Australia/Lord_Howe","local":"2026-4-5 1:45","label":"fold(30m)","got":"2026-04-04T15:15:00.000Z","expectedFirst":"2026-04-04T14:45:00.000Z","ok":false}
+sydney daily 01:30 Apr3..Apr6: [ '2026-04-03T14:30:00.000Z', '2026-04-05T15:30:00.000Z' ]
+MISMATCHES 7

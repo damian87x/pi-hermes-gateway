@@ -1,0 +1,19 @@
+node=v24.20.0 path=/usr/bin/node
+npm=11.19.0 path=/usr/bin/npm
+/tmp/s1r1-gates/clone-run-g2.sh: line 7: ./node_modules/.bin/tsc: No such file or directory
+project_tsc=
+global_tsc=Version 7.0.2
+pi_path=/home/damian-linux/.npm-global/bin/pi (not executed by reviewer)
+sqlite 3.53.4
+node:sqlite function
+pi-hermes-gateway@0.0.0 /tmp/s1r1-clone
+├── UNMET DEPENDENCY pi-hermes-gateway-core@file:/tmp/s1r1-clone/packages/gateway
+├── UNMET DEPENDENCY pi-hermes-gateway-protocol@file:/tmp/s1r1-clone/packages/protocol
+└── UNMET DEPENDENCY typescript@5.9.3
+
+npm error code ELSPROBLEMS
+npm error missing: pi-hermes-gateway-core@file:/tmp/s1r1-clone/packages/gateway, required by pi-hermes-gateway@0.0.0
+npm error missing: pi-hermes-gateway-protocol@file:/tmp/s1r1-clone/packages/protocol, required by pi-hermes-gateway@0.0.0
+npm error missing: typescript@5.9.3, required by pi-hermes-gateway@0.0.0
+npm error A complete log of this run can be found in: /home/damian-linux/.npm/_logs/2026-09-21T10_15_20_866Z-debug-0.log
+EXIT=1

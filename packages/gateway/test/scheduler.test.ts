@@ -1,8 +1,48 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { zonedLocalInstant } from "../dist/index.js";
+import { dailyInstantsInRange, zonedLocalInstant } from "../dist/index.js";
 import { TestClock } from "../dist/index.js";
 import { cleanup, handle, openTestGw, ROUTE } from "./helpers.ts";
+
+function bruteFirst(
+  timeZone: string,
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+): number | null {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  const start = Date.UTC(year, month - 1, day) - 36 * 3_600_000;
+  const end = Date.UTC(year, month - 1, day + 1) + 36 * 3_600_000;
+  for (let t = start; t <= end; t += 60_000) {
+    const map: Record<string, string> = {};
+    for (const p of fmt.formatToParts(new Date(t))) {
+      if (p.type !== "literal") map[p.type] = p.value;
+    }
+    const hourRaw = Number(map.hour);
+    if (
+      Number(map.year) === year &&
+      Number(map.month) === month &&
+      Number(map.day) === day &&
+      (hourRaw === 24 ? 0 : hourRaw) === hour &&
+      Number(map.minute) === minute &&
+      Number(map.second) === 0
+    ) {
+      return t;
+    }
+  }
+  return null;
+}
 
 test("once-at UTC fires on the scheduled instant", () => {
   const { gw, clock, dir, adapter } = openTestGw();
@@ -68,6 +108,40 @@ test("DST gap: skip nonexistent local time", () => {
 test("DST fold: first occurrence only", () => {
   const first = zonedLocalInstant("America/New_York", 2026, 11, 1, 1, 30);
   assert.equal(first, Date.UTC(2026, 10, 1, 5, 30, 0));
+});
+
+test("DST AU/NZ first fold, gaps, and adjacent valid local times vs brute-force oracle", () => {
+  const cases: Array<[string, number, number, number, number, number]> = [
+    ["Europe/London", 2026, 3, 29, 1, 30],
+    ["Europe/London", 2026, 10, 25, 1, 30],
+    ["America/New_York", 2026, 3, 8, 2, 30],
+    ["America/New_York", 2026, 11, 1, 1, 30],
+    ["Europe/Berlin", 2026, 10, 25, 2, 30],
+    ["Australia/Sydney", 2026, 4, 5, 2, 30],
+    ["Australia/Sydney", 2026, 4, 5, 1, 30],
+    ["Australia/Sydney", 2026, 10, 4, 2, 30],
+    ["Australia/Sydney", 2026, 10, 4, 1, 30],
+    ["Pacific/Auckland", 2026, 4, 5, 2, 30],
+    ["Pacific/Auckland", 2026, 4, 5, 1, 30],
+    ["Pacific/Auckland", 2026, 9, 27, 2, 30],
+    ["Pacific/Auckland", 2026, 9, 27, 1, 30],
+    ["Australia/Lord_Howe", 2026, 4, 5, 1, 45],
+  ];
+  for (const [tz, y, m, d, h, min] of cases) {
+    assert.equal(zonedLocalInstant(tz, y, m, d, h, min), bruteFirst(tz, y, m, d, h, min), `${tz} ${y}-${m}-${d} ${h}:${min}`);
+  }
+  const sydney = dailyInstantsInRange({
+    timeZone: "Australia/Sydney",
+    localTime: "01:30",
+    afterMs: Date.UTC(2026, 3, 2),
+    toMs: Date.UTC(2026, 3, 6),
+  });
+  assert.deepEqual(sydney, [
+    Date.UTC(2026, 3, 2, 14, 30, 0),
+    Date.UTC(2026, 3, 3, 14, 30, 0),
+    Date.UTC(2026, 3, 4, 14, 30, 0),
+    Date.UTC(2026, 3, 5, 15, 30, 0),
+  ]);
 });
 
 test("suspend past two due slots with skip: no burst", () => {

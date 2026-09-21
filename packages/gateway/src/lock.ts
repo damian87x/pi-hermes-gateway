@@ -1,85 +1,55 @@
-import { spawn } from "node:child_process";
-import { existsSync, unlinkSync, writeFileSync } from "node:fs";
-import process from "node:process";
+import { chmodSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 
 export type HeldLock = {
   release(): void;
 };
 
-const LOCKER = `
-import fcntl, os, sys
-path = sys.argv[1]
-ready = path + ".ready." + str(os.getpid())
-f = open(path, "a")
-try:
-    fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
-except BlockingIOError:
-    sys.exit(2)
-with open(ready, "w") as rf:
-    rf.write("1")
-try:
-    sys.stdin.read()
-finally:
-    try:
-        os.remove(ready)
-    except OSError:
-        pass
-`;
-
-function pidAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
+function lockedError(): Error {
+  const err = new Error("profile lock held");
+  (err as Error & { code: string }).code = "profile_locked";
+  return err;
 }
 
+/** Node-only exclusive lock via SQLite. Process death releases the lock. */
 export function acquireProfileLock(lockPath: string): HeldLock {
-  if (!existsSync(lockPath)) writeFileSync(lockPath, "", { mode: 0o600 });
-  const child = spawn("python3", ["-c", LOCKER, lockPath], {
-    stdio: ["pipe", "ignore", "ignore"],
-  });
-  const pid = child.pid;
-  if (pid === undefined) {
-    const err = new Error("profile lock held");
-    (err as Error & { code: string }).code = "profile_locked";
-    throw err;
+  let db: DatabaseSync;
+  try {
+    db = new DatabaseSync(lockPath);
+  } catch {
+    throw lockedError();
   }
-  const readyPath = `${lockPath}.ready.${pid}`;
-  const start = Date.now();
-  while (!existsSync(readyPath) && Date.now() - start < 2000) {
-    if (!pidAlive(pid) && !existsSync(readyPath)) break;
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-  }
-  if (!existsSync(readyPath)) {
+  try {
+    db.exec("PRAGMA busy_timeout = 0;");
+    db.exec("PRAGMA journal_mode = DELETE;");
+    db.exec("PRAGMA locking_mode = EXCLUSIVE;");
+    db.exec("BEGIN EXCLUSIVE;");
+    db.exec("CREATE TABLE IF NOT EXISTS lock_owner (k INTEGER PRIMARY KEY)");
+    db.prepare("INSERT OR REPLACE INTO lock_owner(k) VALUES (1)").run();
+  } catch {
     try {
-      child.kill("SIGTERM");
+      db.close();
     } catch {
       /* ignore */
     }
-    const err = new Error("profile lock held");
-    (err as Error & { code: string }).code = "profile_locked";
-    throw err;
+    throw lockedError();
+  }
+  try {
+    chmodSync(lockPath, 0o600);
+  } catch {
+    /* lock is held; mode is best-effort */
   }
   return {
     release() {
       try {
-        child.stdin?.end();
+        db.exec("COMMIT");
       } catch {
         /* ignore */
       }
       try {
-        child.kill("SIGTERM");
+        db.close();
       } catch {
         /* ignore */
-      }
-      if (existsSync(readyPath)) {
-        try {
-          unlinkSync(readyPath);
-        } catch {
-          /* ignore */
-        }
       }
     },
   };

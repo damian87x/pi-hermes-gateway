@@ -65,7 +65,7 @@ The protocol package does not schedule, persist, or send. S1 `packages/gateway` 
 - **Catch-up:** Default **skip** missed slots (missed/skipped receipt). Optional **one latest** missed occurrence runs only if still within its scheduledInstant-anchored `notAfter`. Never burst every missed slot. DST: skip nonexistent local times; first fold occurrence only.
 - **Restore:** Refuse schema newer than the binary. Backup before migrate. Explicit restore starts dispatch-disabled quarantine: non-terminal deliveries become `commit-unknown`; occurrences due after backup through recovery become `skipped`. Already-sent rows are not resurrected as `queued`. Audit rows are preserved.
 - **Transport:** Fake adapter only (`adapterId=fake`), declares `maxTextLength` and `receiptLevels` including `accepted`. No network, no auto-chunking.
-- **Lifecycle:** Exclusive `flock` on a persistent profile lock before SQLite or socket bind. Second process on the same profile exits nonzero and must not disturb the first socket.
+- **Lifecycle:** Exclusive Node-only SQLite lock on a persistent profile lock file before opening the gateway DB or binding the socket. Process death releases the lock. Second process on the same profile exits nonzero and must not disturb the first socket. Default daemon clock is the system clock; `tick()` runs at start and on an interval ≤60s. TestClock is injected only in tests.
 
 ## Open items deferred (not guessed)
 

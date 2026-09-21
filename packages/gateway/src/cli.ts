@@ -3,7 +3,6 @@ import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
 import { startDaemon } from "./daemon.js";
-import { TestClock } from "./clock.js";
 import type { DeliveryRoute } from "pi-hermes-gateway-protocol";
 
 function arg(name: string): string | undefined {
@@ -14,7 +13,14 @@ function arg(name: string): string | undefined {
 
 const profileDir = arg("--profile");
 if (!profileDir) {
-  process.stderr.write("usage: pi-hermes-gateway-core --profile DIR\n");
+  process.stderr.write("usage: pi-hermes-gateway-core --profile DIR [--restore BACKUP] [--resume-dispatch]\n");
+  process.exit(2);
+}
+
+const restoreFromBackup = arg("--restore");
+const resumeDispatch = process.argv.includes("--resume-dispatch");
+if (restoreFromBackup && resumeDispatch) {
+  process.stderr.write("restore and resume-dispatch cannot be combined\n");
   process.exit(2);
 }
 
@@ -33,8 +39,9 @@ try {
   const daemon = startDaemon({
     profileDir,
     routes: config.routes,
-    clock: new TestClock(Date.now()),
     ...(config.catchUpPolicy ? { catchUpPolicy: config.catchUpPolicy } : {}),
+    ...(restoreFromBackup ? { restoreFromBackup } : {}),
+    ...(resumeDispatch ? { resumeDispatch: true } : {}),
   });
   process.stderr.write("gateway listening\n");
   process.on("SIGTERM", () => {

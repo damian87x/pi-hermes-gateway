@@ -1,0 +1,8 @@
+{
+  "note": "Reproduced against f5c88a4 before product edits. Matches r1-code-safety P1/P2/P3/P4/P5.",
+  "dstMismatches": 7,
+  "clockProbe": { "clockCtor": "TestClock", "clockAdvancedMs": 0, "wallAdvancedMs": 201 },
+  "crashProbe": { "beforeReopen": "dispatching", "afterReopen": "dispatching" },
+  "lockProbe": { "usesPython3": true, "usesChildProcess": true },
+  "restoreResurrection": "post-backup 12:00 sent slot reappeared as occurrence pending + delivery queued after restoreQuarantine+tick"
+}

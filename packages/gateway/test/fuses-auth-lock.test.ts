@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { startDaemon, TestClock } from "../dist/index.js";
+import { acquireProfileLock, startDaemon, TestClock } from "../dist/index.js";
 import { cleanup, handle, openTestGw, ROUTE, tmpDir, wire, frameLen } from "./helpers.ts";
 
 test("per-account token bucket refuses extra sends with audit", () => {
@@ -107,5 +108,81 @@ test("second daemon fails to lock and does not remove the first socket", () => {
   }, /profile lock held/);
   assert.equal(existsSync(sock), true);
   d1.stop();
+  cleanup(dir);
+});
+
+test("profile lock is node-only; holder death releases; no split-brain while held", async () => {
+  const lockSrc = readFileSync(new URL("../src/lock.ts", import.meta.url), "utf8");
+  assert.equal(lockSrc.includes("python3"), false);
+  assert.equal(lockSrc.includes("child_process"), false);
+  const cliSrc = readFileSync(new URL("../src/cli.ts", import.meta.url), "utf8");
+  assert.equal(cliSrc.includes("TestClock"), false);
+  const dir = tmpDir();
+  const lockPath = join(dir, "profile.lock");
+  const held = acquireProfileLock(lockPath);
+  assert.throws(() => acquireProfileLock(lockPath), /profile lock held/);
+  held.release();
+  const again = acquireProfileLock(lockPath);
+  again.release();
+
+  const lockUrl = new URL("../dist/lock.js", import.meta.url).href;
+  const child = spawn(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `
+      import { acquireProfileLock } from ${JSON.stringify(lockUrl)};
+      const h = acquireProfileLock(${JSON.stringify(lockPath)});
+      console.log("held");
+      setInterval(() => {}, 1000);
+      void h;
+      `,
+    ],
+    { stdio: ["ignore", "pipe", "pipe"] },
+  );
+  await new Promise<void>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error("lock child ready timeout")), 5000);
+    child.stdout?.on("data", (chunk: Uint8Array | string) => {
+      if (String(chunk).includes("held")) {
+        clearTimeout(t);
+        resolve();
+      }
+    });
+    child.once("error", reject);
+  });
+  assert.throws(() => acquireProfileLock(lockPath), /profile lock held/);
+  child.kill("SIGKILL");
+  await new Promise((resolve) => child.once("exit", resolve));
+  const afterDeath = acquireProfileLock(lockPath);
+  afterDeath.release();
+  cleanup(dir);
+});
+
+test("default daemon clock advances and ticks within 60s", async () => {
+  const dir = tmpDir();
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
+  writeFileSync(join(dir, "config.json"), JSON.stringify({ routes: [ROUTE] }), { mode: 0o600 });
+  const d = startDaemon({ profileDir: dir, routes: [ROUTE], bindSocket: false, tickIntervalMs: 40 });
+  assert.equal(d.gateway.clock.constructor.name, "SystemClock");
+  const t0 = d.gateway.clock.nowMs();
+  const due = new Date(t0 + 70).toISOString();
+  const req = wire(
+    "job.create",
+    {
+      kind: "static-text",
+      text: "tick-me",
+      route: ROUTE,
+      schedule: { type: "once", atUtc: due },
+    },
+    d.gateway.clock.nowMs(),
+  );
+  const res = d.gateway.handleRequest(req, frameLen(req));
+  assert.equal(res.ok, true);
+  await new Promise((resolve) => setTimeout(resolve, 220));
+  assert.ok(d.gateway.clock.nowMs() - t0 >= 50);
+  assert.equal(d.adapter.sent.length, 1);
+  d.stop();
   cleanup(dir);
 });

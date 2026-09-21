@@ -16,7 +16,7 @@ Maintenance window: stop the existing connector without logout; verify it releas
 
 ## Database rollback quarantine
 
-S1 implements: refuse schema newer than the binary; backup before migrate (`node:sqlite`, `PRAGMA user_version`). If an operator restores a backup: dispatch-disabled quarantine; non-terminal deliveries and occurrences due after backup through recovery are commit-unknown/skipped; already-sent post-backup deliveries must not return to `queued`. Audit history is not deleted to “repair”. Revert to a pinned binary only when schema compatibility is proven.
+S1 implements: refuse schema newer than the binary; backup before migrate (`node:sqlite`, `PRAGMA user_version`). Explicit restore (`--restore BACKUP` / `startDaemon({ restoreFromBackup })`) copies the backup under the profile lock and quarantines before any tick: missing and non-terminal occurrences in (backup, recovery] become `skipped`/`commit-unknown` and watermarks advance to recovery. Dispatch stays disabled until an explicit operator `--resume-dispatch` / `resumeDispatch()` after reconciliation. Already-sent post-backup deliveries must not return to `queued`. Audit history is not deleted to “repair”. Revert to a pinned binary only when schema compatibility is proven.
 
 ## Distribution
 

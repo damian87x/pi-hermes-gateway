@@ -66,10 +66,13 @@ export function zonedLocalInstant(
   minute: number,
 ): number | null {
   const wanted = Date.UTC(year, month - 1, day, hour, minute, 0);
+  const offsets = new Set<number>();
+  for (let deltaH = -36; deltaH <= 36; deltaH++) {
+    const guess = wanted + deltaH * 3_600_000;
+    offsets.add(asUtcMs(partsOf(guess, timeZone)) - guess);
+  }
   const matches: number[] = [];
-  for (const delta of [0, -3_600_000, 3_600_000, -7_200_000, 7_200_000, -10_800_000, 10_800_000]) {
-    const guess = wanted + delta;
-    const offset = asUtcMs(partsOf(guess, timeZone)) - guess;
+  for (const offset of offsets) {
     const candidate = wanted - offset;
     const p = partsOf(candidate, timeZone);
     if (

@@ -1,0 +1,25 @@
+{
+ "secondWhileHeld": "profile_locked",
+ "lockHolderProcesses": [
+  "577566 python3"
+ ],
+ "secondAfterLockerChildKilled": "ACQUIRED while first holder process still alive and never released",
+ "staleReadyFiles": [
+  "profile.lock.ready.577566"
+ ],
+ "daemonClock": {
+  "clockAdvancedMs": 0,
+  "wallAdvancedMs": 1502,
+  "clockCtor": "TestClock"
+ },
+ "activeResourcesAfterStart": []
+}
+/tmp/s1r1-clone/packages/gateway/src/cli.ts:6:import { TestClock } from "./clock.js";
+/tmp/s1r1-clone/packages/gateway/src/cli.ts:36:    clock: new TestClock(Date.now()),
+/tmp/s1r1-clone/packages/gateway/src/daemon.ts:4:import { TestClock } from "./clock.js";
+/tmp/s1r1-clone/packages/gateway/src/daemon.ts:30:  const clock = opts.clock ?? new TestClock(Date.now());
+/tmp/s1r1-clone/packages/gateway/src/index.ts:1:export { TestClock, type Clock } from "./clock.js";
+/tmp/s1r1-clone/packages/gateway/src/ipc.ts:52:  const start = Date.now();
+/tmp/s1r1-clone/packages/gateway/src/ipc.ts:53:  while (!existsSync(socketPath) && Date.now() - start < 2000) {
+/tmp/s1r1-clone/packages/gateway/src/lock.ts:50:  const start = Date.now();
+/tmp/s1r1-clone/packages/gateway/src/lock.ts:51:  while (!existsSync(readyPath) && Date.now() - start < 2000) {

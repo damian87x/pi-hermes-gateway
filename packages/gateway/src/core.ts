@@ -298,6 +298,7 @@ export class Gateway {
   }
 
   tick(): void {
+    if (this.store.getMeta("quarantine") === "1") return;
     const now = this.clock.nowMs();
     for (const job of this.store.listJobs()) {
       if (job.status !== "active") continue;
@@ -460,7 +461,59 @@ export class Gateway {
 
   restoreQuarantine(backupTimeMs: number, recoveryTimeMs = this.clock.nowMs()): void {
     this.store.applyRestoreQuarantine(backupTimeMs, recoveryTimeMs);
+    for (const job of this.store.listJobs()) {
+      const schedule = JSON.parse(job.schedule_json) as JobSchedule;
+      const instants =
+        schedule.type === "once"
+          ? (() => {
+              const at = onceInstant(schedule.atUtc);
+              return at > backupTimeMs && at <= recoveryTimeMs ? [at] : [];
+            })()
+          : this.expectedInstants(schedule, backupTimeMs, recoveryTimeMs);
+      for (const ms of instants) {
+        const existing = this.store.findOccurrence(job.job_id, ms);
+        if (!existing) {
+          const occurrenceId = newId("occ");
+          this.store.insertOccurrence({
+            occurrence_id: occurrenceId,
+            job_id: job.job_id,
+            scheduled_instant_ms: ms,
+            status: "skipped",
+          });
+          this.audit("occurrence.skipped", {
+            jobId: job.job_id,
+            occurrenceId,
+            scheduledInstantMs: ms,
+            reason: "restore",
+          });
+        } else if (existing.status === "pending" || existing.status === "claimed" || existing.status === "interrupted") {
+          this.store.setOccurrenceStatus(existing.occurrence_id, "skipped");
+          this.audit("occurrence.skipped", {
+            jobId: job.job_id,
+            occurrenceId: existing.occurrence_id,
+            scheduledInstantMs: ms,
+            reason: "restore",
+          });
+        }
+      }
+      this.store.setWatermark(job.job_id, recoveryTimeMs);
+    }
     this.audit("restore.quarantine", { backupTimeMs, recoveryTimeMs });
+  }
+
+  resumeDispatch(): void {
+    this.store.setMeta("dispatch_enabled", "1");
+    this.store.setMeta("quarantine", "0");
+    this.audit("dispatch.resume", {});
+  }
+
+  recoverStuckDispatching(): void {
+    for (const row of this.store.listDeliveries()) {
+      if (row.status !== "dispatching") continue;
+      this.store.setDeliveryStatus(row.delivery_id, "commit-unknown");
+      if (row.occurrence_id) this.store.setOccurrenceStatus(row.occurrence_id, "commit-unknown");
+      this.audit("crash.recover", { deliveryId: row.delivery_id, previousStatus: row.status });
+    }
   }
 }
 
@@ -492,5 +545,6 @@ export function openGateway(opts: {
       dailyCapPerRoute: opts.dailyCapPerRoute ?? DEFAULT_CONFIG.dailyCapPerRoute,
     },
   });
+  gateway.recoverStuckDispatching();
   return { gateway, backedUpTo };
 }

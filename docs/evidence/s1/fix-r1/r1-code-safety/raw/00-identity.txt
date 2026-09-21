@@ -1,0 +1,11 @@
+f5c88a4323bdf8d3a2e1f30aee7eb8dd63195678
+?? .omc/project-memory.json
+?? docs/evidence/s1-review/r1-code-safety/raw/00-identity.txt
+08a265cfb76f5f6dc7d9d05c0b02542f61ecbed08b16e2a2d805e7c1dd4914f3  -
+f5c88a4 feat: S1 durable gateway core with fake adapter
+83341eb docs: preserve independently reviewed S0 evidence
+82d0de5 fix: reject invalid clocks and nonexistent UTC dates
+0da0a1d feat: S0 protocol workspace foundation
+4035d5b Initial commit
+Mon Sep 21 10:12:51 AM UTC 2026
+2026-09-21 11:12:40.386029306 +0100 .omc/project-memory.json

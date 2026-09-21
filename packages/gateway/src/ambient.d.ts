@@ -33,6 +33,7 @@ declare module "node:fs" {
     uid: number;
     gid: number;
     mode: number;
+    mtimeMs: number;
     isDirectory(): boolean;
     isSocket(): boolean;
     isFile(): boolean;
@@ -139,3 +140,7 @@ declare module "node:assert/strict" {
 declare module "node:test" {
   export function test(name: string, fn: () => unknown | Promise<unknown>): void;
 }
+
+declare function setInterval(handler: () => void, ms: number): unknown;
+declare function clearInterval(id: unknown): void;
+declare function setTimeout(handler: () => void, ms: number): unknown;

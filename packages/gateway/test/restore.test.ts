@@ -3,8 +3,9 @@ import { copyFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { DatabaseSync } from "node:sqlite";
-import { openGateway, SCHEMA_VERSION, TestClock } from "../dist/index.js";
-import { cleanup, handle, openTestGw, ROUTE } from "./helpers.ts";
+import { mkdirSync, chmodSync, writeFileSync } from "node:fs";
+import { openGateway, SCHEMA_VERSION, startDaemon, TestClock } from "../dist/index.js";
+import { cleanup, handle, openTestGw, ROUTE, tmpDir } from "./helpers.ts";
 
 test("restore quarantine: queued becomes commit-unknown and is not sent", () => {
   const { gw, clock, dir, adapter } = openTestGw();
@@ -66,6 +67,133 @@ test("refuse schema newer than binary", () => {
   assert.throws(() => {
     openGateway({ dbPath: join(dir, "gateway.sqlite"), clock, routes: [ROUTE] });
   }, /newer than binary/);
+  cleanup(dir);
+});
+
+function postBackupSentSlot(policy: "skip" | "one-latest") {
+  const clock = new TestClock(Date.UTC(2026, 0, 1, 11, 0, 0));
+  const { gw, dir, adapter } = openTestGw({ clock, catchUpPolicy: policy });
+  handle(
+    gw,
+    "job.create",
+    {
+      kind: "static-text",
+      text: "slot",
+      route: ROUTE,
+      schedule: { type: "daily", localTime: "12:00", timeZone: "UTC" },
+    },
+    clock.nowMs(),
+  );
+  const backupTime = clock.nowMs();
+  gw.store.db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+  const backup = join(dir, "backup.sqlite");
+  copyFileSync(join(dir, "gateway.sqlite"), backup);
+  clock.set(Date.UTC(2026, 0, 1, 12, 0, 0));
+  gw.tick();
+  assert.equal(adapter.sent.length, 1);
+  gw.close();
+  copyFileSync(backup, join(dir, "gateway.sqlite"));
+  const clock2 = new TestClock(Date.UTC(2026, 0, 1, 12, 0, 30));
+  const { gateway: gw2 } = openGateway({
+    dbPath: join(dir, "gateway.sqlite"),
+    clock: clock2,
+    routes: [ROUTE],
+    catchUpPolicy: policy,
+  });
+  gw2.restoreQuarantine(backupTime, clock2.nowMs());
+  gw2.tick();
+  const occ = gw2.store.listOccurrences();
+  assert.equal(occ.length, 1);
+  assert.equal(occ[0]?.status, "skipped");
+  assert.equal(occ[0]?.scheduled_instant_ms, Date.UTC(2026, 0, 1, 12, 0, 0));
+  assert.equal(gw2.store.listDeliveries().every((d) => d.status !== "queued"), true);
+  assert.equal(gw2.store.listJobs()[0]?.watermark_ms, clock2.nowMs());
+  assert.equal(gw2.store.getMeta("quarantine"), "1");
+  assert.equal(gw2.store.dispatchEnabled(), false);
+  gw2.close();
+  cleanup(dir);
+}
+
+test("post-backup sent slot is not resurrected as queued under skip", () => {
+  postBackupSentSlot("skip");
+});
+
+test("post-backup sent slot is not resurrected as queued under one-latest", () => {
+  postBackupSentSlot("one-latest");
+});
+
+test("tick refuses admission while quarantined until explicit resume", () => {
+  const clock = new TestClock(Date.UTC(2026, 0, 1, 10, 0, 0));
+  const { gw, dir, adapter } = openTestGw({ clock });
+  handle(
+    gw,
+    "job.create",
+    {
+      kind: "static-text",
+      text: "later",
+      route: ROUTE,
+      schedule: { type: "once", atUtc: "2026-01-01T12:00:00.000Z" },
+    },
+    clock.nowMs(),
+  );
+  gw.restoreQuarantine(clock.nowMs(), clock.nowMs());
+  clock.set(Date.UTC(2026, 0, 1, 12, 0, 0));
+  gw.tick();
+  assert.equal(adapter.sent.length, 0);
+  assert.equal(gw.store.listOccurrences().length, 0);
+  gw.resumeDispatch();
+  assert.equal(gw.store.getMeta("quarantine"), "0");
+  assert.equal(gw.store.dispatchEnabled(), true);
+  gw.tick();
+  assert.equal(adapter.sent.length, 1);
+  gw.close();
+  cleanup(dir);
+});
+
+test("explicit restore copies backup and quarantines before tick", () => {
+  const dir = tmpDir();
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
+  writeFileSync(join(dir, "config.json"), JSON.stringify({ routes: [ROUTE] }), { mode: 0o600 });
+  const clock = new TestClock(Date.UTC(2026, 0, 1, 11, 0, 0));
+  const d1 = startDaemon({ profileDir: dir, routes: [ROUTE], clock, bindSocket: false, tickIntervalMs: 60_000 });
+  handle(
+    d1.gateway,
+    "job.create",
+    {
+      kind: "static-text",
+      text: "slot",
+      route: ROUTE,
+      schedule: { type: "daily", localTime: "12:00", timeZone: "UTC" },
+    },
+    clock.nowMs(),
+  );
+  const backupTime = clock.nowMs();
+  d1.gateway.store.db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+  const backup = join(dir, "backup.sqlite");
+  copyFileSync(join(dir, "gateway.sqlite"), backup);
+  clock.set(Date.UTC(2026, 0, 1, 12, 0, 0));
+  d1.gateway.tick();
+  assert.equal(d1.adapter.sent.length, 1);
+  d1.stop();
+  const clock2 = new TestClock(Date.UTC(2026, 0, 1, 12, 0, 30));
+  const d2 = startDaemon({
+    profileDir: dir,
+    routes: [ROUTE],
+    clock: clock2,
+    bindSocket: false,
+    tickIntervalMs: 60_000,
+    restoreFromBackup: backup,
+    backupTimeMs: backupTime,
+  });
+  assert.equal(d2.gateway.store.getMeta("quarantine"), "1");
+  assert.equal(d2.gateway.store.dispatchEnabled(), false);
+  assert.equal(d2.adapter.sent.length, 0);
+  assert.equal(d2.gateway.store.listDeliveries().every((row) => row.status !== "queued"), true);
+  const occ = d2.gateway.store.listOccurrences();
+  assert.equal(occ.length, 1);
+  assert.equal(occ[0]?.status, "skipped");
+  d2.stop();
   cleanup(dir);
 });
 

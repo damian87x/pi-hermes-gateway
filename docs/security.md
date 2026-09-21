@@ -14,7 +14,7 @@ The protocol package validates route *shape*. It does not authorise routes. S1 a
 
 ## Filesystem boundary (v1 daemon, S1)
 
-Linux v1: Unix-domain socket under a mode-0700 profile directory, socket 0600; no public HTTP listener. Verify directory/socket owner and mode at startup; fail closed on mismatch. Exclusive `flock` on `profile.lock` before opening SQLite or binding the socket. Filesystem permissions protect against other OS users.
+Linux v1: Unix-domain socket under a mode-0700 profile directory, socket 0600; no public HTTP listener. Verify directory/socket owner and mode at startup; fail closed on mismatch. Exclusive Node-only SQLite lock on `profile.lock` before opening the gateway DB or binding the socket (no python3 helper). Filesystem permissions protect against other OS users.
 
 This constrains accidental/confused-deputy requests through the gateway API. It is **not** a security boundary against same-UID hostile or shell-capable agents that can modify config or run the operator CLI. Do not invent credentials bound to npm package identity. No tokens in argv/logs.
 

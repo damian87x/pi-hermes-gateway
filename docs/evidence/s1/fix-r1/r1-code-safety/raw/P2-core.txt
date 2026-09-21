@@ -1,0 +1,93 @@
+{
+ "A_lateDispatch": {
+  "job": true,
+  "notAfter": "2026-01-02T11:00:00.000Z",
+  "status": "expired",
+  "sent": 0
+ },
+ "B_skip": {
+  "sent": 0,
+  "occ": [
+   "skipped",
+   "skipped",
+   "skipped"
+  ]
+ },
+ "B_one-latest": {
+  "sent": 1,
+  "occ": [
+   "skipped",
+   "skipped",
+   "completed"
+  ]
+ },
+ "C_oneLatest_30minLate": {
+  "sent": 1,
+  "occ": [
+   "skipped",
+   "skipped",
+   "skipped",
+   "completed"
+  ]
+ },
+ "D_restore_one-latest": {
+  "sentPostBackupBeforeRestore": 1,
+  "recoveryAt": "2026-01-01T14:00:00.000Z",
+  "afterQuarantineTick": {
+   "occ": [
+    [
+     "2026-01-01T12:00:00.000Z",
+     "pending"
+    ]
+   ],
+   "deliveries": [
+    "queued"
+   ],
+   "dispatchEnabled": false
+  }
+ },
+ "D_restore_skip": {
+  "sentPostBackupBeforeRestore": 1,
+  "recoveryAt": "2026-01-01T12:00:40.000Z",
+  "afterQuarantineTick": {
+   "occ": [
+    [
+     "2026-01-01T12:00:00.000Z",
+     "pending"
+    ]
+   ],
+   "deliveries": [
+    "queued"
+   ],
+   "dispatchEnabled": false
+  }
+ },
+ "E_unauthDistinctResponses": [
+  "{\"ok\":false,\"error\":{\"code\":\"invalid_route\",\"message\":\"route is not authorised\"}}",
+  "{\"ok\":false,\"error\":{\"code\":\"text_too_long\",\"message\":\"text exceeds 4096 UTF-16 code units (ECMAScript string length)\"}}"
+ ],
+ "E_routeMethods": [
+  "unknown_method",
+  "unknown_method",
+  "unknown_method",
+  "unknown_method",
+  "unknown_method"
+ ],
+ "E_auditKinds": [
+  "delivery.enqueue.attempt",
+  "request.rejected",
+  "job.create.attempt",
+  "delivery.enqueue",
+  "delivery.send.attempt",
+  "delivery.accepted",
+  "delivery.enqueue.rejected"
+ ],
+ "F_fuseAfterEnqueue": {
+  "tokens": 4,
+  "updated_at_ms": 1767261600000
+ },
+ "F_status": {
+  "deliveryId": "dlv_d698b1ba72dbc575cc34ec98",
+  "status": "accepted"
+ }
+}
