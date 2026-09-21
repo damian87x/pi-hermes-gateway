@@ -17,7 +17,7 @@ Full approved parity gates **S5 / M4**, not this slice. MVP (M1) is durable owne
 | Approvals/permission prompts | explicit challenge mapping | no | M3/M4 |
 | Inbound execution | refuse-by-default + pairing | no | M3 |
 | Isolated model report jobs | gateway worker | no | M2 |
-| WhatsApp send | adapter-whatsapp | no | M1b/S4 |
+| WhatsApp send | adapter-whatsapp | M1b send-only injected send | live socket / inbound later |
 | Existing-account cutover | migration procedure | no | M5 |
 
 Capability negotiation is explicit and additive within a protocol major. Unsupported results must be visible. No silent truncation or auto-chunking of oversized text in M1.

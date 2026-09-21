@@ -11,12 +11,16 @@ export async function loadSendAdapter(
   const mod = (await import(pathToFileURL(resolved).href)) as Record<string, unknown>;
   const factory = mod.createAdapter ?? mod.default;
   const post = mod.defaultTelegramHttpPost;
+  const send = mod.defaultWhatsAppSend;
   let adapter: unknown;
   if (typeof factory === "function") {
-    adapter =
-      typeof post === "function"
-        ? (factory as (c: unknown, d: { post: unknown }) => unknown)(config, { post })
-        : (factory as (c: unknown) => unknown)(config);
+    if (typeof post === "function") {
+      adapter = (factory as (c: unknown, d: { post: unknown }) => unknown)(config, { post });
+    } else if (typeof send === "function") {
+      adapter = (factory as (c: unknown, d: { send: unknown }) => unknown)(config, { send });
+    } else {
+      adapter = (factory as (c: unknown) => unknown)(config);
+    }
   } else {
     adapter = mod;
   }

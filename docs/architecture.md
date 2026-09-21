@@ -6,7 +6,7 @@ Historical planning checkout name `pi-messaging-gateway` is superseded by this r
 
 ## Current packages
 
-`packages/protocol` (S0), `packages/gateway` (S1 durable core + structural send adapter; fake default), `packages/adapter-telegram` (S3 send-only Bot API `sendMessage`, npm-only), and `packages/pi-companion` (S2 Pi package socket client). Do not create telegram-companion or adapter-whatsapp here.
+`packages/protocol` (S0), `packages/gateway` (S1 durable core + structural send adapter; fake default), `packages/adapter-telegram` (S3 send-only Bot API `sendMessage`, npm-only), `packages/adapter-whatsapp` (S4 send-only injected send; no live socket), and `packages/pi-companion` (S2 Pi package socket client). Do not create telegram-companion here.
 
 The protocol package is a stateless ESM library: compiled `dist` plus declarations, explicit `exports`/`files`, no Pi peer, no `pi` manifest, no transport dependency, no secrets, no runtime singleton, no class/`Symbol` identity, no import side effects. `protocolVersion` (IPC wire) and `adapterApiVersion` (adapter loader) are independent integers, both `1` in this slice.
 
@@ -32,7 +32,7 @@ The protocol package is a stateless ESM library: compiled `dist` plus declaratio
 - **M5** optional existing-account cutover.
 - S6 (distribution) repeats at each publishable milestone.
 
-S0 is not M1 completion. S1 durable core with fake adapter is implemented in `packages/gateway`. S2 companion and S3 telegram send-only adapter are implemented as separate packages; fake remains the gateway default. S4–S6 are not implemented here.
+S0 is not M1 completion. S1 durable core with fake adapter is implemented in `packages/gateway`. S2 companion, S3 telegram send-only, and S4 WhatsApp send-only (injected send, inbound discarded) are implemented as separate packages; fake remains the gateway default. Live sockets, S5, and S6 are not implemented here.
 
 ## v1 protocol limits (concrete)
 
@@ -64,7 +64,7 @@ The protocol package does not schedule, persist, or send. S1 `packages/gateway` 
 - **Expiry:** Job-created delivery `notAfter = scheduledInstant + bound` with bound ≤ 24h. Checked at occurrence admit and immediately before dispatch. Late items become `expired`, never sent. Operator `delivery.enqueue` keeps protocol now-relative `notAfter`. S0 `validateStaticDelivery` cannot express a future slot whose `notAfter` is more than 24h from enqueue-now; the gateway computes job `notAfter` and does not change the S0 validator.
 - **Catch-up:** Default **skip** missed slots (missed/skipped receipt). Optional **one latest** missed occurrence runs only if still within its scheduledInstant-anchored `notAfter`. Never burst every missed slot. DST: skip nonexistent local times; first fold occurrence only.
 - **Restore:** Refuse schema newer than the binary. Backup before migrate. Explicit restore starts dispatch-disabled quarantine: non-terminal deliveries become `commit-unknown`; occurrences due after backup through recovery become `skipped`. Already-sent rows are not resurrected as `queued`. Audit rows are preserved.
-- **Transport:** Fake adapter is the default (`adapterId=fake`). Gateway talks a structural `{ manifest, send }` object (no class/Symbol identity). Telegram send-only adapter loads via explicit module path; `notAfter`/size stay gateway-enforced. No live network in this slice, no auto-chunking.
+- **Transport:** Fake adapter is the default (`adapterId=fake`). Gateway talks a structural `{ manifest, send }` object (no class/Symbol identity). Telegram and WhatsApp send-only adapters load via explicit module path; WhatsApp uses an injected send function and discards inbound. `notAfter`/size stay gateway-enforced. No live network in this slice, no auto-chunking.
 - **Lifecycle:** Exclusive Node-only SQLite lock on a persistent profile lock file before opening the gateway DB or binding the socket. Process death releases the lock. Second process on the same profile exits nonzero and must not disturb the first socket. Default daemon clock is the system clock; `tick()` runs at start and on an interval ≤60s. TestClock is injected only in tests.
 
 ## Open items deferred (not guessed)
