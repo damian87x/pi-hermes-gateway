@@ -10,7 +10,12 @@ export async function loadSendAdapter(
   const resolved = isAbsolute(modulePath) ? modulePath : resolve(fromDir, modulePath);
   const mod = (await import(pathToFileURL(resolved).href)) as Record<string, unknown>;
   const factory = mod.createAdapter ?? mod.default;
-  const post = mod.defaultTelegramHttpPost;
+  const post =
+    typeof mod.defaultTelegramHttpPost === "function"
+      ? mod.defaultTelegramHttpPost
+      : typeof mod.defaultSlackHttpPost === "function"
+        ? mod.defaultSlackHttpPost
+        : undefined;
   const send = mod.defaultWhatsAppSend;
   let adapter: unknown;
   if (typeof factory === "function") {

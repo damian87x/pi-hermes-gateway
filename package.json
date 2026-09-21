@@ -9,12 +9,13 @@
     "packages/gateway",
     "packages/adapter-telegram",
     "packages/adapter-whatsapp",
+    "packages/adapter-slack",
     "packages/pi-companion"
   ],
   "scripts": {
-    "build": "npm run build -w pi-hermes-gateway-protocol && npm run build -w pi-hermes-gateway-core && npm run build -w pi-hermes-gateway-adapter-telegram && npm run build -w pi-hermes-gateway-adapter-whatsapp && npm run build -w pi-hermes-gateway-companion",
-    "typecheck": "npm run build -w pi-hermes-gateway-protocol && npm run typecheck -w pi-hermes-gateway-protocol && npm run typecheck -w pi-hermes-gateway-core && npm run typecheck -w pi-hermes-gateway-adapter-telegram && npm run typecheck -w pi-hermes-gateway-adapter-whatsapp && npm run typecheck -w pi-hermes-gateway-companion",
-    "test": "npm run test -w pi-hermes-gateway-protocol && npm run test -w pi-hermes-gateway-core && npm run test -w pi-hermes-gateway-adapter-telegram && npm run test -w pi-hermes-gateway-adapter-whatsapp && npm run test -w pi-hermes-gateway-companion"
+    "build": "npm run build -w pi-hermes-gateway-protocol && npm run build -w pi-hermes-gateway-core && npm run build -w pi-hermes-gateway-adapter-telegram && npm run build -w pi-hermes-gateway-adapter-whatsapp && npm run build -w pi-hermes-gateway-adapter-slack && npm run build -w pi-hermes-gateway-companion",
+    "typecheck": "npm run build -w pi-hermes-gateway-protocol && npm run typecheck -w pi-hermes-gateway-protocol && npm run typecheck -w pi-hermes-gateway-core && npm run typecheck -w pi-hermes-gateway-adapter-telegram && npm run typecheck -w pi-hermes-gateway-adapter-whatsapp && npm run typecheck -w pi-hermes-gateway-adapter-slack && npm run typecheck -w pi-hermes-gateway-companion",
+    "test": "npm run test -w pi-hermes-gateway-protocol && npm run test -w pi-hermes-gateway-core && npm run test -w pi-hermes-gateway-adapter-telegram && npm run test -w pi-hermes-gateway-adapter-whatsapp && npm run test -w pi-hermes-gateway-adapter-slack && npm run test -w pi-hermes-gateway-companion"
   },
   "engines": {
     "node": ">=24.20.0"
