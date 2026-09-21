@@ -36,6 +36,9 @@ function attachReader(socket: Socket, onFrame: (payload: Uint8Array) => void): v
 
 export function listenIpc(socketPath: string, gateway: Gateway): Server {
   const server = createServer((sock) => {
+    sock.on("error", () => {
+      sock.destroy();
+    });
     attachReader(sock, (payload) => {
       let parsed: unknown;
       try {
@@ -55,6 +58,9 @@ export function listenIpc(socketPath: string, gateway: Gateway): Server {
         }
       }
     });
+  });
+  server.on("error", () => {
+    /* disconnects and accept faults must not exit the daemon */
   });
   server.listen(socketPath);
   const start = Date.now();

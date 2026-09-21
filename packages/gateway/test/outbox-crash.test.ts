@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { createConnection } from "node:net";
 import { chmodSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -211,6 +212,93 @@ test("IPC handleRequest exception returns error frame and keeps listening", asyn
   assert.equal((r2 as { error: { code: string } }).error.code, "unknown_method");
   server.close();
   cleanup(dir);
+});
+
+test("client write-and-destroy does not kill IPC daemon; next request is answered", async () => {
+  const dir = tmpDir();
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
+  const indexUrl = new URL("../dist/index.js", import.meta.url).href;
+  const child = spawn(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `
+      import { startDaemon } from ${JSON.stringify(indexUrl)};
+      const ROUTE = ${JSON.stringify(ROUTE)};
+      startDaemon({ profileDir: ${JSON.stringify(dir)}, routes: [ROUTE] });
+      process.stdout.write("listening\\n");
+      `,
+    ],
+    { stdio: ["ignore", "pipe", "pipe"] },
+  );
+  let out = "";
+  child.stdout?.on("data", (chunk: Uint8Array | string) => {
+    out += String(chunk);
+  });
+  child.stderr?.on("data", (chunk: Uint8Array | string) => {
+    out += String(chunk);
+  });
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error(`child listening timeout: ${out}`)), 5000);
+      const iv = setInterval(() => {
+        if (out.includes("listening")) {
+          clearInterval(iv);
+          clearTimeout(t);
+          resolve();
+        }
+      }, 10);
+      child.once("error", reject);
+    });
+    const sock = join(dir, "gateway.sock");
+    const now = Date.now();
+    const json = Buffer.from(
+      JSON.stringify({
+        protocolVersion: PROTOCOL_VERSION,
+        requestId: "client-reset-1",
+        method: "job.list",
+        body: {},
+        expiresAt: now + 30_000,
+      }),
+    );
+    const buf = Buffer.alloc(4 + json.length);
+    buf.writeUInt32BE(json.length, 0);
+    json.copy(buf, 4);
+    for (let i = 0; i < 20 && child.exitCode === null && child.signalCode === null; i++) {
+      await new Promise<void>((resolve) => {
+        const s = createConnection(sock, () => {
+          s.write(buf);
+          s.destroy();
+          resolve();
+        });
+        s.on("error", () => resolve());
+      });
+      await new Promise((r) => setTimeout(r, 5));
+    }
+    await Promise.race([
+      new Promise<void>((resolve) => child.once("exit", () => resolve())),
+      new Promise<void>((resolve) => setTimeout(resolve, 100)),
+    ]);
+    assert.equal(child.exitCode, null, `daemon exited after client reset: ${out}`);
+    assert.equal(child.signalCode, null);
+    const stillUp = await sendIpc(sock, {
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "after-reset",
+      method: "job.list",
+      body: {},
+      expiresAt: Date.now() + 30_000,
+    });
+    assert.equal((stillUp as { ok: boolean }).ok, true);
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
+    await new Promise<void>((resolve) => {
+      if (child.exitCode !== null || child.signalCode !== null) resolve();
+      else child.once("exit", () => resolve());
+    });
+    cleanup(dir);
+  }
 });
 
 test("SIGKILL mid-send then same requestId retry returns commit-unknown without extra send", async () => {
