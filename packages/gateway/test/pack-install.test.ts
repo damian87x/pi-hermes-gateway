@@ -22,22 +22,35 @@ const PACKAGES = [
   { dir: "wiki", name: "pi-hermes-gateway-wiki", workspace: "pi-hermes-gateway-wiki" },
 ] as const;
 
-function isolatedEnv(home: string): Record<string, string | undefined> {
+function writeIsolatedNpmrc(home: string): { userconfig: string; globalconfig: string } {
+  const userconfig = join(home, ".npmrc");
+  const globalconfig = join(home, "npmrc-global");
+  writeFileSync(userconfig, "registry=http://127.0.0.1:9/\n");
+  writeFileSync(globalconfig, "registry=http://127.0.0.1:9/\n");
+  return { userconfig, globalconfig };
+}
+
+function isolatedEnv(home: string): NodeJS.ProcessEnv {
+  const { userconfig, globalconfig } = writeIsolatedNpmrc(home);
   return {
     ...process.env,
     HOME: home,
     npm_config_cache: join(home, "npm-cache"),
     npm_config_prefix: join(home, "prefix"),
+    npm_config_userconfig: userconfig,
+    npm_config_globalconfig: globalconfig,
+    npm_config_registry: "http://127.0.0.1:9/",
     npm_config_update_notifier: "false",
     npm_config_audit: "false",
     npm_config_fund: "false",
   };
 }
 
-function packTo(dest: string, pkgDir: string): string {
-  const packOut = execFileSync("npm", ["pack", "--json", "--pack-destination", dest], {
+function packTo(dest: string, pkgDir: string, env: NodeJS.ProcessEnv): string {
+  const packOut = execFileSync("npm", ["pack", "--json", "--pack-destination", dest, "--offline"], {
     cwd: pkgDir,
     encoding: "utf8",
+    env,
   });
   const packed = JSON.parse(packOut) as { filename: string }[];
   const filename = packed[0]?.filename;
@@ -55,7 +68,7 @@ function install(home: string, tarballs: string[]): string {
     join(consumer, "package.json"),
     JSON.stringify({ name: "s6-consumer", version: "0.0.0", private: true, type: "module" }),
   );
-  execFileSync("npm", ["install", "--ignore-scripts", "--no-package-lock", ...tarballs], {
+  execFileSync("npm", ["install", "--ignore-scripts", "--no-package-lock", "--offline", ...tarballs], {
     cwd: consumer,
     env: isolatedEnv(home),
     encoding: "utf8",
@@ -104,11 +117,16 @@ test("s6 packed tarballs install in a disposable npm home without publish", { ti
 
   const work = mkdtempSync(join(tmpdir(), "s6-pack-"));
   try {
+    const packEnv = isolatedEnv(work);
+    assert.equal(packEnv.npm_config_userconfig, join(work, ".npmrc"));
+    assert.equal(packEnv.npm_config_globalconfig, join(work, "npmrc-global"));
+    assert.equal(packEnv.npm_config_registry, "http://127.0.0.1:9/");
+    assert.notEqual(packEnv.npm_config_userconfig, process.env.HOME ? join(process.env.HOME, ".npmrc") : packEnv.npm_config_userconfig);
     execFileSync("npm", ["run", "build"], { cwd: root, encoding: "utf8", stdio: "pipe" });
     const tarballs: Record<string, string> = {};
     const listings: Record<string, string[]> = {};
     for (const spec of PACKAGES) {
-      tarballs[spec.name] = packTo(work, join(packagesDir, spec.dir));
+      tarballs[spec.name] = packTo(work, join(packagesDir, spec.dir), packEnv);
       listings[spec.name] = tarList(tarballs[spec.name]!);
     }
 

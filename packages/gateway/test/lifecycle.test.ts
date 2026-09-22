@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { userInfo } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -256,14 +256,77 @@ test("doctor rejects CLI realpath under ~/.pi/agent/npm", () => {
   cleanup(dir);
 });
 
+test("doctor rejects CLI whose realpath is under a symlinked Pi agent npm prefix", () => {
+  const dir = tmpDir();
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
+  const home = tmpDir();
+  const realPrefix = tmpDir();
+  mkdirSync(join(home, ".pi", "agent"), { recursive: true });
+  symlinkSync(realPrefix, join(home, ".pi", "agent", "npm"));
+  const cli = join(realPrefix, "cli.js");
+  writeFileSync(cli, "");
+  const sibling = tmpDir();
+  const outsideCli = join(sibling, "cli.js");
+  writeFileSync(outsideCli, "");
+  const banned = runDoctor({
+    profileDir: dir,
+    nodePath: process.execPath,
+    cliPath: cli,
+    lingerEnabled: true,
+    unitEvidence: true,
+    env: { HOME: home },
+  });
+  assert.equal(banned.ok, false);
+  assert.ok(banned.checks.some((c) => c.id === "cli-path" && c.ok === false));
+  const allowed = runDoctor({
+    profileDir: dir,
+    nodePath: process.execPath,
+    cliPath: outsideCli,
+    lingerEnabled: true,
+    unitEvidence: true,
+    env: { HOME: home },
+  });
+  assert.equal(allowed.ok, true);
+  assert.ok(allowed.checks.some((c) => c.id === "cli-path" && c.ok === true));
+  cleanup(sibling);
+  cleanup(realPrefix);
+  cleanup(home);
+  cleanup(dir);
+});
+
 test("linger probe uses os username and rejects slash in the name", () => {
   const lingerDir = tmpDir();
   mkdirSync(lingerDir, { recursive: true });
   assert.equal(probeLingerEnabled({ user: "../../../../etc", lingerDir }), false);
   assert.equal(probeLingerEnabled({ user: "foo/bar", lingerDir }), false);
+  assert.equal(probeLingerEnabled({ user: "", lingerDir }), false);
+  assert.equal(probeLingerEnabled({ user: ".", lingerDir }), false);
+  assert.equal(probeLingerEnabled({ user: "..", lingerDir }), false);
   const user = userInfo().username;
   assert.equal(user.includes("/"), false);
   writeFileSync(join(lingerDir, user), "");
   assert.equal(probeLingerEnabled({ lingerDir, env: { USER: "nope", LOGNAME: "nope" } }), true);
   cleanup(lingerDir);
+});
+
+test("lingerUser '.' and '..' cannot produce a logout-survival claim", () => {
+  const dir = tmpDir();
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
+  const lingerDir = tmpDir();
+  mkdirSync(lingerDir, { recursive: true });
+  for (const lingerUser of ["", ".", ".."]) {
+    const report = runDoctor({
+      profileDir: dir,
+      nodePath: process.execPath,
+      lingerUser,
+      lingerDir,
+      unitEvidence: true,
+    });
+    assert.equal(report.lingerEnabled, false, lingerUser);
+    assert.equal(report.logoutSurvivalClaim, false, lingerUser);
+  }
+  cleanup(lingerDir);
+  cleanup(dir);
 });

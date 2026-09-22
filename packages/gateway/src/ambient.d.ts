@@ -50,6 +50,7 @@ declare module "node:fs" {
 }
 
 declare module "node:path" {
+  export const sep: string;
   export function join(...parts: string[]): string;
   export function dirname(path: string): string;
   export function basename(path: string): string;
@@ -59,6 +60,7 @@ declare module "node:path" {
 
 declare module "node:os" {
   export function tmpdir(): string;
+  export function homedir(): string;
   export function userInfo(): { username: string; uid: number; gid: number; homedir: string };
 }
 

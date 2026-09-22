@@ -1,0 +1,46 @@
+{
+  "status": "PASS",
+  "candidateSha": null,
+  "candidateShaNote": "Avoid self-reference: candidateSha is the commit that contains this file. Independent validators must use git rev-parse HEAD after checkout of feat/s1-durable-core.",
+  "baseSha": "256ac3299377634c44a57c9400dcaae97c8a8d5d",
+  "changedPaths": [
+    "docs/evidence/s6-lows/contract.md",
+    "docs/evidence/s6-lows/worker-summary.json",
+    "packages/gateway/package.json",
+    "packages/gateway/src/ambient.d.ts",
+    "packages/gateway/src/doctor.ts",
+    "packages/gateway/test/lifecycle.test.ts",
+    "packages/gateway/test/pack-install.test.ts"
+  ],
+  "gates": [
+    {
+      "id": "typecheck",
+      "command": "npm run typecheck",
+      "exitCode": 0
+    },
+    {
+      "id": "test",
+      "command": "npm test",
+      "exitCode": 0,
+      "counts": {
+        "protocol": { "tests": 43, "pass": 43, "fail": 0 },
+        "gateway": { "tests": 75, "pass": 75, "fail": 0 },
+        "adapterTelegram": { "tests": 10, "pass": 10, "fail": 0 },
+        "adapterWhatsapp": { "tests": 13, "pass": 13, "fail": 0 },
+        "adapterSlack": { "tests": 13, "pass": 13, "fail": 0 },
+        "piCompanion": { "tests": 3, "pass": 3, "fail": 0 },
+        "dashboard": { "tests": 13, "pass": 13, "fail": 0 },
+        "wiki": { "tests": 11, "pass": 11, "fail": 0 },
+        "total": { "tests": 181, "pass": 181, "fail": 0 }
+      }
+    }
+  ],
+  "unverified": [
+    "systemd linger and logout survival on a real user session",
+    "operator copy/enable of the shipped user unit",
+    "npm scope ownership and publication",
+    "any live network, Telegram, WhatsApp, or Slack send"
+  ],
+  "blockers": [],
+  "nextAction": "Local commit on feat/s1-durable-core. No push/PR/merge/release. No systemctl enable or linger on. No npm publish."
+}

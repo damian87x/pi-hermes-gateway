@@ -1,6 +1,6 @@
 import { existsSync, realpathSync, statSync } from "node:fs";
-import { userInfo } from "node:os";
-import { isAbsolute, join, resolve } from "node:path";
+import { homedir, userInfo } from "node:os";
+import { isAbsolute, join, resolve, sep } from "node:path";
 import process from "node:process";
 import { DatabaseSync } from "node:sqlite";
 import { profilePaths } from "./profile.js";
@@ -42,6 +42,30 @@ export function containsPiAgentNpm(path: string): boolean {
   return norm.includes(`${PI_AGENT_NPM}/`) || norm.endsWith(PI_AGENT_NPM) || norm.includes("~/.pi/agent/npm");
 }
 
+function isPathInside(root: string, target: string): boolean {
+  if (target === root) return true;
+  const prefix = root.endsWith(sep) ? root : root + sep;
+  return target.startsWith(prefix);
+}
+
+function underResolvedPiAgentNpm(path: string, env?: Record<string, string | undefined>): boolean {
+  const home = env?.HOME ?? homedir();
+  const prefixPath = join(home, ".pi", "agent", "npm");
+  let prefixReal: string;
+  try {
+    prefixReal = realpathSync(prefixPath);
+  } catch {
+    return false;
+  }
+  let targetReal: string;
+  try {
+    targetReal = realpathSync(path);
+  } catch {
+    targetReal = resolve(path);
+  }
+  return isPathInside(prefixReal, targetReal);
+}
+
 function lingerUsername(opts?: { user?: string }): string {
   if (opts?.user !== undefined) return opts.user;
   try {
@@ -57,7 +81,7 @@ export function probeLingerEnabled(opts?: {
   env?: Record<string, string | undefined>;
 }): boolean {
   const user = lingerUsername(opts?.user !== undefined ? { user: opts.user } : {});
-  if (!user || user.includes("/")) return false;
+  if (!user || user === "." || user === ".." || user.includes("/")) return false;
   const dir = opts?.lingerDir ?? "/var/lib/systemd/linger";
   return existsSync(join(dir, user));
 }
@@ -95,9 +119,14 @@ function checkNodePath(nodePath: string): DoctorCheck {
   return { id: "node-path", ok: true, severity: "info", message: `absolute Node path ${nodePath}` };
 }
 
-function checkCliPath(cliPath: string): DoctorCheck {
+function checkCliPath(cliPath: string, env?: Record<string, string | undefined>): DoctorCheck {
   const inspected = inspectPath(cliPath);
-  if (containsPiAgentNpm(cliPath) || containsPiAgentNpm(inspected)) {
+  if (
+    containsPiAgentNpm(cliPath) ||
+    containsPiAgentNpm(inspected) ||
+    underResolvedPiAgentNpm(cliPath, env) ||
+    underResolvedPiAgentNpm(inspected, env)
+  ) {
     return {
       id: "cli-path",
       ok: false,
@@ -192,7 +221,7 @@ export function runDoctor(opts: DoctorOptions): DoctorReport {
     opts.lingerEnabled !== undefined
       ? opts.lingerEnabled
       : probeLingerEnabled({
-          ...(opts.lingerUser ? { user: opts.lingerUser } : {}),
+          ...(opts.lingerUser !== undefined ? { user: opts.lingerUser } : {}),
           ...(opts.lingerDir ? { lingerDir: opts.lingerDir } : {}),
           ...(opts.env ? { env: opts.env } : {}),
         });
@@ -207,7 +236,7 @@ export function runDoctor(opts: DoctorOptions): DoctorReport {
     checkLinger(lingerEnabled),
     checkUnit(unitEvidence, lingerEnabled),
   ];
-  if (opts.cliPath) checks.splice(1, 0, checkCliPath(opts.cliPath));
+  if (opts.cliPath) checks.splice(1, 0, checkCliPath(opts.cliPath, opts.env));
   const hardOk = checks.every((c) => c.severity !== "error" || c.ok);
   const lingerPrecondition = lingerEnabled;
   return {
