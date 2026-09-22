@@ -39,6 +39,7 @@ declare module "node:fs" {
     isFile(): boolean;
   };
   export function existsSync(path: string): boolean;
+  export function realpathSync(path: string): string;
   export function unlinkSync(path: string): void;
   export function rmSync(path: string, opts?: { recursive?: boolean; force?: boolean }): void;
   export function mkdtempSync(prefix: string): string;
@@ -58,6 +59,7 @@ declare module "node:path" {
 
 declare module "node:os" {
   export function tmpdir(): string;
+  export function userInfo(): { username: string; uid: number; gid: number; homedir: string };
 }
 
 declare module "node:crypto" {
@@ -88,7 +90,13 @@ declare module "node:child_process" {
   export function execFileSync(
     cmd: string,
     args: string[],
-    opts?: { encoding?: "utf8"; cwd?: string; timeout?: number },
+    opts?: {
+      encoding?: "utf8";
+      cwd?: string;
+      timeout?: number;
+      env?: Record<string, string | undefined>;
+      stdio?: unknown;
+    },
   ): string;
 }
 
@@ -133,6 +141,10 @@ declare module "node:url" {
   export function pathToFileURL(path: string): URL;
 }
 
+interface ImportMeta {
+  url: string;
+}
+
 declare module "node:assert/strict" {
   const assert: {
     equal(a: unknown, b: unknown, msg?: string): void;
@@ -147,6 +159,13 @@ declare module "node:assert/strict" {
 
 declare module "node:test" {
   export function test(name: string, fn: () => unknown | Promise<unknown>): void;
+  export function test(
+    name: string,
+    opts: { timeout?: number },
+    fn: () => unknown | Promise<unknown>,
+  ): void;
+  export function before(fn: () => unknown | Promise<unknown>): void;
+  export function after(fn: () => unknown | Promise<unknown>): void;
 }
 
 declare function setInterval(handler: () => void, ms: number): unknown;

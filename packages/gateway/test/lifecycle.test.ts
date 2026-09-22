@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { userInfo } from "node:os";
+import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
-import { createFakeAdapter, runDoctor, startDaemon, TestClock } from "../dist/index.js";
+import { createFakeAdapter, probeLingerEnabled, runDoctor, startDaemon, TestClock } from "../dist/index.js";
 import { cleanup, handle, ROUTE, tmpDir } from "./helpers.ts";
 
 const cliPath = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
@@ -65,6 +66,8 @@ test("doctor does not enable linger; systemd template is install-inert and avoid
   assert.match(unit, /ExecStart=/);
   assert.match(unit, /\/usr\/bin\/node/);
   assert.match(unit, /TEMPLATE/);
+  assert.match(unit, /StartLimitBurst=/);
+  assert.match(unit, /StartLimitIntervalSec=/);
   const pkg = JSON.parse(readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8")) as {
     files: string[];
   };
@@ -125,6 +128,22 @@ test("restart still delivers once-at to fake sink; second daemon fails", () => {
   }, /profile lock held/);
   assert.equal(existsSync(join(dir, "gateway.sock")), true);
   d2.stop();
+
+  const clock3 = new TestClock(Date.parse(at) + 1_000);
+  const adapter3 = createFakeAdapter({ sinkPath: sink });
+  const d3 = startDaemon({
+    profileDir: dir,
+    routes: [ROUTE],
+    clock: clock3,
+    adapter: adapter3,
+    bindSocket: true,
+    tickIntervalMs: 60_000,
+  });
+  assert.equal(adapter3.sent.length, 0);
+  assert.equal(adapter2.sent.length, 1);
+  const sinkText = readFileSync(sink, "utf8");
+  assert.equal(sinkText.match(/restart-once/g)?.length, 1);
+  d3.stop();
   cleanup(dir);
 });
 
@@ -157,12 +176,94 @@ test("doctor CLI prints report and does not start a daemon", async () => {
   assert.equal(stderr.includes("gateway listening"), false);
   assert.equal(existsSync(join(dir, "gateway.sock")), false);
   assert.equal(existsSync(join(dir, "gateway.sqlite")), false);
-  const report = JSON.parse(stdout) as { ok: boolean; logoutSurvivalClaim: boolean; lingerEnabled: boolean };
+  const report = JSON.parse(stdout) as {
+    ok: boolean;
+    logoutSurvivalClaim: boolean;
+    lingerEnabled: boolean;
+    lingerPrecondition: boolean;
+    unitEvidence: boolean;
+  };
   assert.equal(report.ok, true);
-  assert.equal(report.logoutSurvivalClaim, report.lingerEnabled);
-  if (!report.lingerEnabled) {
+  assert.equal(report.lingerPrecondition, report.lingerEnabled);
+  if (!report.lingerEnabled || !report.unitEvidence) {
     assert.equal(report.logoutSurvivalClaim, false);
+  } else {
+    assert.equal(report.logoutSurvivalClaim, true);
+  }
+  if (!report.lingerEnabled) {
     assert.match(stderr, /linger/i);
   }
   cleanup(dir);
+});
+
+test("logoutSurvivalClaim requires linger and unit evidence", () => {
+  const dir = tmpDir();
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
+  const lingerOnly = runDoctor({ profileDir: dir, nodePath: process.execPath, lingerEnabled: true });
+  assert.equal(lingerOnly.ok, true);
+  assert.equal(lingerOnly.lingerEnabled, true);
+  assert.equal(lingerOnly.lingerPrecondition, true);
+  assert.equal(lingerOnly.unitEvidence, false);
+  assert.equal(lingerOnly.logoutSurvivalClaim, false);
+  const both = runDoctor({
+    profileDir: dir,
+    nodePath: process.execPath,
+    lingerEnabled: true,
+    unitEvidence: true,
+  });
+  assert.equal(both.ok, true);
+  assert.equal(both.unitEvidence, true);
+  assert.equal(both.logoutSurvivalClaim, true);
+  const unitFile = join(dir, "pi-hermes-gateway@.service");
+  writeFileSync(unitFile, "# TEMPLATE ONLY\n");
+  const viaFile = runDoctor({
+    profileDir: dir,
+    nodePath: process.execPath,
+    lingerEnabled: true,
+    unitFile,
+  });
+  assert.equal(viaFile.unitEvidence, true);
+  assert.equal(viaFile.logoutSurvivalClaim, true);
+  cleanup(dir);
+});
+
+test("doctor profile path check resolves relative ./profile dirs", () => {
+  const dir = tmpDir();
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
+  const rel = `./${relative(process.cwd(), dir)}`;
+  const report = runDoctor({ profileDir: rel, nodePath: process.execPath, lingerEnabled: false });
+  assert.equal(report.ok, true);
+  assert.ok(report.checks.some((c) => c.id === "profile-dirs" && c.ok === true));
+  cleanup(dir);
+});
+
+test("doctor rejects CLI realpath under ~/.pi/agent/npm", () => {
+  const dir = tmpDir();
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
+  const banned = runDoctor({
+    profileDir: dir,
+    nodePath: process.execPath,
+    cliPath: "/home/x/.pi/agent/npm/lib/node_modules/pi-hermes-gateway-core/dist/cli.js",
+    lingerEnabled: true,
+    unitEvidence: true,
+  });
+  assert.equal(banned.ok, false);
+  assert.equal(banned.logoutSurvivalClaim, false);
+  assert.ok(banned.checks.some((c) => (c.id === "cli-path" || c.id === "node-path") && c.ok === false));
+  cleanup(dir);
+});
+
+test("linger probe uses os username and rejects slash in the name", () => {
+  const lingerDir = tmpDir();
+  mkdirSync(lingerDir, { recursive: true });
+  assert.equal(probeLingerEnabled({ user: "../../../../etc", lingerDir }), false);
+  assert.equal(probeLingerEnabled({ user: "foo/bar", lingerDir }), false);
+  const user = userInfo().username;
+  assert.equal(user.includes("/"), false);
+  writeFileSync(join(lingerDir, user), "");
+  assert.equal(probeLingerEnabled({ lingerDir, env: { USER: "nope", LOGNAME: "nope" } }), true);
+  cleanup(lingerDir);
 });

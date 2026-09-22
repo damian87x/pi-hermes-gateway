@@ -2,6 +2,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 import { loadSendAdapter } from "./adapter-loader.js";
 import type { SendAdapter } from "./adapter.js";
 import { approvePending } from "./core.js";
@@ -21,7 +22,7 @@ function commandIndex(name: string): number {
   const args = process.argv.slice(2);
   for (let i = 0; i < args.length; i += 1) {
     const cur = args[i];
-    if (cur === "--profile" || cur === "--restore") {
+    if (cur === "--profile" || cur === "--restore" || cur === "--node") {
       i += 1;
       continue;
     }
@@ -33,7 +34,7 @@ function commandIndex(name: string): number {
 const profileArg = arg("--profile");
 if (!profileArg) {
   process.stderr.write(
-    "usage: pi-hermes-gateway-core --profile DIR [--restore BACKUP] [--resume-dispatch]\n       pi-hermes-gateway-core --profile DIR approve <id>\n       pi-hermes-gateway-core --profile DIR doctor\n",
+    "usage: pi-hermes-gateway-core --profile DIR [--restore BACKUP] [--resume-dispatch]\n       pi-hermes-gateway-core --profile DIR approve <id>\n       pi-hermes-gateway-core --profile DIR [--node PATH] doctor\n",
   );
   process.exit(2);
 }
@@ -68,11 +69,12 @@ if (approveAt !== -1) {
 
 const doctorAt = commandIndex("doctor");
 if (doctorAt !== -1) {
-  const report = runDoctor({ profileDir, nodePath: process.execPath });
+  const nodePath = arg("--node") ?? process.execPath;
+  const cliPath = fileURLToPath(import.meta.url);
+  const report = runDoctor({ profileDir, nodePath, cliPath });
   process.stdout.write(`${JSON.stringify(report)}\n`);
-  const linger = report.checks.find((c) => c.id === "linger");
-  if (linger && linger.severity === "warn") {
-    process.stderr.write(`${linger.message}\n`);
+  for (const check of report.checks) {
+    if (check.severity === "warn") process.stderr.write(`${check.message}\n`);
   }
   process.exit(report.ok ? 0 : 1);
 }

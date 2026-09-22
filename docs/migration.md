@@ -20,4 +20,4 @@ S1 implements: refuse schema newer than the binary; backup before migrate (`node
 
 ## Distribution
 
-Daemon-side packages (protocol, gateway; later adapters) are ordinary npm packages: no `pi` key, no Pi peers, installed in an operator-managed prefix — never `ExecStart` into a Pi agent npm prefix. The shipped systemd user unit is a template only. Companions are the only Pi packages. npm scope, provenance publishing identity, and release permission are owner prerequisites. No publication in S1.
+Daemon-side packages (protocol, gateway; later adapters) are ordinary npm packages: no `pi` key, no Pi peers, installed in an operator-managed prefix — never `ExecStart` into a Pi agent npm prefix. The shipped systemd user unit is a template only. Companions are the only Pi packages. npm scope, provenance publishing identity, and release permission are owner prerequisites. S6 proves packed tarballs install in a disposable npm home; no publication is performed.

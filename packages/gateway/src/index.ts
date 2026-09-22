@@ -35,6 +35,7 @@ export { profilePaths, ensureProfileDir } from "./profile.js";
 export {
   runDoctor,
   probeLingerEnabled,
+  probeUnitEvidence,
   containsPiAgentNpm,
   type DoctorCheck,
   type DoctorCheckId,

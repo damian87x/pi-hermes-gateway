@@ -1,10 +1,11 @@
-import { existsSync, statSync } from "node:fs";
-import { isAbsolute, join } from "node:path";
+import { existsSync, realpathSync, statSync } from "node:fs";
+import { userInfo } from "node:os";
+import { isAbsolute, join, resolve } from "node:path";
 import process from "node:process";
 import { DatabaseSync } from "node:sqlite";
 import { profilePaths } from "./profile.js";
 
-export type DoctorCheckId = "node-path" | "node-sqlite" | "profile-dirs" | "linger";
+export type DoctorCheckId = "node-path" | "cli-path" | "node-sqlite" | "profile-dirs" | "linger" | "unit";
 
 export type DoctorCheck = {
   id: DoctorCheckId;
@@ -16,6 +17,8 @@ export type DoctorCheck = {
 export type DoctorReport = {
   ok: boolean;
   lingerEnabled: boolean;
+  lingerPrecondition: boolean;
+  unitEvidence: boolean;
   logoutSurvivalClaim: boolean;
   checks: DoctorCheck[];
 };
@@ -27,6 +30,9 @@ export type DoctorOptions = {
   lingerDir?: string;
   lingerUser?: string;
   env?: Record<string, string | undefined>;
+  cliPath?: string;
+  unitEvidence?: boolean;
+  unitFile?: string;
 };
 
 const PI_AGENT_NPM = "/.pi/agent/npm";
@@ -36,19 +42,46 @@ export function containsPiAgentNpm(path: string): boolean {
   return norm.includes(`${PI_AGENT_NPM}/`) || norm.endsWith(PI_AGENT_NPM) || norm.includes("~/.pi/agent/npm");
 }
 
-export function probeLingerEnabled(opts?: { user?: string; lingerDir?: string; env?: Record<string, string | undefined> }): boolean {
-  const env = opts?.env ?? process.env;
-  const user = opts?.user ?? env.USER ?? env.LOGNAME ?? "";
-  if (!user) return false;
+function lingerUsername(opts?: { user?: string }): string {
+  if (opts?.user !== undefined) return opts.user;
+  try {
+    return userInfo().username;
+  } catch {
+    return "";
+  }
+}
+
+export function probeLingerEnabled(opts?: {
+  user?: string;
+  lingerDir?: string;
+  env?: Record<string, string | undefined>;
+}): boolean {
+  const user = lingerUsername(opts?.user !== undefined ? { user: opts.user } : {});
+  if (!user || user.includes("/")) return false;
   const dir = opts?.lingerDir ?? "/var/lib/systemd/linger";
   return existsSync(join(dir, user));
+}
+
+export function probeUnitEvidence(opts?: { unitEvidence?: boolean; unitFile?: string }): boolean {
+  if (opts?.unitEvidence === true) return true;
+  if (opts?.unitFile) return existsSync(opts.unitFile);
+  return false;
+}
+
+function inspectPath(path: string): string {
+  try {
+    return realpathSync(path);
+  } catch {
+    return path;
+  }
 }
 
 function checkNodePath(nodePath: string): DoctorCheck {
   if (!isAbsolute(nodePath)) {
     return { id: "node-path", ok: false, severity: "error", message: "Node path must be absolute" };
   }
-  if (containsPiAgentNpm(nodePath)) {
+  const inspected = inspectPath(nodePath);
+  if (containsPiAgentNpm(nodePath) || containsPiAgentNpm(inspected)) {
     return {
       id: "node-path",
       ok: false,
@@ -60,6 +93,19 @@ function checkNodePath(nodePath: string): DoctorCheck {
     return { id: "node-path", ok: false, severity: "error", message: "Node path does not exist" };
   }
   return { id: "node-path", ok: true, severity: "info", message: `absolute Node path ${nodePath}` };
+}
+
+function checkCliPath(cliPath: string): DoctorCheck {
+  const inspected = inspectPath(cliPath);
+  if (containsPiAgentNpm(cliPath) || containsPiAgentNpm(inspected)) {
+    return {
+      id: "cli-path",
+      ok: false,
+      severity: "error",
+      message: "CLI must not be under the Pi agent npm prefix",
+    };
+  }
+  return { id: "cli-path", ok: true, severity: "info", message: `CLI path ${inspected}` };
 }
 
 function checkSqlite(): DoctorCheck {
@@ -101,8 +147,11 @@ function checkProfileDirs(profileDir: string): DoctorCheck {
   if ((st.mode & 0o777) !== 0o700) {
     return { id: "profile-dirs", ok: false, severity: "error", message: "profile directory mode must be 0700" };
   }
+  const resolvedProfile = resolve(profileDir);
   const paths = profilePaths(profileDir);
-  if (!paths.lockPath.startsWith(profileDir) || !paths.socketPath.startsWith(profileDir)) {
+  const lockResolved = resolve(paths.lockPath);
+  const socketResolved = resolve(paths.socketPath);
+  if (!lockResolved.startsWith(resolvedProfile) || !socketResolved.startsWith(resolvedProfile)) {
     return { id: "profile-dirs", ok: false, severity: "error", message: "lock/socket paths escape profile directory" };
   }
   return {
@@ -125,6 +174,18 @@ function checkLinger(enabled: boolean): DoctorCheck {
   };
 }
 
+function checkUnit(evidence: boolean, lingerEnabled: boolean): DoctorCheck {
+  if (evidence) {
+    return { id: "unit", ok: true, severity: "info", message: "user unit evidence present" };
+  }
+  return {
+    id: "unit",
+    ok: true,
+    severity: lingerEnabled ? "warn" : "info",
+    message: "no user unit evidence; linger is a precondition only; doctor does not enable the unit",
+  };
+}
+
 export function runDoctor(opts: DoctorOptions): DoctorReport {
   const nodePath = opts.nodePath ?? process.execPath;
   const lingerEnabled =
@@ -135,17 +196,26 @@ export function runDoctor(opts: DoctorOptions): DoctorReport {
           ...(opts.lingerDir ? { lingerDir: opts.lingerDir } : {}),
           ...(opts.env ? { env: opts.env } : {}),
         });
+  const unitEvidence = probeUnitEvidence({
+    ...(opts.unitEvidence !== undefined ? { unitEvidence: opts.unitEvidence } : {}),
+    ...(opts.unitFile ? { unitFile: opts.unitFile } : {}),
+  });
   const checks: DoctorCheck[] = [
     checkNodePath(nodePath),
     checkSqlite(),
     checkProfileDirs(opts.profileDir),
     checkLinger(lingerEnabled),
+    checkUnit(unitEvidence, lingerEnabled),
   ];
+  if (opts.cliPath) checks.splice(1, 0, checkCliPath(opts.cliPath));
   const hardOk = checks.every((c) => c.severity !== "error" || c.ok);
+  const lingerPrecondition = lingerEnabled;
   return {
     ok: hardOk,
     lingerEnabled,
-    logoutSurvivalClaim: hardOk && lingerEnabled,
+    lingerPrecondition,
+    unitEvidence,
+    logoutSurvivalClaim: hardOk && lingerPrecondition && unitEvidence,
     checks,
   };
 }

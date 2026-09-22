@@ -5,6 +5,8 @@
 [Unit]
 Description=pi-hermes-gateway profile %i (template)
 After=default.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
 
 [Service]
 Type=simple
