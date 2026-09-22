@@ -1,0 +1,18 @@
+# TEMPLATE ONLY. Operator copies this unit and fills absolute paths.
+# Installation is passive: do not enable this unit from npm or Pi install scripts.
+# ExecStart must use an operator-managed prefix (example: /usr/local/lib/pi-hermes-gateway).
+
+[Unit]
+Description=pi-hermes-gateway profile %i (template)
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/node /usr/local/lib/pi-hermes-gateway/dist/cli.js --profile %h/.config/pi-hermes-gateway/%i
+WorkingDirectory=/usr/local/lib/pi-hermes-gateway
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

@@ -116,9 +116,12 @@ declare module "node:process" {
     getgid(): number;
     exit(code: number): never;
     argv: string[];
+    execPath: string;
+    env: Record<string, string | undefined>;
     versions: { node: string; sqlite?: string };
     cwd(): string;
     on(ev: string, fn: (...args: unknown[]) => void): void;
+    stdout: { write(s: string): void };
     stderr: { write(s: string): void };
     kill(pid: number, signal?: number | string): boolean;
   };

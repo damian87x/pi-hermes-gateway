@@ -32,3 +32,12 @@ export { zonedLocalInstant, dailyInstantsInRange, onceInstant } from "./schedule
 export { SCHEMA_VERSION, Store } from "./store.js";
 export { sendIpc } from "./ipc.js";
 export { profilePaths, ensureProfileDir } from "./profile.js";
+export {
+  runDoctor,
+  probeLingerEnabled,
+  containsPiAgentNpm,
+  type DoctorCheck,
+  type DoctorCheckId,
+  type DoctorOptions,
+  type DoctorReport,
+} from "./doctor.js";

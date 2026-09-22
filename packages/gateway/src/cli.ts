@@ -6,6 +6,7 @@ import { loadSendAdapter } from "./adapter-loader.js";
 import type { SendAdapter } from "./adapter.js";
 import { approvePending } from "./core.js";
 import { startDaemon } from "./daemon.js";
+import { runDoctor } from "./doctor.js";
 import { profilePaths } from "./profile.js";
 import { Store } from "./store.js";
 import type { DeliveryRoute } from "pi-hermes-gateway-protocol";
@@ -32,7 +33,7 @@ function commandIndex(name: string): number {
 const profileArg = arg("--profile");
 if (!profileArg) {
   process.stderr.write(
-    "usage: pi-hermes-gateway-core --profile DIR [--restore BACKUP] [--resume-dispatch]\n       pi-hermes-gateway-core --profile DIR approve <id>\n",
+    "usage: pi-hermes-gateway-core --profile DIR [--restore BACKUP] [--resume-dispatch]\n       pi-hermes-gateway-core --profile DIR approve <id>\n       pi-hermes-gateway-core --profile DIR doctor\n",
   );
   process.exit(2);
 }
@@ -63,6 +64,17 @@ if (approveAt !== -1) {
     store.close();
   }
   process.exit(0);
+}
+
+const doctorAt = commandIndex("doctor");
+if (doctorAt !== -1) {
+  const report = runDoctor({ profileDir, nodePath: process.execPath });
+  process.stdout.write(`${JSON.stringify(report)}\n`);
+  const linger = report.checks.find((c) => c.id === "linger");
+  if (linger && linger.severity === "warn") {
+    process.stderr.write(`${linger.message}\n`);
+  }
+  process.exit(report.ok ? 0 : 1);
 }
 
 const restoreFromBackup = arg("--restore");

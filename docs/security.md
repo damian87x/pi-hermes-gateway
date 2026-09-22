@@ -43,7 +43,7 @@ Gateway-owned isolated child; discovery/tools off; empty cwd; evidence by value 
 
 ## Lifecycle and passive install
 
-Installation is passive. Start/enable of the OS service is a separate operator action. No npm/Pi lifecycle install scripts, no git hooks, no service units in this slice. Without linger, do not claim survival after logout. Terminal detach is not reboot survival.
+Installation is passive. Start/enable of the OS service is a separate operator action. No npm/Pi lifecycle install scripts, no git hooks. A systemd user unit **template** may ship under `packages/gateway/systemd/`; it is never enabled from this workspace and must not `ExecStart` under a Pi agent npm prefix. `doctor` does not enable linger. Without linger, do not claim survival after logout. Terminal detach is not reboot survival.
 
 ## Adapters
 
