@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
@@ -58,6 +58,31 @@ test("release script refuses publish and writes tarballs locally", { timeout: 18
       assert.equal(existsSync(join(dest, name)), true);
     }
   } finally {
+    rmSync(dest, { recursive: true, force: true });
+  }
+});
+
+test("release builds the workspace so packed tarballs contain dist JS even without a prior build", { timeout: 180_000 }, () => {
+  const tempRoot = mkdtempSync(join(tmpdir(), "s6-release-src-"));
+  const dest = mkdtempSync(join(tmpdir(), "s6-release-out-"));
+  try {
+    cpSync(root, tempRoot, { recursive: true, dereference: false });
+    for (const ws of ["protocol", "gateway", "adapter-telegram", "adapter-whatsapp", "adapter-slack", "pi-companion", "dashboard", "wiki"]) {
+      rmSync(join(tempRoot, "packages", ws, "dist"), { recursive: true, force: true });
+    }
+
+    execFileSync(join(tempRoot, "scripts", "release"), ["--out", dest], {
+      cwd: tempRoot,
+      encoding: "utf8",
+      stdio: "pipe",
+    });
+
+    for (const name of EXPECTED_TARBALLS) {
+      const listing = execFileSync("tar", ["-tzf", join(dest, name)], { encoding: "utf8" });
+      assert.match(listing, /^package\/dist\/.*\.js$/m, `${name} missing built dist JS`);
+    }
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
     rmSync(dest, { recursive: true, force: true });
   }
 });
