@@ -1,0 +1,45 @@
+{
+  "status": "PASS",
+  "candidateSha": null,
+  "candidateShaNote": "Avoid self-reference: candidateSha is the commit that contains this file. Independent validators must use git rev-parse HEAD after checkout of feat/s1-durable-core.",
+  "baseSha": "0025a43bac6d1ccf1f22d3917957788262d28945",
+  "changedPaths": [
+    ".github/workflows/ci.yml",
+    "docs/evidence/s6-ci/contract.md",
+    "docs/evidence/s6-ci/worker-summary.json",
+    "packages/gateway/test/release.test.ts",
+    "scripts/release"
+  ],
+  "gates": [
+    {
+      "id": "typecheck",
+      "command": "npm run typecheck",
+      "exitCode": 0
+    },
+    {
+      "id": "test",
+      "command": "npm test",
+      "exitCode": 0,
+      "counts": {
+        "protocol": { "tests": 43, "pass": 43, "fail": 0 },
+        "gateway": { "tests": 76, "pass": 76, "fail": 0 },
+        "adapterTelegram": { "tests": 10, "pass": 10, "fail": 0 },
+        "adapterWhatsapp": { "tests": 13, "pass": 13, "fail": 0 },
+        "adapterSlack": { "tests": 13, "pass": 13, "fail": 0 },
+        "piCompanion": { "tests": 3, "pass": 3, "fail": 0 },
+        "dashboard": { "tests": 13, "pass": 13, "fail": 0 },
+        "wiki": { "tests": 11, "pass": 11, "fail": 0 },
+        "total": { "tests": 182, "pass": 182, "fail": 0 }
+      }
+    }
+  ],
+  "unverified": [
+    "GitHub Actions runner execution of .github/workflows/ci.yml",
+    "systemd linger and logout survival on a real user session",
+    "operator copy/enable of the shipped user unit",
+    "npm scope ownership and publication",
+    "any live network, Telegram, WhatsApp, or Slack send"
+  ],
+  "blockers": [],
+  "nextAction": "Local commit on feat/s1-durable-core. No push/PR/merge/release. No systemctl enable or linger on. No npm publish."
+}

@@ -1,0 +1,84 @@
+#!/usr/bin/env node
+
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = dirname(dirname(fileURLToPath(import.meta.url)));
+const args = process.argv.slice(2);
+
+function refuse() {
+  console.error("refusing publish; local pack only");
+  process.exit(1);
+}
+
+for (const arg of args) {
+  if (arg === "publish" || arg === "--publish") refuse();
+}
+
+let out = join(root, "release");
+for (let i = 0; i < args.length; i++) {
+  const arg = args[i];
+  if (arg === "--out" || arg === "--pack-destination") {
+    const dest = args[i + 1];
+    if (!dest) {
+      console.error("missing pack destination");
+      process.exit(1);
+    }
+    out = dest;
+    i += 1;
+    continue;
+  }
+  if (arg.startsWith("--out=")) {
+    out = arg.slice("--out=".length);
+    continue;
+  }
+  console.error(`unknown argument: ${arg}`);
+  process.exit(1);
+}
+
+out = resolve(root, out);
+mkdirSync(out, { recursive: true });
+
+const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+const workspaces = manifest.workspaces;
+if (!Array.isArray(workspaces)) {
+  console.error("root package.json workspaces must be an array");
+  process.exit(1);
+}
+
+const home = mkdtempSync(join(tmpdir(), "pi-hermes-release-"));
+try {
+  const userconfig = join(home, ".npmrc");
+  const globalconfig = join(home, "npmrc-global");
+  writeFileSync(userconfig, "registry=http://127.0.0.1:9/\n");
+  writeFileSync(globalconfig, "registry=http://127.0.0.1:9/\n");
+  const env = {
+    ...process.env,
+    HOME: home,
+    npm_config_cache: join(home, "npm-cache"),
+    npm_config_prefix: join(home, "prefix"),
+    npm_config_userconfig: userconfig,
+    npm_config_globalconfig: globalconfig,
+    npm_config_registry: "http://127.0.0.1:9/",
+    npm_config_update_notifier: "false",
+    npm_config_audit: "false",
+    npm_config_fund: "false",
+  };
+
+  for (const ws of workspaces) {
+    const pkgDir = join(root, ws);
+    const pkg = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf8"));
+    if (pkg.private !== true) continue;
+    execFileSync("npm", ["pack", "--json", "--pack-destination", out, "--offline"], {
+      cwd: pkgDir,
+      encoding: "utf8",
+      env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  }
+} finally {
+  rmSync(home, { recursive: true, force: true });
+}
