@@ -29,6 +29,9 @@ export type RunWorkerJobOutcome =
 
 export async function runWorkerJob(job: RunWorkerJobInput, deps: RunWorkerJobDeps): Promise<RunWorkerJobOutcome> {
   const profile = (deps.loadProfile ?? loadWorkerProfile)(job);
+  if (deps.results.get(job.occurrenceId)) {
+    return { status: "rejected", reason: "duplicate" };
+  }
   const admit = deps.budget.admit();
   if (!admit.ok) {
     return { status: "rejected", reason: "budget_exhausted", message: admit.error.message };

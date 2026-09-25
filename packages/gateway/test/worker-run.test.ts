@@ -71,13 +71,15 @@ test("worker-run: exhausted budget is rejected without spawning", async () => {
 });
 
 test("worker-run: a second insert for the same occurrence is rejected", async () => {
-  const { deps, job, done } = setup(2);
+  const { marker, deps, job, done } = setup(1);
   try {
     const first = await runWorkerJob(job, deps);
     assert.equal(first.status, "accepted");
+    const pidAfterFirst = readFileSync(marker, "utf8");
     const second = await runWorkerJob(job, deps);
     assert.deepEqual(second, { status: "rejected", reason: "duplicate" });
     assert.equal(deps.results.list().length, 1);
+    assert.equal(readFileSync(marker, "utf8"), pidAfterFirst, "worker should not have spawned again");
   } finally {
     done();
   }
