@@ -42,3 +42,9 @@ export {
   type DoctorOptions,
   type DoctorReport,
 } from "./doctor.js";
+export {
+  runWorkerJob,
+  type RunWorkerJobDeps,
+  type RunWorkerJobInput,
+  type RunWorkerJobOutcome,
+} from "./worker/run.js";
