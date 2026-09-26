@@ -29,25 +29,35 @@ export type RunWorkerJobOutcome =
 
 export async function runWorkerJob(job: RunWorkerJobInput, deps: RunWorkerJobDeps): Promise<RunWorkerJobOutcome> {
   const profile = (deps.loadProfile ?? loadWorkerProfile)(job);
-  if (deps.results.get(job.occurrenceId)) {
+  if (!deps.results.claim(job.occurrenceId, deps.nowMs())) {
     return { status: "rejected", reason: "duplicate" };
   }
   const admit = deps.budget.admit();
   if (!admit.ok) {
+    deps.results.releaseUnstarted(job.occurrenceId);
     return { status: "rejected", reason: "budget_exhausted", message: admit.error.message };
   }
-  // job.executablePath is untrusted input and is never used as cliPath; only the loaded profile's path runs.
-  const result = await runWorker({
-    cliPath: profile.executablePath,
-    cliPrefixArgs: profile.args,
-    provider: deps.provider,
-    model: deps.model,
-    prompt: job.prompt,
-    cwd: deps.cwd,
-    timeoutMs: deps.timeoutMs,
-    maxOutputBytes: deps.maxOutputBytes,
-    ...(deps.env ? { env: deps.env } : {}),
-  });
-  const outcome = deps.results.insert(job.occurrenceId, result, deps.nowMs());
-  return outcome.status === "accepted" ? outcome : { status: "rejected", reason: "duplicate" };
+  try {
+    // job.executablePath is untrusted input; only the loaded profile's path runs.
+    const result = await runWorker({
+      cliPath: profile.executablePath,
+      cliPrefixArgs: profile.args,
+      provider: deps.provider,
+      model: deps.model,
+      prompt: job.prompt,
+      cwd: deps.cwd,
+      timeoutMs: deps.timeoutMs,
+      maxOutputBytes: deps.maxOutputBytes,
+      ...(deps.env ? { env: deps.env } : {}),
+    });
+    return { status: "accepted", row: deps.results.complete(job.occurrenceId, result, deps.nowMs()) };
+  } catch (error) {
+    // Spawn/result failures are uncertain: retain the claim, never silently retry.
+    try {
+      deps.results.interrupt(job.occurrenceId);
+    } catch (persistError) {
+      throw new AggregateError([error, persistError], "worker failed and claim status could not be persisted");
+    }
+    throw error;
+  }
 }

@@ -1,7 +1,17 @@
-import { copyFileSync, existsSync } from "node:fs";
+import { existsSync, mkdtempSync, renameSync, rmSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
+
+const MIGRATION_V2 = `
+CREATE TABLE worker_claims (
+  occurrence_id TEXT PRIMARY KEY,
+  status TEXT NOT NULL CHECK(status IN ('claimed', 'completed', 'interrupted')),
+  claimed_at_ms INTEGER NOT NULL,
+  result_json TEXT,
+  accepted_at_ms INTEGER
+);
+`;
 
 const MIGRATION_V1 = `
 CREATE TABLE IF NOT EXISTS meta (
@@ -109,6 +119,7 @@ export class Store {
   constructor(path: string) {
     this.path = path;
     this.db = new DatabaseSync(path);
+    this.db.exec("PRAGMA busy_timeout = 5000;");
     this.db.exec("PRAGMA journal_mode = WAL;");
     this.db.exec("PRAGMA foreign_keys = ON;");
   }
@@ -129,13 +140,26 @@ export class Store {
     let backedUpTo: string | null = null;
     if (version < SCHEMA_VERSION && this.path !== ":memory:" && existsSync(this.path)) {
       backedUpTo = `${this.path}.pre-migrate-v${version}-to-v${SCHEMA_VERSION}.bak`;
-      copyFileSync(this.path, backedUpTo);
+      // SQLite includes committed WAL pages; a raw file copy can omit them.
+      const tempDir = mkdtempSync(`${backedUpTo}.tmp-`);
+      try {
+        const snapshot = `${tempDir}/snapshot.sqlite`;
+        this.db.prepare("VACUUM INTO ?").run(snapshot);
+        renameSync(snapshot, backedUpTo);
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
     }
-    if (version < 1) {
-      this.db.exec(MIGRATION_V1);
-      this.db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
-      this.setMeta("dispatch_enabled", "1");
-      this.setMeta("quarantine", "0");
+    if (version < SCHEMA_VERSION) {
+      this.transaction(() => {
+        if (version < 1) {
+          this.db.exec(MIGRATION_V1);
+          this.setMeta("dispatch_enabled", "1");
+          this.setMeta("quarantine", "0");
+        }
+        if (version < 2) this.db.exec(MIGRATION_V2);
+        this.db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+      });
     }
     return { backedUpTo };
   }
