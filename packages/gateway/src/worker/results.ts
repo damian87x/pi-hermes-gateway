@@ -13,7 +13,7 @@ export type InsertOutcome =
 export type ClaimOutcome = "claimed" | "duplicate" | "budget_exhausted";
 
 export type ResultsStore = {
-  claim(occurrenceId: string, nowMs: number, dailyInvocationLimit: number): ClaimOutcome;
+  claim(occurrenceId: string, nowMs: () => number, dailyInvocationLimit: number): ClaimOutcome;
   interrupt(occurrenceId: string): void;
   complete(occurrenceId: string, value: unknown, nowMs: number): ResultRow;
   insert(occurrenceId: string, value: unknown, nowMs: number): InsertOutcome;
@@ -41,12 +41,14 @@ export function createResultsStore(store: Store): ResultsStore {
       // Every claim, whatever its later status, spends its UTC day's limit.
       return store.transaction(() => {
         if (db.prepare("SELECT 1 FROM worker_claims WHERE occurrence_id = ?").get(occurrenceId)) return "duplicate";
-        const dayStartMs = Math.floor(nowMs / DAY_MS) * DAY_MS;
+        // Sample under the writer lock, so a wait across UTC midnight cannot spend the previous day.
+        const claimedAtMs = nowMs();
+        const dayStartMs = Math.floor(claimedAtMs / DAY_MS) * DAY_MS;
         const used = db.prepare(
           "SELECT COUNT(*) AS n FROM worker_claims WHERE claimed_at_ms >= ? AND claimed_at_ms < ?",
         ).get(dayStartMs, dayStartMs + DAY_MS);
         if (Number(used?.n) >= dailyInvocationLimit) return "budget_exhausted";
-        db.prepare("INSERT INTO worker_claims(occurrence_id, status, claimed_at_ms) VALUES(?, 'claimed', ?)").run(occurrenceId, nowMs);
+        db.prepare("INSERT INTO worker_claims(occurrence_id, status, claimed_at_ms) VALUES(?, 'claimed', ?)").run(occurrenceId, claimedAtMs);
         return "claimed";
       });
     },

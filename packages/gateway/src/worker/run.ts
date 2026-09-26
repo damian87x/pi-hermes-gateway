@@ -28,7 +28,7 @@ export type RunWorkerJobOutcome =
 
 export async function runWorkerJob(job: RunWorkerJobInput, deps: RunWorkerJobDeps): Promise<RunWorkerJobOutcome> {
   const profile = (deps.loadProfile ?? loadWorkerProfile)(job);
-  const claim = deps.results.claim(job.occurrenceId, deps.nowMs(), deps.dailyInvocationLimit);
+  const claim = deps.results.claim(job.occurrenceId, deps.nowMs, deps.dailyInvocationLimit);
   if (claim === "duplicate") return { status: "rejected", reason: "duplicate" };
   if (claim === "budget_exhausted") {
     return { status: "rejected", reason: "budget_exhausted", message: "daily invocation budget exhausted" };

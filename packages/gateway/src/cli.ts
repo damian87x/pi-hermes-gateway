@@ -20,7 +20,8 @@ function arg(name: string): string | undefined {
   return process.argv[idx + 1];
 }
 
-function commandIndex(name: string): number {
+// The command is the first positional argument; later positionals are its operands.
+function commandIndex(): number {
   const args = process.argv.slice(2);
   for (let i = 0; i < args.length; i += 1) {
     const cur = args[i];
@@ -28,7 +29,7 @@ function commandIndex(name: string): number {
       i += 1;
       continue;
     }
-    if (cur === name) return i + 2;
+    if (!cur?.startsWith("--")) return i + 2;
   }
   return -1;
 }
@@ -42,9 +43,11 @@ if (!profileArg) {
 }
 const profileDir: string = profileArg;
 
-const approveAt = commandIndex("approve");
-if (approveAt !== -1) {
-  const id = process.argv[approveAt + 1];
+const commandAt = commandIndex();
+const command = commandAt === -1 ? undefined : process.argv[commandAt];
+
+if (command === "approve") {
+  const id = process.argv[commandAt + 1];
   if (!id || id.startsWith("--")) {
     process.stderr.write("usage: pi-hermes-gateway-core --profile DIR approve <id>\n");
     process.exit(2);
@@ -69,11 +72,10 @@ if (approveAt !== -1) {
   process.exit(0);
 }
 
-const workerAt = commandIndex("worker");
-if (workerAt !== -1) {
-  const profileId = process.argv[workerAt + 1];
-  const occurrenceId = process.argv[workerAt + 2];
-  if (!profileId || !occurrenceId || profileId.startsWith("--") || occurrenceId.startsWith("--") || process.argv[workerAt + 3] !== undefined) {
+if (command === "worker") {
+  const profileId = process.argv[commandAt + 1];
+  const occurrenceId = process.argv[commandAt + 2];
+  if (!profileId || !occurrenceId || profileId.startsWith("--") || occurrenceId.startsWith("--") || process.argv[commandAt + 3] !== undefined) {
     process.stderr.write("usage: pi-hermes-gateway-core --profile DIR worker <profile-id> <occurrence-id>\n");
     process.exit(2);
   }
@@ -96,8 +98,7 @@ if (workerAt !== -1) {
   process.exit(exitCode);
 }
 
-const doctorAt = commandIndex("doctor");
-if (doctorAt !== -1) {
+if (command === "doctor") {
   const nodePath = arg("--node") ?? process.execPath;
   const cliPath = fileURLToPath(import.meta.url);
   const report = runDoctor({ profileDir, nodePath, cliPath });

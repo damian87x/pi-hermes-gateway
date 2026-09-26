@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { Store } from "../dist/store.js";
 import { profilePaths } from "../dist/profile.js";
@@ -145,7 +145,7 @@ test("worker-run: crash after committed claim blocks restart before budget or sp
       import { Store } from ${JSON.stringify(new URL("../dist/store.js", import.meta.url).href)};
       import { createResultsStore } from ${JSON.stringify(new URL("../dist/worker/results.js", import.meta.url).href)};
       const store = new Store(process.argv[1]);
-      if (createResultsStore(store).claim("occ-1", 1000, 1) !== "claimed") process.exit(2);
+      if (createResultsStore(store).claim("occ-1", () => 1000, 1) !== "claimed") process.exit(2);
       process.kill(process.pid, "SIGKILL");
     `, dbPath], { encoding: "utf8", timeout: 5000 });
     assert.equal(child.signal, "SIGKILL", child.stderr);
@@ -271,6 +271,51 @@ test("worker-run: an interrupt write failure leaves the original claim blocking 
     reopen();
     assert.deepEqual(await runWorkerJob(job, deps), { status: "rejected", reason: "duplicate" });
   } finally {
+    done();
+  }
+});
+
+test("worker-run: admission samples the clock only after winning the writer lock", { timeout: 10000 }, async () => {
+  const { marker, deps, job, done, dbPath } = setup(1);
+  // Shared simulated clock: the lock holder advances it past UTC midnight before committing.
+  const clockPath = join(dirname(dbPath), "clock");
+  const midnight = Date.UTC(2026, 8, 27);
+  writeFileSync(clockPath, String(midnight - 1));
+  deps.nowMs = () => Number(readFileSync(clockPath, "utf8"));
+  const holder = spawn(process.execPath, ["--input-type=module", "-e", `
+    import { writeFileSync } from "node:fs";
+    import { DatabaseSync } from "node:sqlite";
+    const [dbPath, clockPath, midnight] = process.argv.slice(1);
+    const db = new DatabaseSync(dbPath);
+    db.exec("BEGIN IMMEDIATE");
+    process.send("locked");
+    // Another admission holds the lock across UTC midnight and spends the new day's invocation.
+    setTimeout(() => {
+      writeFileSync(clockPath, midnight);
+      db.prepare("INSERT INTO worker_claims(occurrence_id, status, claimed_at_ms) VALUES('occ-other', 'claimed', ?)").run(Number(midnight));
+      db.exec("COMMIT");
+      db.close();
+      process.disconnect();
+    }, 500);
+  `, dbPath, clockPath, String(midnight)], { stdio: ["ignore", "ignore", "pipe", "ipc"] });
+  try {
+    let stderr = "";
+    holder.stderr.on("data", (chunk) => { stderr += chunk; });
+    await new Promise((resolve, reject) => {
+      holder.once("message", resolve);
+      holder.once("exit", () => reject(new Error(`lock holder exited early: ${stderr}`)));
+    });
+    const outcome = await runWorkerJob(job, deps);
+    assert.deepEqual(outcome, { status: "rejected", reason: "budget_exhausted", message: "daily invocation budget exhausted" });
+    assert.equal(existsSync(marker), false, "worker should not spawn on the day already spent");
+    const reader = new Store(dbPath);
+    try {
+      assert.deepEqual(reader.db.prepare("SELECT occurrence_id FROM worker_claims").all().map((row) => row.occurrence_id), ["occ-other"]);
+    } finally {
+      reader.close();
+    }
+  } finally {
+    holder.kill("SIGKILL");
     done();
   }
 });

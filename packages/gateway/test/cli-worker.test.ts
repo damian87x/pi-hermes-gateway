@@ -7,6 +7,7 @@ import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+import { handle, openTestGw, ROUTE } from "./helpers.ts";
 
 const CLI = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
 const HOOK = fileURLToPath(new URL("./cli-worker-profile-hook.mjs", import.meta.url));
@@ -90,6 +91,56 @@ test("cli-worker: unknown profile is rejected without consuming the daily invoca
   assert.equal(accepted.status, 0, accepted.stderr);
   assert.equal(outcome(accepted).status, "accepted");
   assert.equal(spawns(), 1);
+});
+
+test("cli-worker: inherited registry names are unknown profiles and spend nothing", async (t) => {
+  await avoidUtcMidnight();
+  const { run, spawns, claims } = setup(t);
+  for (const profileId of ["__proto__", "constructor"]) {
+    const result = run([profileId, `occ-${profileId}`]);
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stderr, new RegExp(`unknown worker profile id "${profileId}"`));
+    assert.deepEqual(claims(), []);
+  }
+  assert.equal(spawns(), 0);
+  const accepted = run(["report", "occ-1"]);
+  assert.equal(accepted.status, 0, accepted.stderr);
+  assert.equal(outcome(accepted).status, "accepted");
+  assert.deepEqual(claims(), [{ occurrence_id: "occ-1", status: "completed" }]);
+  assert.equal(spawns(), 1);
+});
+
+test("cli-worker: the command is the first positional; `worker approve ID` never approves", (t) => {
+  const { profileDir, argv, env, spawns, claims } = setup(t);
+  const { gw, clock } = openTestGw({ dir: profileDir });
+  const created = handle(gw, "job.create", {
+    kind: "static-text", text: "needs-ok", route: ROUTE,
+    schedule: { type: "once", atUtc: "2026-01-01T12:00:00.000Z" }, requireApproval: true,
+  }, clock.nowMs());
+  gw.close();
+  assert.equal(created.ok, true);
+  const jobId = created.body.jobId;
+  const jobStatus = () => {
+    const db = new DatabaseSync(join(profileDir, "gateway.sqlite"), { readOnly: true });
+    try {
+      return db.prepare("SELECT status FROM jobs WHERE job_id = ?").get(jobId).status;
+    } finally {
+      db.close();
+    }
+  };
+  const worker = spawnSync(process.execPath, argv(["approve", jobId]), { encoding: "utf8", env: env(), timeout: 10_000 });
+  assert.equal(worker.status, 1, worker.stderr);
+  assert.match(worker.stderr, /unknown worker profile id "approve"/);
+  assert.doesNotMatch(worker.stderr, /approved/);
+  assert.equal(jobStatus(), "pending-approval");
+  assert.deepEqual(claims(), []);
+  assert.equal(spawns(), 0);
+  // The intended approve form still works.
+  const approve = spawnSync(process.execPath, [CLI, "--profile", profileDir, "approve", jobId], { encoding: "utf8", timeout: 10_000 });
+  assert.equal(approve.status, 0, approve.stderr);
+  assert.match(approve.stderr, /approved job .* -> active/);
+  assert.equal(jobStatus(), "active");
+  assert.deepEqual(claims(), []);
 });
 
 test("cli-worker: separate processes reject a repeated occurrence and a second occurrence the same UTC day", async (t) => {
