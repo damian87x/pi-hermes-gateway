@@ -87,7 +87,14 @@ function rpc(profileDir: string, method: string, body: unknown): Promise<Compani
           finish({ ok: true, available: true, body: parsed.body });
           return;
         }
-        finish({ ok: true, available: true, body: parsed });
+        finish({
+          ok: false,
+          available: false,
+          error: {
+            code: "daemon-unavailable",
+            message: typeof parsed?.body === "string" ? parsed.body : "gateway daemon rejected the request",
+          },
+        });
       } catch {
         sock.end();
         finish(UNAVAILABLE);
