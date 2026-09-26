@@ -138,20 +138,32 @@ export class Store {
       throw new Error(`schema version ${version} is newer than binary ${SCHEMA_VERSION}`);
     }
     let backedUpTo: string | null = null;
-    if (version < SCHEMA_VERSION && this.path !== ":memory:" && existsSync(this.path)) {
-      backedUpTo = `${this.path}.pre-migrate-v${version}-to-v${SCHEMA_VERSION}.bak`;
-      // SQLite includes committed WAL pages; a raw file copy can omit them.
-      const tempDir = mkdtempSync(`${backedUpTo}.tmp-`);
-      try {
-        const snapshot = `${tempDir}/snapshot.sqlite`;
-        this.db.prepare("VACUUM INTO ?").run(snapshot);
-        renameSync(snapshot, backedUpTo);
-      } finally {
-        rmSync(tempDir, { recursive: true, force: true });
-      }
-    }
     if (version < SCHEMA_VERSION) {
       this.transaction(() => {
+        // Recheck under the writer lock: only the winner may publish a backup.
+        const version = this.userVersion();
+        if (version > SCHEMA_VERSION) {
+          throw new Error(`schema version ${version} is newer than binary ${SCHEMA_VERSION}`);
+        }
+        if (version === SCHEMA_VERSION) return;
+        if (this.path !== ":memory:" && existsSync(this.path)) {
+          backedUpTo = `${this.path}.pre-migrate-v${version}-to-v${SCHEMA_VERSION}.bak`;
+          const tempDir = mkdtempSync(`${backedUpTo}.tmp-`);
+          try {
+            const snapshot = `${tempDir}/snapshot.sqlite`;
+            // VACUUM cannot run in a transaction. A separate WAL reader includes
+            // committed pages while our writer lock prevents any schema/data change.
+            const source = new DatabaseSync(this.path, { readOnly: true });
+            try {
+              source.prepare("VACUUM INTO ?").run(snapshot);
+            } finally {
+              source.close();
+            }
+            renameSync(snapshot, backedUpTo);
+          } finally {
+            rmSync(tempDir, { recursive: true, force: true });
+          }
+        }
         if (version < 1) {
           this.db.exec(MIGRATION_V1);
           this.setMeta("dispatch_enabled", "1");
