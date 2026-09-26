@@ -4,13 +4,14 @@ import { join } from "node:path";
 import { LIMITS, PROTOCOL_VERSION } from "pi-hermes-gateway-protocol";
 
 export type CompanionError = {
-  code: "daemon-unavailable";
+  code: "daemon-unavailable" | "daemon-rejected";
   message: string;
 };
 
 export type CompanionResult =
   | { ok: true; available: true; body: unknown }
-  | { ok: false; available: false; error: CompanionError };
+  | { ok: false; available: false; error: CompanionError }
+  | { ok: false; available: true; error: CompanionError };
 
 const UNAVAILABLE: CompanionResult = {
   ok: false,
@@ -89,9 +90,9 @@ function rpc(profileDir: string, method: string, body: unknown): Promise<Compani
         }
         finish({
           ok: false,
-          available: false,
+          available: true,
           error: {
-            code: "daemon-unavailable",
+            code: "daemon-rejected",
             message: typeof parsed?.body === "string" ? parsed.body : "gateway daemon rejected the request",
           },
         });
