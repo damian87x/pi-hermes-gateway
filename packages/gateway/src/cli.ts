@@ -8,7 +8,7 @@ import type { SendAdapter } from "./adapter.js";
 import { approvePending } from "./core.js";
 import { startDaemon } from "./daemon.js";
 import { runDoctor } from "./doctor.js";
-import { profilePaths } from "./profile.js";
+import { ensureProfileDir, profilePaths } from "./profile.js";
 import { Store } from "./store.js";
 import { createResultsStore } from "./worker/results.js";
 import { runWorkerJob } from "./worker/run.js";
@@ -80,6 +80,13 @@ if (command === "worker") {
     process.exit(2);
   }
   let exitCode = 1;
+  // Same ownership/mode guard as the daemon, before the admission ledger is opened.
+  try {
+    ensureProfileDir(profileDir);
+  } catch (err) {
+    process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
+    process.exit(exitCode);
+  }
   const store = new Store(profilePaths(profileDir).dbPath);
   try {
     store.migrate();

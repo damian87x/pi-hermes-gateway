@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -25,7 +25,8 @@ else setTimeout(() => process.stdout.write("worker ok\\n"), mode === "slow" ? 50
 function setup(t, mode = "ok") {
   const dir = mkdtempSync(join(tmpdir(), "cli-worker-"));
   const profileDir = join(dir, "profile");
-  mkdirSync(profileDir);
+  mkdirSync(profileDir, { mode: 0o700 });
+  chmodSync(profileDir, 0o700);
   const script = join(dir, "fake-worker.cjs");
   writeFileSync(script, FAKE_WORKER);
   const marker = join(dir, "marker");
@@ -78,6 +79,24 @@ test("cli-worker: rejects extra arguments and job-supplied executables before ad
   }
   assert.equal(existsSync(join(profileDir, "gateway.sqlite")), false);
   assert.equal(spawns(), 0);
+});
+
+test("cli-worker: an unsafe profile directory is refused before opening the ledger or spawning", async (t) => {
+  await avoidUtcMidnight();
+  const { profileDir, run, spawns, claims } = setup(t);
+  chmodSync(profileDir, 0o777);
+  const unsafe = run(["report", "occ-1"]);
+  assert.equal(unsafe.status, 1, unsafe.stderr);
+  assert.match(unsafe.stderr, /profile directory mode must be 0700/);
+  assert.equal(unsafe.stdout, "");
+  assert.equal(existsSync(join(profileDir, "gateway.sqlite")), false);
+  assert.equal(spawns(), 0);
+  chmodSync(profileDir, 0o700);
+  const accepted = run(["report", "occ-1"]);
+  assert.equal(accepted.status, 0, accepted.stderr);
+  assert.equal(outcome(accepted).status, "accepted");
+  assert.deepEqual(claims(), [{ occurrence_id: "occ-1", status: "completed" }]);
+  assert.equal(spawns(), 1);
 });
 
 test("cli-worker: unknown profile is rejected without consuming the daily invocation", async (t) => {
