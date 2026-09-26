@@ -134,6 +134,9 @@ function checkCliPath(cliPath: string, env?: Record<string, string | undefined>)
       message: "CLI must not be under the Pi agent npm prefix",
     };
   }
+  if (!existsSync(cliPath)) {
+    return { id: "cli-path", ok: false, severity: "warn", message: `CLI path does not exist: ${cliPath}` };
+  }
   return { id: "cli-path", ok: true, severity: "info", message: `CLI path ${inspected}` };
 }
 
