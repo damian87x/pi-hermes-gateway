@@ -1,7 +1,17 @@
-import { copyFileSync, existsSync } from "node:fs";
+import { existsSync, mkdtempSync, renameSync, rmSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
+
+const MIGRATION_V2 = `
+CREATE TABLE worker_claims (
+  occurrence_id TEXT PRIMARY KEY,
+  status TEXT NOT NULL CHECK(status IN ('claimed', 'completed', 'interrupted')),
+  claimed_at_ms INTEGER NOT NULL,
+  result_json TEXT,
+  accepted_at_ms INTEGER
+);
+`;
 
 const MIGRATION_V1 = `
 CREATE TABLE IF NOT EXISTS meta (
@@ -109,6 +119,7 @@ export class Store {
   constructor(path: string) {
     this.path = path;
     this.db = new DatabaseSync(path);
+    this.db.exec("PRAGMA busy_timeout = 5000;");
     this.db.exec("PRAGMA journal_mode = WAL;");
     this.db.exec("PRAGMA foreign_keys = ON;");
   }
@@ -127,15 +138,40 @@ export class Store {
       throw new Error(`schema version ${version} is newer than binary ${SCHEMA_VERSION}`);
     }
     let backedUpTo: string | null = null;
-    if (version < SCHEMA_VERSION && this.path !== ":memory:" && existsSync(this.path)) {
-      backedUpTo = `${this.path}.pre-migrate-v${version}-to-v${SCHEMA_VERSION}.bak`;
-      copyFileSync(this.path, backedUpTo);
-    }
-    if (version < 1) {
-      this.db.exec(MIGRATION_V1);
-      this.db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
-      this.setMeta("dispatch_enabled", "1");
-      this.setMeta("quarantine", "0");
+    if (version < SCHEMA_VERSION) {
+      this.transaction(() => {
+        // Recheck under the writer lock: only the winner may publish a backup.
+        const version = this.userVersion();
+        if (version > SCHEMA_VERSION) {
+          throw new Error(`schema version ${version} is newer than binary ${SCHEMA_VERSION}`);
+        }
+        if (version === SCHEMA_VERSION) return;
+        if (this.path !== ":memory:" && existsSync(this.path)) {
+          backedUpTo = `${this.path}.pre-migrate-v${version}-to-v${SCHEMA_VERSION}.bak`;
+          const tempDir = mkdtempSync(`${backedUpTo}.tmp-`);
+          try {
+            const snapshot = `${tempDir}/snapshot.sqlite`;
+            // VACUUM cannot run in a transaction. A separate WAL reader includes
+            // committed pages while our writer lock prevents any schema/data change.
+            const source = new DatabaseSync(this.path, { readOnly: true });
+            try {
+              source.prepare("VACUUM INTO ?").run(snapshot);
+            } finally {
+              source.close();
+            }
+            renameSync(snapshot, backedUpTo);
+          } finally {
+            rmSync(tempDir, { recursive: true, force: true });
+          }
+        }
+        if (version < 1) {
+          this.db.exec(MIGRATION_V1);
+          this.setMeta("dispatch_enabled", "1");
+          this.setMeta("quarantine", "0");
+        }
+        if (version < 2) this.db.exec(MIGRATION_V2);
+        this.db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+      });
     }
     return { backedUpTo };
   }
