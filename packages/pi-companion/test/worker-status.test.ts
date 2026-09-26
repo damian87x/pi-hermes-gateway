@@ -39,7 +39,7 @@ test("gateway_status distinguishes a daemon rejection from unavailability", asyn
   const socketPath = join(profileDir, "gateway.sock");
   const server = createServer((socket) => {
     socket.on("data", () => {
-      const payload = new TextEncoder().encode(JSON.stringify({ ok: false, body: "rejected" }));
+      const payload = new TextEncoder().encode(JSON.stringify({ ok: false, error: { code: "rejected_code", message: "rejected" } }));
       const frame = new Uint8Array(4 + payload.length);
       new DataView(frame.buffer).setUint32(0, payload.length, false);
       frame.set(payload, 4);
