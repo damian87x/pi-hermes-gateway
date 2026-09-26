@@ -4,13 +4,14 @@ import { join } from "node:path";
 import { LIMITS, PROTOCOL_VERSION } from "pi-hermes-gateway-protocol";
 
 export type CompanionError = {
-  code: "daemon-unavailable";
+  code: "daemon-unavailable" | "daemon-rejected";
   message: string;
 };
 
 export type CompanionResult =
   | { ok: true; available: true; body: unknown }
-  | { ok: false; available: false; error: CompanionError };
+  | { ok: false; available: false; error: CompanionError }
+  | { ok: false; available: true; error: CompanionError };
 
 const UNAVAILABLE: CompanionResult = {
   ok: false,
@@ -81,13 +82,24 @@ function rpc(profileDir: string, method: string, body: unknown): Promise<Compani
       const len = new DataView(acc.buffer, acc.byteOffset, 4).getUint32(0, false);
       if (len > LIMITS.maxFrameBytes || acc.length < 4 + len) return;
       try {
-        const parsed = JSON.parse(new TextDecoder().decode(acc.slice(4, 4 + len))) as { ok?: unknown; body?: unknown };
+        const parsed = JSON.parse(new TextDecoder().decode(acc.slice(4, 4 + len))) as {
+          ok?: unknown;
+          body?: unknown;
+          error?: { message?: unknown };
+        };
         sock.end();
         if (parsed && parsed.ok === true) {
           finish({ ok: true, available: true, body: parsed.body });
           return;
         }
-        finish({ ok: true, available: true, body: parsed });
+        finish({
+          ok: false,
+          available: true,
+          error: {
+            code: "daemon-rejected",
+            message: typeof parsed?.error?.message === "string" ? parsed.error.message : "gateway daemon rejected the request",
+          },
+        });
       } catch {
         sock.end();
         finish(UNAVAILABLE);
