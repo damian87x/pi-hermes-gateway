@@ -49,8 +49,6 @@ if (!Array.isArray(workspaces)) {
   process.exit(1);
 }
 
-execFileSync("npm", ["run", "build"], { cwd: root, stdio: "inherit" });
-
 const home = mkdtempSync(join(tmpdir(), "pi-hermes-release-"));
 try {
   const userconfig = join(home, ".npmrc");
@@ -69,6 +67,8 @@ try {
     npm_config_audit: "false",
     npm_config_fund: "false",
   };
+
+  execFileSync("npm", ["run", "build"], { cwd: root, stdio: "inherit", env });
 
   for (const ws of workspaces) {
     const pkgDir = join(root, ws);
