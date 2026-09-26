@@ -11,6 +11,7 @@ import {
   readlinkSync,
   rmSync,
   symlinkSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -98,12 +99,14 @@ test("release script refuses publish and writes tarballs locally", { timeout: 18
   }
 });
 
-test("release builds the workspace so packed tarballs contain dist JS even without a prior build", { timeout: 180_000 }, () => {
+test("release builds the workspace in an isolated npm environment and refuses publish", { timeout: 180_000 }, () => {
   const tempRoot = mkdtempSync(join(tmpdir(), "s6-release-src-"));
   const dest = mkdtempSync(join(tmpdir(), "s6-release-out-"));
+  const fakeHome = mkdtempSync(join(tmpdir(), "s6-release-home-"));
   try {
     copyTrackedFiles(root, tempRoot);
     linkNodeModules(root, tempRoot);
+    writeFileSync(join(fakeHome, ".npmrc"), "registry=http://127.0.0.1:1/\n");
     for (const ws of ["protocol", "gateway", "adapter-telegram", "adapter-whatsapp", "adapter-slack", "pi-companion", "dashboard", "wiki"]) {
       rmSync(join(tempRoot, "packages", ws, "dist"), { recursive: true, force: true });
     }
@@ -112,7 +115,21 @@ test("release builds the workspace so packed tarballs contain dist JS even witho
       cwd: tempRoot,
       encoding: "utf8",
       stdio: "pipe",
+      env: { ...process.env, HOME: fakeHome, npm_config_userconfig: join(fakeHome, ".npmrc") },
     });
+
+    let publishStatus = 0;
+    try {
+      execFileSync(join(tempRoot, "scripts", "release"), ["publish"], {
+        cwd: tempRoot,
+        encoding: "utf8",
+        stdio: "pipe",
+        env: { ...process.env, HOME: fakeHome, npm_config_userconfig: join(fakeHome, ".npmrc") },
+      });
+    } catch (err) {
+      publishStatus = (err as { status?: number }).status ?? 0;
+    }
+    assert.equal(publishStatus, 1);
 
     for (const name of EXPECTED_TARBALLS) {
       const listing = execFileSync("tar", ["-tzf", join(dest, name)], { encoding: "utf8" });
@@ -121,5 +138,6 @@ test("release builds the workspace so packed tarballs contain dist JS even witho
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
     rmSync(dest, { recursive: true, force: true });
+    rmSync(fakeHome, { recursive: true, force: true });
   }
 });
