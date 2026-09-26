@@ -10,6 +10,8 @@ import { startDaemon } from "./daemon.js";
 import { runDoctor } from "./doctor.js";
 import { profilePaths } from "./profile.js";
 import { Store } from "./store.js";
+import { createResultsStore } from "./worker/results.js";
+import { runWorkerJob } from "./worker/run.js";
 import type { DeliveryRoute } from "pi-hermes-gateway-protocol";
 
 function arg(name: string): string | undefined {
@@ -65,6 +67,33 @@ if (approveAt !== -1) {
     store.close();
   }
   process.exit(0);
+}
+
+const workerAt = commandIndex("worker");
+if (workerAt !== -1) {
+  const profileId = process.argv[workerAt + 1];
+  const occurrenceId = process.argv[workerAt + 2];
+  if (!profileId || !occurrenceId || profileId.startsWith("--") || occurrenceId.startsWith("--") || process.argv[workerAt + 3] !== undefined) {
+    process.stderr.write("usage: pi-hermes-gateway-core --profile DIR worker <profile-id> <occurrence-id>\n");
+    process.exit(2);
+  }
+  let exitCode = 1;
+  const store = new Store(profilePaths(profileDir).dbPath);
+  try {
+    store.migrate();
+    // Admission is durable in the profile DB: one attempted invocation per UTC day across processes.
+    const outcome = await runWorkerJob({ profileId, occurrenceId, prompt: "" }, {
+      dailyInvocationLimit: 1, results: createResultsStore(store), nowMs: Date.now,
+      provider: "", model: "", cwd: profileDir, timeoutMs: 60_000, maxOutputBytes: 1_048_576,
+    });
+    process.stdout.write(`${JSON.stringify(outcome)}\n`);
+    if (outcome.status === "accepted") exitCode = 0;
+  } catch (err) {
+    process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
+  } finally {
+    store.close();
+  }
+  process.exit(exitCode);
 }
 
 const doctorAt = commandIndex("doctor");

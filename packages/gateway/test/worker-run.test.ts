@@ -6,7 +6,6 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { Store } from "../dist/store.js";
 import { profilePaths } from "../dist/profile.js";
-import { DailyInvocationBudget } from "../dist/worker/budgets.js";
 import { createResultsStore } from "../dist/worker/results.js";
 import { runWorkerJob } from "../dist/worker/run.js";
 
@@ -26,7 +25,7 @@ function setup(limit = 1) {
   let store = new Store(dbPath);
   store.migrate();
   const deps = {
-    budget: new DailyInvocationBudget(limit),
+    dailyInvocationLimit: limit,
     results: createResultsStore(store),
     nowMs: () => 1000,
     provider: "fake",
@@ -113,12 +112,12 @@ test("worker-run: concurrent occurrence calls spawn once without spending duplic
   }
 });
 
-test("worker-run: budget denial releases only the unstarted claim", async () => {
+test("worker-run: budget denial leaves no claim behind", async () => {
   const { marker, deps, job, done } = setup(0);
   try {
     assert.equal((await runWorkerJob(job, deps)).reason, "budget_exhausted");
     assert.equal(existsSync(marker), false);
-    deps.budget = new DailyInvocationBudget(1);
+    deps.dailyInvocationLimit = 1;
     assert.equal((await runWorkerJob(job, deps)).status, "accepted");
   } finally {
     done();
@@ -146,7 +145,7 @@ test("worker-run: crash after committed claim blocks restart before budget or sp
       import { Store } from ${JSON.stringify(new URL("../dist/store.js", import.meta.url).href)};
       import { createResultsStore } from ${JSON.stringify(new URL("../dist/worker/results.js", import.meta.url).href)};
       const store = new Store(process.argv[1]);
-      if (!createResultsStore(store).claim("occ-1", 1000)) process.exit(2);
+      if (createResultsStore(store).claim("occ-1", 1000, 1) !== "claimed") process.exit(2);
       process.kill(process.pid, "SIGKILL");
     `, dbPath], { encoding: "utf8", timeout: 5000 });
     assert.equal(child.signal, "SIGKILL", child.stderr);
@@ -154,6 +153,10 @@ test("worker-run: crash after committed claim blocks restart before budget or sp
     assert.deepEqual(await runWorkerJob(job, deps), { status: "rejected", reason: "duplicate" });
     assert.equal(existsSync(marker), false);
     assert.equal(deps.results.get(job.occurrenceId), undefined);
+    // The crashed attempt still consumed the day's single invocation.
+    assert.equal((await runWorkerJob({ ...job, occurrenceId: "occ-2" }, deps)).reason, "budget_exhausted");
+    assert.equal(existsSync(marker), false);
+    deps.nowMs = () => 86_400_000;
     assert.equal((await runWorkerJob({ ...job, occurrenceId: "occ-2" }, deps)).status, "accepted");
   } finally {
     done();
@@ -197,22 +200,20 @@ test("worker-run: failure persisting a spawned result never releases its claim",
 });
 
 test("worker-run: concurrent processes sharing a profile spawn only once", { timeout: 10000 }, async () => {
-  const { marker, deps, job, done, dbPath } = setup();
+  const { marker, deps, job, done, dbPath } = setup(2);
   const children = [];
   try {
     const source = `
       import { Store } from ${JSON.stringify(new URL("../dist/store.js", import.meta.url).href)};
       import { createResultsStore } from ${JSON.stringify(new URL("../dist/worker/results.js", import.meta.url).href)};
       import { runWorkerJob } from ${JSON.stringify(new URL("../dist/worker/run.js", import.meta.url).href)};
-      import { DailyInvocationBudget } from ${JSON.stringify(new URL("../dist/worker/budgets.js", import.meta.url).href)};
       const store = new Store(${JSON.stringify(dbPath)});
-      const budget = new DailyInvocationBudget(1);
       process.once("message", async () => {
         const outcome = await runWorkerJob(${JSON.stringify(job)}, {
-          ...${JSON.stringify(deps)}, budget, results: createResultsStore(store),
+          ...${JSON.stringify(deps)}, results: createResultsStore(store),
           nowMs: () => 1000, loadProfile: () => (${JSON.stringify(deps.loadProfile())})
         });
-        console.log(JSON.stringify({ outcome, remaining: budget.admit().ok }));
+        console.log(JSON.stringify({ outcome }));
         store.close();
         process.disconnect();
       });
@@ -245,10 +246,12 @@ test("worker-run: concurrent processes sharing a profile spawn only once", { tim
     const outcomes = await finished;
     assert.equal(outcomes.filter(({ outcome }) => outcome.status === "accepted").length, 1);
     assert.deepEqual(outcomes.find(({ outcome }) => outcome.status === "rejected"), {
-      outcome: { status: "rejected", reason: "duplicate" }, remaining: true,
+      outcome: { status: "rejected", reason: "duplicate" },
     });
-    assert.equal(outcomes.find(({ outcome }) => outcome.status === "accepted").remaining, false);
     assert.equal(readFileSync(marker, "utf8").trim().split("\n").length, 1);
+    // The duplicate spent none of the shared limit of 2; the third then exhausts it.
+    assert.equal((await runWorkerJob({ ...job, occurrenceId: "occ-2" }, deps)).status, "accepted");
+    assert.equal((await runWorkerJob({ ...job, occurrenceId: "occ-3" }, deps)).reason, "budget_exhausted");
   } finally {
     for (const child of children) child.kill("SIGKILL");
     done();

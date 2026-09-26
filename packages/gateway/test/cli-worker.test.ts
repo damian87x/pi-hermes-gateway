@@ -1,0 +1,175 @@
+import assert from "node:assert/strict";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { test } from "node:test";
+import { setTimeout as sleep } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
+
+const CLI = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
+const HOOK = fileURLToPath(new URL("./cli-worker-profile-hook.mjs", import.meta.url));
+
+// argv after node: [marker, mode, ...worker CLI flags]
+const FAKE_WORKER = `
+const { appendFileSync } = require("node:fs");
+const [marker, mode] = process.argv.slice(2);
+appendFileSync(marker, process.pid + "\\n");
+if (mode === "fail") process.exit(3);
+if (mode === "hang") setInterval(() => {}, 1000);
+else setTimeout(() => process.stdout.write("worker ok\\n"), mode === "slow" ? 500 : 0);
+`;
+
+function setup(t, mode = "ok") {
+  const dir = mkdtempSync(join(tmpdir(), "cli-worker-"));
+  const profileDir = join(dir, "profile");
+  mkdirSync(profileDir);
+  const script = join(dir, "fake-worker.cjs");
+  writeFileSync(script, FAKE_WORKER);
+  const marker = join(dir, "marker");
+  t.after(() => {
+    // Workers run detached in their own process group; reap every one that started.
+    const pids = existsSync(marker) ? readFileSync(marker, "utf8").trim().split("\n").filter(Boolean) : [];
+    for (const pid of pids) {
+      try {
+        process.kill(-Number(pid), "SIGKILL");
+      } catch {
+        // already gone
+      }
+    }
+    rmSync(dir, { recursive: true, force: true });
+  });
+  const env = (profile = [process.execPath, script, marker, mode], extra = {}) => ({
+    ...process.env,
+    CLI_WORKER_TEST_PROFILE: JSON.stringify(profile),
+    ...extra,
+  });
+  const argv = (args) => ["--import", HOOK, CLI, "--profile", profileDir, "worker", ...args];
+  const run = (args, profile) => spawnSync(process.execPath, argv(args), { encoding: "utf8", env: env(profile), timeout: 10_000 });
+  const spawns = () => (existsSync(marker) ? readFileSync(marker, "utf8").trim().split("\n").length : 0);
+  const claims = () => {
+    const db = new DatabaseSync(join(profileDir, "gateway.sqlite"), { readOnly: true });
+    try {
+      return db.prepare("SELECT occurrence_id, status FROM worker_claims ORDER BY rowid").all().map((row) => ({ ...row }));
+    } finally {
+      db.close();
+    }
+  };
+  return { dir, profileDir, marker, env, argv, run, spawns, claims };
+}
+
+const outcome = (result) => JSON.parse(result.stdout);
+const exhausted = { status: "rejected", reason: "budget_exhausted", message: "daily invocation budget exhausted" };
+
+// These CLI runs use the real clock; keep a sequence from straddling UTC midnight.
+async function avoidUtcMidnight() {
+  const untilMidnight = 86_400_000 - (Date.now() % 86_400_000);
+  if (untilMidnight < 15_000) await sleep(untilMidnight + 100);
+}
+
+test("cli-worker: rejects extra arguments and job-supplied executables before admission", (t) => {
+  const { profileDir, run, spawns } = setup(t);
+  for (const args of [["report", "occ-1", "/bin/true"], ["report", "occ-1", "--executablePath=/bin/true"], ["report"], ["report", "--x"]]) {
+    const result = run(args);
+    assert.equal(result.status, 2, `${args.join(" ")}: ${result.stderr}`);
+    assert.match(result.stderr, /usage: .* worker <profile-id> <occurrence-id>/);
+  }
+  assert.equal(existsSync(join(profileDir, "gateway.sqlite")), false);
+  assert.equal(spawns(), 0);
+});
+
+test("cli-worker: unknown profile is rejected without consuming the daily invocation", async (t) => {
+  await avoidUtcMidnight();
+  const { run, spawns, claims } = setup(t);
+  const missing = run(["unknown", "occ-1"]);
+  assert.equal(missing.status, 1);
+  assert.match(missing.stderr, /unknown worker profile id "unknown"/);
+  assert.deepEqual(claims(), []);
+  const accepted = run(["report", "occ-1"]);
+  assert.equal(accepted.status, 0, accepted.stderr);
+  assert.equal(outcome(accepted).status, "accepted");
+  assert.equal(spawns(), 1);
+});
+
+test("cli-worker: separate processes reject a repeated occurrence and a second occurrence the same UTC day", async (t) => {
+  await avoidUtcMidnight();
+  const { run, spawns, claims } = setup(t);
+  const first = run(["report", "occ-1"]);
+  assert.equal(first.status, 0, first.stderr);
+  assert.deepEqual(outcome(first).row.value, { kind: "ok", text: "worker ok" });
+  const repeat = run(["report", "occ-1"]);
+  assert.equal(repeat.status, 1);
+  assert.deepEqual(outcome(repeat), { status: "rejected", reason: "duplicate" });
+  const other = run(["report", "occ-2"]);
+  assert.equal(other.status, 1);
+  assert.deepEqual(outcome(other), exhausted);
+  assert.equal(spawns(), 1);
+  assert.deepEqual(claims(), [{ occurrence_id: "occ-1", status: "completed" }]);
+});
+
+test("cli-worker: a failing worker still consumes the daily invocation", async (t) => {
+  await avoidUtcMidnight();
+  const { run, spawns } = setup(t, "fail");
+  const first = run(["report", "occ-1"]);
+  assert.equal(first.status, 0, first.stderr);
+  assert.deepEqual(outcome(first).row.value, { kind: "rejected", reason: "exit", code: 3 });
+  assert.deepEqual(outcome(run(["report", "occ-2"])), exhausted);
+  assert.equal(spawns(), 1);
+});
+
+test("cli-worker: a spawn error still consumes the daily invocation", async (t) => {
+  await avoidUtcMidnight();
+  const { dir, run, claims } = setup(t);
+  const missing = [join(dir, "no-such-worker")];
+  const first = run(["report", "occ-1"], missing);
+  assert.equal(first.status, 1);
+  assert.match(first.stderr, /ENOENT/);
+  assert.deepEqual(outcome(run(["report", "occ-2"])), exhausted);
+  assert.deepEqual(claims(), [{ occurrence_id: "occ-1", status: "interrupted" }]);
+});
+
+test("cli-worker: a CLI killed mid-run still consumes the daily invocation", { timeout: 15_000 }, async (t) => {
+  await avoidUtcMidnight();
+  const { marker, env, argv, run, spawns, claims } = setup(t, "hang");
+  const child = spawn(process.execPath, argv(["report", "occ-1"]), { env: env(), stdio: "ignore" });
+  const exited = new Promise((resolve) => child.once("exit", resolve));
+  t.after(() => child.kill("SIGKILL"));
+  const deadline = Date.now() + 10_000;
+  while (!existsSync(marker) || !readFileSync(marker, "utf8").endsWith("\n")) {
+    assert.ok(Date.now() < deadline, "worker never started");
+    await sleep(20);
+  }
+  child.kill("SIGKILL");
+  await exited;
+  assert.deepEqual(claims(), [{ occurrence_id: "occ-1", status: "claimed" }]);
+  assert.deepEqual(outcome(run(["report", "occ-2"])), exhausted);
+  assert.equal(spawns(), 1);
+});
+
+test("cli-worker: simultaneous independent CLI processes spawn at most one worker per day", { timeout: 20_000 }, async (t) => {
+  await avoidUtcMidnight();
+  const { dir, env, argv, spawns, claims } = setup(t, "slow");
+  const barrier = join(dir, "barrier");
+  mkdirSync(barrier);
+  const count = 4;
+  const runs = Array.from({ length: count }, (_, i) => new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, argv(["report", `occ-${i}`]), {
+      env: env(undefined, { CLI_WORKER_TEST_BARRIER: JSON.stringify({ dir: barrier, count }) }),
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => { stdout += chunk; });
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    child.once("error", reject);
+    child.once("close", (code) => resolve({ code, stdout, stderr }));
+  }));
+  const results = await Promise.all(runs);
+  for (const result of results) assert.notEqual(result.stdout, "", result.stderr);
+  const outcomes = results.map(outcome);
+  assert.equal(outcomes.filter((o) => o.status === "accepted").length, 1, JSON.stringify(outcomes));
+  assert.deepEqual(outcomes.filter((o) => o.status !== "accepted"), Array(count - 1).fill(exhausted));
+  assert.equal(spawns(), 1);
+  assert.equal(claims().length, 1);
+});

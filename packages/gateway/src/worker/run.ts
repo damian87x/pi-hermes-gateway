@@ -1,4 +1,3 @@
-import { DailyInvocationBudget } from "./budgets.js";
 import { loadWorkerProfile, type WorkerJobBody, type WorkerProfile } from "./profiles.js";
 import { runWorker } from "./runner.js";
 import type { ResultRow, ResultsStore } from "./results.js";
@@ -10,7 +9,7 @@ export type RunWorkerJobInput = WorkerJobBody & {
 };
 
 export type RunWorkerJobDeps = {
-  budget: DailyInvocationBudget;
+  dailyInvocationLimit: number;
   results: ResultsStore;
   nowMs: () => number;
   provider: string;
@@ -29,13 +28,10 @@ export type RunWorkerJobOutcome =
 
 export async function runWorkerJob(job: RunWorkerJobInput, deps: RunWorkerJobDeps): Promise<RunWorkerJobOutcome> {
   const profile = (deps.loadProfile ?? loadWorkerProfile)(job);
-  if (!deps.results.claim(job.occurrenceId, deps.nowMs())) {
-    return { status: "rejected", reason: "duplicate" };
-  }
-  const admit = deps.budget.admit();
-  if (!admit.ok) {
-    deps.results.releaseUnstarted(job.occurrenceId);
-    return { status: "rejected", reason: "budget_exhausted", message: admit.error.message };
+  const claim = deps.results.claim(job.occurrenceId, deps.nowMs(), deps.dailyInvocationLimit);
+  if (claim === "duplicate") return { status: "rejected", reason: "duplicate" };
+  if (claim === "budget_exhausted") {
+    return { status: "rejected", reason: "budget_exhausted", message: "daily invocation budget exhausted" };
   }
   try {
     // job.executablePath is untrusted input; only the loaded profile's path runs.
