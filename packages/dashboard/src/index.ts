@@ -1,3 +1,5 @@
+import { createHash, timingSafeEqual } from "node:crypto";
+import { lstatSync, readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -5,6 +7,9 @@ import { DatabaseSync } from "node:sqlite";
 export const LIST_LIMIT = 100;
 export const TEXT_LIMIT = 256;
 export const DEFAULT_ALLOWED_HOSTS: ReadonlySet<string> = new Set(["127.0.0.1", "localhost", "[::1]"]);
+const TOKEN_FILE = "dashboard.token";
+// Canonical form of 32 random bytes as hex (`openssl rand -hex 32`). Syntax only; randomness is the owner's job.
+const TOKEN_PATTERN = /^[0-9a-f]{64}$/;
 
 const PAGE = `<!doctype html>
 <meta charset="utf-8">
@@ -12,10 +17,17 @@ const PAGE = `<!doctype html>
 <body>
 <h1>pi-hermes-gateway dashboard</h1>
 <p>Read-only local view of gateway jobs. GET-only. No send.</p>
-<pre id="status">loading</pre>
+<p><label>Owner token <input id="token" type="password" autocomplete="off"></label>
+<button id="load" type="button">Load</button></p>
+<pre id="status">enter the token from the profile dashboard.token file</pre>
 <script>
-fetch("/api/status").then(function (r) { return r.text(); }).then(function (t) {
-  document.getElementById("status").textContent = t;
+document.getElementById("load").addEventListener("click", function () {
+  var input = document.getElementById("token");
+  var token = input.value.trim();
+  input.value = "";
+  fetch("/api/status", { headers: { Authorization: "Bearer " + token }, cache: "no-store" })
+    .then(function (r) { return r.text(); })
+    .then(function (t) { document.getElementById("status").textContent = t; });
 });
 </script>
 </body>
@@ -165,6 +177,44 @@ export function hostName(hostHeader: string): string {
   return host;
 }
 
+function isLoopbackBind(bind: string): boolean {
+  if (bind === "::1") return true;
+  const parts = bind.split(".");
+  return (
+    parts.length === 4 &&
+    parts[0] === "127" &&
+    parts.every((p) => /^(0|[1-9][0-9]{0,2})$/.test(p) && Number(p) <= 255)
+  );
+}
+
+function digest(value: string): Uint8Array {
+  return createHash("sha256").update(value).digest();
+}
+
+// Owner-provisioned capability: a regular 0600 file owned by this uid inside the profile dir.
+function readOwnerToken(profileDir: string): Uint8Array {
+  const path = join(profileDir, TOKEN_FILE);
+  let stat;
+  try {
+    stat = lstatSync(path);
+  } catch {
+    throw new Error(`${TOKEN_FILE} missing in profile directory`);
+  }
+  if (!stat.isFile()) throw new Error(`${TOKEN_FILE} must be a regular file, not a symlink`);
+  if (stat.uid !== process.getuid()) throw new Error(`${TOKEN_FILE} must be owned by the current user`);
+  if ((stat.mode & 0o077) !== 0) throw new Error(`${TOKEN_FILE} must not be group/other accessible (chmod 600)`);
+  const token = readFileSync(path, "utf8").trim();
+  if (!TOKEN_PATTERN.test(token)) {
+    throw new Error(`${TOKEN_FILE} must hold exactly 64 lowercase hex characters (openssl rand -hex 32)`);
+  }
+  return digest(token);
+}
+
+function bearerMatches(header: string | undefined, expected: Uint8Array): boolean {
+  if (typeof header !== "string" || !header.startsWith("Bearer ")) return false;
+  return timingSafeEqual(digest(header.slice("Bearer ".length)), expected);
+}
+
 function write(res: ServerResponse, code: number, type: string, body: string): void {
   const bytes = new TextEncoder().encode(body);
   res.statusCode = code;
@@ -182,11 +232,13 @@ function reject(res: ServerResponse, code: number, message: string): void {
 
 export function createDashboard(options: DashboardOptions): Dashboard {
   const bind = options.bind ?? "127.0.0.1";
+  if (!isLoopbackBind(bind)) {
+    throw new Error("dashboard bind must be a numeric loopback address (127.x.x.x or ::1)");
+  }
   const port = options.port ?? 0;
   const allowed = new Set(options.allowedHosts ?? DEFAULT_ALLOWED_HOSTS);
-  if (bind !== "0.0.0.0" && bind !== "::") {
-    allowed.add(bind.toLowerCase());
-  }
+  allowed.add(bind === "::1" ? "[::1]" : bind);
+  const ownerToken = readOwnerToken(options.profileDir);
   const dbPath = join(options.profileDir, "gateway.sqlite");
   const collect = options.collect ?? collectStatus;
 
@@ -208,6 +260,10 @@ export function createDashboard(options: DashboardOptions): Dashboard {
       return;
     }
     if (path === "/api/status") {
+      if (!bearerMatches(req.headers.authorization, ownerToken)) {
+        reject(res, 401, "unauthorized\n");
+        return;
+      }
       try {
         write(res, 200, "application/json; charset=utf-8", JSON.stringify(collect(dbPath)));
       } catch (err) {
