@@ -21,21 +21,25 @@ import { Store, type DeliveryRow } from "./store.js";
 export type ApproveResult = ProtocolResult<{ kind: "job" | "delivery"; id: string; status: string }>;
 
 export function approvePending(store: Store, id: string, nowMs: number): ApproveResult {
-  const job = store.getJob(id);
-  if (job) {
-    if (job.status !== "pending-approval") return fail("invalid_body", "job is not pending approval");
-    store.setJobStatus(id, "active");
-    store.insertAudit(nowMs, "job.approved", { jobId: id });
-    return ok({ kind: "job", id, status: "active" });
-  }
-  const row = store.getDelivery(id);
-  if (row) {
-    if (row.status !== "pending-approval") return fail("invalid_body", "delivery is not pending approval");
-    store.setDeliveryStatus(id, "queued");
-    store.insertAudit(nowMs, "delivery.approved", { deliveryId: id });
-    return ok({ kind: "delivery", id, status: "queued" });
-  }
-  return fail("invalid_body", "unknown id");
+  // Read, transition and audit under one writer lock so a concurrent cancel or quarantine
+  // either commits first (approval fails) or waits and overrides the approval.
+  return store.transaction((): ApproveResult => {
+    const job = store.getJob(id);
+    if (job) {
+      if (job.status !== "pending-approval") return fail("invalid_body", "job is not pending approval");
+      store.setJobStatus(id, "active");
+      store.insertAudit(nowMs, "job.approved", { jobId: id });
+      return ok({ kind: "job", id, status: "active" });
+    }
+    const row = store.getDelivery(id);
+    if (row) {
+      if (row.status !== "pending-approval") return fail("invalid_body", "delivery is not pending approval");
+      store.setDeliveryStatus(id, "queued");
+      store.insertAudit(nowMs, "delivery.approved", { deliveryId: id });
+      return ok({ kind: "delivery", id, status: "queued" });
+    }
+    return fail("invalid_body", "unknown id");
+  });
 }
 
 export type CatchUpPolicy = "skip" | "one-latest";
