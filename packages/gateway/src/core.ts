@@ -449,11 +449,15 @@ export class Gateway {
     this.audit("occurrence.skipped", { jobId, occurrenceId, scheduledInstantMs, reason });
   }
 
+  // Without a row the caller (admitJobOccurrence) already holds the transaction; with one, delivery,
+  // occurrence and audit commit together so a failed write leaves the row queued for re-evaluation.
   private refuseInvalidRoute(row?: DeliveryRow, extra?: Record<string, unknown>): void {
     if (row) {
-      this.store.setDeliveryStatus(row.delivery_id, "failed");
-      if (row.occurrence_id) this.store.setOccurrenceStatus(row.occurrence_id, "skipped");
-      this.audit("delivery.send.rejected", { deliveryId: row.delivery_id, reason: "invalid_route", ...extra });
+      this.store.transaction(() => {
+        this.store.setDeliveryStatus(row.delivery_id, "failed");
+        if (row.occurrence_id) this.store.setOccurrenceStatus(row.occurrence_id, "skipped");
+        this.audit("delivery.send.rejected", { deliveryId: row.delivery_id, reason: "invalid_route", ...extra });
+      });
       return;
     }
     this.audit("delivery.send.rejected", { reason: "invalid_route", ...extra });
@@ -611,9 +615,12 @@ export class Gateway {
       if (occ) this.store.setOccurrenceStatus(occ.occurrence_id, "claimed");
     }
     if (now >= row.not_after_ms) {
-      this.store.setDeliveryStatus(row.delivery_id, "expired");
-      if (row.occurrence_id) this.store.setOccurrenceStatus(row.occurrence_id, "expired");
-      this.audit("delivery.expired", { deliveryId: row.delivery_id, notAfter: row.not_after_ms });
+      // Delivery, occurrence and audit commit together; a failed write leaves the row queued for re-evaluation.
+      this.store.transaction(() => {
+        this.store.setDeliveryStatus(row.delivery_id, "expired");
+        if (row.occurrence_id) this.store.setOccurrenceStatus(row.occurrence_id, "expired");
+        this.audit("delivery.expired", { deliveryId: row.delivery_id, notAfter: row.not_after_ms });
+      });
       return;
     }
     const route = JSON.parse(row.route_json) as DeliveryRoute;
