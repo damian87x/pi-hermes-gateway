@@ -1237,3 +1237,58 @@ test("normal job receipts commit delivery, occurrence and audit together for dai
   gw.close();
   cleanup(dir);
 });
+
+test("enqueue commits its fuse debit, delivery and audit before adapter.send, outside any transaction", (t) => {
+  const dir = tmpDir();
+  const dbPath = join(dir, "gateway.sqlite");
+  const clock = new TestClock(T0);
+  const side = { db: null as DatabaseSync | null };
+  const seenAtSend: { inTransaction: boolean; depth: number; committed: unknown; tokens: unknown; audited: unknown }[] = [];
+  let depth = 0;
+  let maxDepth = 0;
+  let gw: Gateway | null = null;
+  const adapter: SendAdapter = {
+    manifest: plainManifest(),
+    send(envelope) {
+      const reader = side.db!;
+      seenAtSend.push({
+        inTransaction: gw!.store.db.isTransaction,
+        depth,
+        committed: reader.prepare("SELECT status FROM deliveries WHERE delivery_id = ?").get(envelope.deliveryId)?.status,
+        tokens: reader.prepare("SELECT tokens FROM fuse_account WHERE account_id = ?").get(ROUTE.accountId)?.tokens,
+        audited: reader
+          .prepare("SELECT COUNT(*) AS n FROM audit WHERE kind = 'delivery.enqueue' AND payload_json LIKE ?")
+          .get(`%${envelope.deliveryId}%`)?.n,
+      });
+      return { receiptLevel: "accepted", providerMessageId: `p:${envelope.deliveryId}` };
+    },
+  };
+  gw = openGateway({ dbPath, clock, routes: [ROUTE], adapter, tokenBucketCapacity: 2, tokenBucketRefillPerMs: 0 }).gateway;
+  const store = gw.store;
+  const transaction = store.transaction.bind(store);
+  t.mock.method(store, "transaction", <T>(fn: () => T): T => {
+    depth += 1;
+    maxDepth = Math.max(maxDepth, depth);
+    try {
+      return transaction(fn);
+    } finally {
+      depth -= 1;
+    }
+  });
+  side.db = new DatabaseSync(dbPath, { readOnly: true });
+  const res = handle(gw, "delivery.enqueue", { route: ROUTE, text: "after-commit", notAfter: T0 + 60_000 }, T0, "commit-first");
+  assert.equal(res.ok, true);
+  if (res.ok) assert.equal((res.body as { status: string }).status, "accepted", "the synchronous receipt is still reported");
+  assert.equal(seenAtSend.length, 1);
+  assert.deepEqual(seenAtSend[0], {
+    inTransaction: false,
+    depth: 0,
+    committed: "dispatching",
+    tokens: 1,
+    audited: 1,
+  });
+  assert.equal(maxDepth, 1, "admission and receipt each run in one un-nested transaction");
+  side.db.close();
+  gw.close();
+  cleanup(dir);
+});

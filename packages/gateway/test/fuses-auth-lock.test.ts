@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import { ADAPTER_API_VERSION, LIMITS, validateAdapterManifest } from "pi-hermes-gateway-protocol";
-import { acquireProfileLock, startDaemon, TestClock } from "../dist/index.js";
+import { acquireProfileLock, openGateway, startDaemon, TestClock, type Gateway } from "../dist/index.js";
+import { createFakeAdapter } from "../dist/fake-adapter.js";
 import { cleanup, handle, openTestGw, ROUTE, tmpDir, wire, frameLen } from "./helpers.ts";
 
 test("per-account token bucket refuses extra sends with audit", () => {
@@ -297,3 +299,104 @@ test("queued enqueue on revoked route: reopen tick does not send and audits refu
   gw2.close();
   cleanup(dir);
 });
+
+for (const fault of [
+  {
+    name: "queued delivery insert",
+    trigger: "BEFORE INSERT ON deliveries WHEN NEW.source = 'enqueue'",
+    requireApproval: false,
+    crossesNotAfter: false,
+    status: "accepted",
+  },
+  {
+    name: "queued admission audit",
+    trigger: "BEFORE INSERT ON audit WHEN NEW.kind = 'delivery.enqueue'",
+    requireApproval: false,
+    crossesNotAfter: false,
+    status: "accepted",
+  },
+  {
+    name: "pending-approval admission audit",
+    trigger: "BEFORE INSERT ON audit WHEN NEW.kind = 'delivery.enqueue'",
+    requireApproval: true,
+    crossesNotAfter: false,
+    status: "pending-approval",
+  },
+  {
+    name: "expired delivery insert",
+    trigger: "BEFORE INSERT ON deliveries WHEN NEW.source = 'enqueue'",
+    requireApproval: false,
+    crossesNotAfter: true,
+    status: "expired",
+  },
+  {
+    name: "expired audit",
+    trigger: "BEFORE INSERT ON audit WHEN NEW.kind = 'delivery.expired'",
+    requireApproval: false,
+    crossesNotAfter: true,
+    status: "expired",
+  },
+]) {
+  test(`enqueue whose ${fault.name} fails spends no fuse; the same requestId then admits once without a double send`, () => {
+    const dir = tmpDir();
+    const dbPath = join(dir, "gateway.sqlite");
+    const clock = new TestClock(Date.UTC(2026, 0, 1, 10, 0, 0));
+    const adapter = createFakeAdapter();
+    const open = () =>
+      openGateway({
+        dbPath,
+        clock,
+        routes: [ROUTE],
+        adapter,
+        tokenBucketCapacity: 1,
+        tokenBucketRefillPerMs: 0,
+        dailyCapPerRoute: 1,
+      }).gateway;
+    // Wire validation refuses notAfter <= now, so the expired branch needs the clock to pass notAfter
+    // after the request's first (validation) read.
+    const readNow = clock.nowMs.bind(clock);
+    let reads = -1;
+    clock.nowMs = () => (reads >= 0 && reads++ > 0 ? readNow() + 60_000 : readNow());
+    const gw = open();
+    const reqId = `enqueue-fault-${fault.name.replaceAll(" ", "-")}`;
+    const body = { route: ROUTE, text: "fuse", notAfter: readNow() + 60_000, requireApproval: fault.requireApproval };
+    const enqueue = (target: Gateway) => {
+      reads = fault.crossesNotAfter ? 0 : -1;
+      try {
+        return handle(target, "delivery.enqueue", body, readNow(), reqId);
+      } finally {
+        reads = -1;
+      }
+    };
+    const side = new DatabaseSync(dbPath);
+    side.exec(`CREATE TRIGGER block_enqueue ${fault.trigger} BEGIN SELECT RAISE(ABORT, 'injected enqueue write failure'); END`);
+    assert.throws(() => enqueue(gw), /injected enqueue write failure/);
+    assert.deepEqual(gw.store.listDeliveries(), []);
+    assert.equal(gw.store.getAccountFuse(ROUTE.accountId), undefined, "the token debit rolls back with the delivery");
+    const fuseRows = side.prepare("SELECT (SELECT COUNT(*) FROM fuse_account) + (SELECT COUNT(*) FROM fuse_route_day) AS n").get();
+    assert.equal(fuseRows?.n, 0, "neither the token nor the daily-cap debit is committed");
+    const kinds = gw.store.listAudit().map((a) => a.kind);
+    assert.equal(kinds.includes("delivery.enqueue"), false);
+    assert.equal(kinds.includes("delivery.expired"), false);
+    assert.equal(gw.store.getRequest(reqId), null, "a failed admission is not recorded as the request's response");
+    assert.equal(adapter.sent.length, 0);
+    side.exec("DROP TRIGGER block_enqueue");
+    side.close();
+
+    const retried = enqueue(gw);
+    assert.equal(retried.ok, true, "the retry is not rate limited by a phantom debit");
+    if (retried.ok) assert.equal((retried.body as { status: string }).status, fault.status);
+    assert.deepEqual(enqueue(gw), retried);
+    assert.equal(gw.store.listDeliveries().length, 1);
+    assert.equal(gw.store.getAccountFuse(ROUTE.accountId)?.tokens, 0, "exactly one token is spent");
+    assert.equal(adapter.sent.length, fault.status === "accepted" ? 1 : 0);
+    gw.close();
+
+    const reopened = open();
+    assert.deepEqual(enqueue(reopened), retried);
+    assert.equal(reopened.store.listDeliveries().length, 1);
+    assert.equal(adapter.sent.length, fault.status === "accepted" ? 1 : 0, "restart never resends");
+    reopened.close();
+    cleanup(dir);
+  });
+}

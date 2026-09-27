@@ -303,13 +303,34 @@ export class Gateway {
         error: { code: "text_too_long", message: "text exceeds adapter maxTextLength" },
       };
     }
-    const fuse = this.consumeFuses(route.value);
-    if (!fuse.ok) {
-      this.audit("delivery.enqueue.rejected", { reason: fuse.error.code, route: route.value });
-      return { ok: false, requestId: req.requestId, error: fuse.error };
-    }
-    const now = this.clock.nowMs();
-    if (now >= body.notAfter) {
+    // Fuse debit, delivery row and audit commit together: a debit without its row would rate-limit the
+    // same requestId's retry. The send runs only after commit, never inside the transaction.
+    const admitted = this.store.transaction((): GatewayResponse | { queuedDeliveryId: string } => {
+      const fuse = this.consumeFuses(route.value);
+      if (!fuse.ok) {
+        this.audit("delivery.enqueue.rejected", { reason: fuse.error.code, route: route.value });
+        return { ok: false, requestId: req.requestId, error: fuse.error };
+      }
+      const now = this.clock.nowMs();
+      if (now >= body.notAfter) {
+        const deliveryId = newId("dlv");
+        this.store.insertDelivery({
+          delivery_id: deliveryId,
+          job_id: null,
+          occurrence_id: null,
+          source: "enqueue",
+          route_json: JSON.stringify(route.value),
+          text: body.text,
+          not_after_ms: body.notAfter,
+          status: "expired",
+          request_id: req.requestId,
+          created_at_ms: now,
+          dispatch_intent: 0,
+        });
+        this.audit("delivery.expired", { deliveryId });
+        return this.okBody(req, { deliveryId, status: "expired" });
+      }
+      const pending = body.requireApproval === true;
       const deliveryId = newId("dlv");
       this.store.insertDelivery({
         delivery_id: deliveryId,
@@ -319,33 +340,20 @@ export class Gateway {
         route_json: JSON.stringify(route.value),
         text: body.text,
         not_after_ms: body.notAfter,
-        status: "expired",
+        status: pending ? "pending-approval" : "queued",
         request_id: req.requestId,
         created_at_ms: now,
         dispatch_intent: 0,
       });
-      this.audit("delivery.expired", { deliveryId });
-      return this.okBody(req, { deliveryId, status: "expired" });
-    }
-    const pending = body.requireApproval === true;
-    const deliveryId = newId("dlv");
-    this.store.insertDelivery({
-      delivery_id: deliveryId,
-      job_id: null,
-      occurrence_id: null,
-      source: "enqueue",
-      route_json: JSON.stringify(route.value),
-      text: body.text,
-      not_after_ms: body.notAfter,
-      status: pending ? "pending-approval" : "queued",
-      request_id: req.requestId,
-      created_at_ms: now,
-      dispatch_intent: 0,
+      this.audit("delivery.enqueue", { deliveryId, requestId: req.requestId, requireApproval: pending });
+      if (pending) return this.okBody(req, { deliveryId, status: "pending-approval" });
+      return { queuedDeliveryId: deliveryId };
     });
-    this.audit("delivery.enqueue", { deliveryId, requestId: req.requestId, requireApproval: pending });
-    if (!pending) this.processOutbox();
+    if (!("queuedDeliveryId" in admitted)) return admitted;
+    const deliveryId = admitted.queuedDeliveryId;
+    this.processOutbox();
     const row = this.store.getDelivery(deliveryId);
-    return this.okBody(req, { deliveryId, status: row?.status ?? (pending ? "pending-approval" : "queued") });
+    return this.okBody(req, { deliveryId, status: row?.status ?? "queued" });
   }
 
   approve(id: string): ApproveResult {
