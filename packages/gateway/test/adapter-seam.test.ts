@@ -595,6 +595,21 @@ const BLOCK_ACCEPTED_TRIGGER =
   "CREATE TRIGGER block_accepted BEFORE UPDATE OF status ON deliveries WHEN NEW.status = 'accepted' " +
   "BEGIN SELECT RAISE(ABORT, 'injected accepted write failure'); END";
 
+const OUTBOX_HALTED_RESPONSE = (requestId: string) => ({
+  ok: false,
+  requestId,
+  error: { code: "outbox_halted", message: "outbox is halted; restart the gateway to recover" },
+});
+
+function enqueueResult(gw: Gateway, clock: TestClock, text: string, requestId: string) {
+  return handle(gw, "delivery.enqueue", { route: ROUTE, text, notAfter: clock.nowMs() + 60_000 }, clock.nowMs(), requestId);
+}
+
+function snapshotRows(side: DatabaseSync): string {
+  const tables = ["jobs", "occurrences", "deliveries", "audit", "request_log", "fuse_account", "fuse_route_day", "meta"];
+  return JSON.stringify(tables.map((t) => side.prepare(`SELECT * FROM ${t}`).all()));
+}
+
 test("async receipt whose accepted write fails halts the outbox: no unhandled rejection, no resend, reopen recovers", async () => {
   const { adapter, pending } = reentrantDeferredAdapter(() => {});
   const { gw, clock, dir } = openWith(adapter, ROUTE);
@@ -602,7 +617,6 @@ test("async receipt whose accepted write fails halts the outbox: no unhandled re
   const side = new DatabaseSync(dbPath);
   let first = "";
   let second = "";
-  let third = "";
   const unhandled = await collectUnhandledRejections(async () => {
     first = enqueue(gw, clock, ROUTE, "first").deliveryId;
     second = enqueue(gw, clock, ROUTE, "second").deliveryId;
@@ -616,7 +630,7 @@ test("async receipt whose accepted write fails halts the outbox: no unhandled re
     side.exec("DROP TRIGGER block_accepted");
     gw.processOutbox();
     gw.tick();
-    third = enqueue(gw, clock, ROUTE, "third").deliveryId;
+    assert.deepEqual(enqueueResult(gw, clock, "third", "req-halt-third"), OUTBOX_HALTED_RESPONSE("req-halt-third"));
     await flushAsync();
   });
   side.close();
@@ -635,16 +649,12 @@ test("async receipt whose accepted write fails halts the outbox: no unhandled re
   assert.equal(pending[1]!.deliveryId, second);
   pending[1]!.receipt.resolve({ receiptLevel: "accepted", providerMessageId: `p:${second}` });
   await flushAsync();
-  assert.equal(pending.length, 3);
-  pending[2]!.receipt.resolve({ receiptLevel: "accepted", providerMessageId: `p:${third}` });
-  await flushAsync();
   assert.deepEqual(
     pending.map((p) => p.deliveryId),
-    [first, second, third],
+    [first, second],
   );
   assert.equal(reopened.gateway.store.getDelivery(first)?.status, "commit-unknown");
   assert.equal(reopened.gateway.store.getDelivery(second)?.status, "accepted");
-  assert.equal(reopened.gateway.store.getDelivery(third)?.status, "accepted");
   reopened.gateway.close();
   cleanup(dir);
 });
@@ -670,7 +680,7 @@ test("adapter rejection whose commit-unknown write fails halts the outbox and is
     await flushAsync();
     assert.ok(gw.outboxHalt);
     side.exec("DROP TRIGGER block_unknown");
-    enqueue(gw, clock, ROUTE, "y");
+    assert.deepEqual(enqueueResult(gw, clock, "y", "req-halt-y"), OUTBOX_HALTED_RESPONSE("req-halt-y"));
     gw.tick();
     await flushAsync();
   });
@@ -679,5 +689,67 @@ test("adapter rejection whose commit-unknown write fails halts the outbox and is
   assert.equal(calls, 1);
   assert.equal(gw.store.getDelivery(first)?.status, "dispatching");
   gw.close();
+  cleanup(dir);
+});
+
+test("halted outbox rejects fresh enqueue and job.create without writes, tick admits no occurrence, history stays readable, restart admits", async () => {
+  const { adapter, pending } = reentrantDeferredAdapter(() => {});
+  const { gw, clock, dir } = openWith(adapter, ROUTE);
+  const dbPath = join(dir, "gateway.sqlite");
+  const side = new DatabaseSync(dbPath);
+  const jobBody = {
+    kind: "static-text",
+    text: "daily",
+    route: ROUTE,
+    schedule: { type: "daily", localTime: "10:05", timeZone: "UTC" },
+  };
+  const created = handle(gw, "job.create", jobBody, clock.nowMs());
+  assert.equal(created.ok, true);
+  const jobId = (created as { body: { jobId: string } }).body.jobId;
+  const firstResponse = enqueueResult(gw, clock, "first", "req-halt-first");
+  assert.equal(firstResponse.ok, true);
+  const first = (firstResponse as { body: { deliveryId: string } }).body.deliveryId;
+  const unhandled = await collectUnhandledRejections(async () => {
+    side.exec(BLOCK_ACCEPTED_TRIGGER);
+    pending[0]!.receipt.resolve({ receiptLevel: "accepted", providerMessageId: `p:${first}` });
+    await flushAsync();
+    assert.ok(gw.outboxHalt);
+    side.exec("DROP TRIGGER block_accepted");
+    clock.add(5 * 60_000 + 30_000);
+    const before = snapshotRows(side);
+    assert.deepEqual(enqueueResult(gw, clock, "fresh", "req-halt-fresh"), OUTBOX_HALTED_RESPONSE("req-halt-fresh"));
+    assert.deepEqual(handle(gw, "job.create", jobBody, clock.nowMs(), "req-halt-job"), OUTBOX_HALTED_RESPONSE("req-halt-job"));
+    gw.tick();
+    await flushAsync();
+    assert.equal(snapshotRows(side), before, "rejected admission and halted tick must not write any row");
+  });
+  side.close();
+  assert.deepEqual(unhandled, []);
+  assert.equal(pending.length, 1);
+  assert.deepEqual(enqueueResult(gw, clock, "first", "req-halt-first"), firstResponse);
+  const inspected = handle(gw, "delivery.inspect", { deliveryId: first }, clock.nowMs());
+  assert.equal((inspected as { body: { delivery: { status: string } } }).body.delivery.status, "dispatching");
+  const listed = handle(gw, "job.list", {}, clock.nowMs());
+  assert.equal((listed as { body: { jobs: unknown[] } }).body.jobs.length, 1);
+  const jobInspect = handle(gw, "job.inspect", { jobId }, clock.nowMs());
+  assert.deepEqual((jobInspect as { body: { occurrences: unknown[] } }).body.occurrences, []);
+  gw.close();
+
+  const reopened = openGateway({ dbPath, clock, routes: [ROUTE], adapter }).gateway;
+  assert.equal(reopened.store.getDelivery(first)?.status, "commit-unknown");
+  reopened.tick();
+  assert.equal(reopened.store.listOccurrences(jobId).length, 1);
+  assert.equal(pending.length, 2);
+  pending[1]!.receipt.resolve({ receiptLevel: "accepted", providerMessageId: "p:job" });
+  await flushAsync();
+  const retried = enqueueResult(reopened, clock, "fresh", "req-halt-fresh");
+  assert.equal(retried.ok, true, "a rejected request id is not cached and may be retried after restart");
+  assert.equal(pending.length, 3);
+  pending[2]!.receipt.resolve({ receiptLevel: "accepted", providerMessageId: "p:fresh" });
+  await flushAsync();
+  assert.equal(reopened.store.getDelivery(pending[1]!.deliveryId)?.status, "accepted");
+  assert.equal(reopened.store.getDelivery(pending[2]!.deliveryId)?.status, "accepted");
+  assert.equal(reopened.store.getDelivery(first)?.status, "commit-unknown");
+  reopened.close();
   cleanup(dir);
 });

@@ -103,6 +103,8 @@ export class Gateway {
   readonly config: GatewayConfig;
   readonly adapter: SendAdapter;
   crashNext: CrashPoint | null = null;
+  // Called once when the outbox halts, before its best-effort audit; must not depend on the store.
+  onOutboxHalt: (() => void) | null = null;
   private closed = false;
   // Held by the single outbox drain from before its first send until it exits, including while it
   // waits on an async receipt; other kicks (even reentrant ones from adapter.send) only request a rerun.
@@ -169,6 +171,14 @@ export class Gateway {
         this.store.putRequest(req.requestId, JSON.stringify(response), nowMs);
         return response;
       }
+    }
+    // Not recorded in request_log: the halt is in-process, so the same request may be retried after restart.
+    if (this.outboxHalted && (req.method === "delivery.enqueue" || req.method === "job.create")) {
+      return {
+        ok: false,
+        requestId: req.requestId,
+        error: { code: "outbox_halted", message: "outbox is halted; restart the gateway to recover" },
+      };
     }
     if (req.method === "job.create") {
       // job row, audit and request_log commit together so a crash cannot leave a job without its dedup entry
@@ -369,6 +379,8 @@ export class Gateway {
   }
 
   tick(): void {
+    // Watermarks stay put while halted, so restart applies the normal catch-up policy.
+    if (this.outboxHalted) return;
     if (this.store.getMeta("quarantine") === "1") return;
     const now = this.clock.nowMs();
     for (const job of this.store.listJobs()) {
@@ -521,6 +533,7 @@ export class Gateway {
     this.outboxHalted = { error };
     this.outboxDraining = false;
     if (this.closed) return;
+    this.onOutboxHalt?.();
     try {
       this.audit("outbox.halted", { reason: "dispatch-failed" });
     } catch {

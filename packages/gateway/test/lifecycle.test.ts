@@ -194,7 +194,10 @@ test("stop during a deferred async send: no closed-store write, restart records 
   cleanup(dir);
 });
 
-test("async accepted receipt that cannot be written halts the daemon outbox; restart recovers commit-unknown and sends the queued row once", async () => {
+const OUTBOX_HALT_DIAGNOSTIC =
+  "gateway outbox halted: a delivery receipt could not be recorded; no further sends until restart, which marks that delivery commit-unknown\n";
+
+test("async accepted receipt that cannot be written halts the daemon outbox with one stderr diagnostic even if its audit fails; restart recovers commit-unknown and sends the queued row once", async () => {
   const dir = tmpDir();
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   chmodSync(dir, 0o700);
@@ -224,12 +227,32 @@ test("async accepted receipt that cannot be written halts the daemon outbox; res
         "CREATE TRIGGER block_accepted BEFORE UPDATE OF status ON deliveries WHEN NEW.status = 'accepted' " +
           "BEGIN SELECT RAISE(ABORT, 'injected accepted write failure'); END",
       );
-      receipt.resolve({ receiptLevel: "accepted", providerMessageId: "p:first" });
-      await flushAsync();
-      assert.ok(d1.gateway.outboxHalt);
-      side.exec("DROP TRIGGER block_accepted");
-      d1.gateway.tick();
-      await flushAsync();
+      side.exec(
+        "CREATE TRIGGER block_halt_audit BEFORE INSERT ON audit WHEN NEW.kind = 'outbox.halted' " +
+          "BEGIN SELECT RAISE(ABORT, 'injected audit write failure'); END",
+      );
+      const stderrWrites: string[] = [];
+      const realStderrWrite = process.stderr.write;
+      process.stderr.write = ((chunk: string | Uint8Array) => {
+        stderrWrites.push(String(chunk));
+        return true;
+      }) as typeof process.stderr.write;
+      try {
+        receipt.resolve({ receiptLevel: "accepted", providerMessageId: "p:first" });
+        await flushAsync();
+        assert.ok(d1.gateway.outboxHalt);
+        side.exec("DROP TRIGGER block_accepted");
+        side.exec("DROP TRIGGER block_halt_audit");
+        d1.gateway.tick();
+        const fresh = handle(d1.gateway, "delivery.enqueue", { route: ROUTE, text: "fresh", notAfter: clock.nowMs() + 60_000 }, clock.nowMs());
+        assert.equal(fresh.ok, false);
+        assert.equal((fresh as { error: { code: string } }).error.code, "outbox_halted");
+        await flushAsync();
+      } finally {
+        process.stderr.write = realStderrWrite;
+      }
+      assert.deepEqual(stderrWrites, [OUTBOX_HALT_DIAGNOSTIC]);
+      assert.equal(d1.gateway.store.listAudit().some((a) => a.kind === "outbox.halted"), false);
       assert.deepEqual(asyncSent, [first]);
       assert.equal(d1.gateway.store.getDelivery(first)?.status, "dispatching");
       assert.equal(d1.gateway.store.getDelivery(second)?.status, "queued");
