@@ -463,3 +463,129 @@ test("hung async send leaves its row dispatching; close does not wait and reopen
   reopened.gateway.close();
   cleanup(dir);
 });
+
+type AcceptedReceipt = { receiptLevel: "accepted"; providerMessageId: string };
+
+function reentrantDeferredAdapter(onFirstSend: () => void) {
+  const pending: Array<{ deliveryId: string; receipt: Deferred<AcceptedReceipt> }> = [];
+  const track = { inFlight: 0, maxInFlight: 0 };
+  const adapter: SendAdapter = {
+    manifest: plainManifest(),
+    send(envelope) {
+      track.inFlight += 1;
+      track.maxInFlight = Math.max(track.maxInFlight, track.inFlight);
+      const receipt = deferred<AcceptedReceipt>();
+      pending.push({ deliveryId: envelope.deliveryId, receipt });
+      if (pending.length === 1) onFirstSend();
+      return receipt.promise.finally(() => {
+        track.inFlight -= 1;
+      });
+    },
+  };
+  return { adapter, pending, track };
+}
+
+test("send that synchronously enqueues another delivery keeps one send in flight and sends it once after the first settles", async () => {
+  let gw!: Gateway;
+  let clock!: TestClock;
+  let second = "";
+  const { adapter, pending, track } = reentrantDeferredAdapter(() => {
+    second = enqueue(gw, clock, ROUTE, "second").deliveryId;
+  });
+  let dir = "";
+  ({ gw, clock, dir } = openWith(adapter, ROUTE));
+  const unhandled = await collectUnhandledRejections(async () => {
+    const first = enqueue(gw, clock, ROUTE, "first").deliveryId;
+    assert.equal(pending.length, 1, "reentrant enqueue must not start a second send");
+    assert.equal(gw.store.getDelivery(second)?.status, "queued");
+    gw.tick();
+    gw.processOutbox();
+    await flushAsync();
+    assert.equal(pending.length, 1);
+    pending[0]!.receipt.resolve({ receiptLevel: "accepted", providerMessageId: `p:${first}` });
+    await flushAsync();
+    assert.equal(pending.length, 2);
+    pending[1]!.receipt.resolve({ receiptLevel: "accepted", providerMessageId: `p:${second}` });
+    await flushAsync();
+    gw.tick();
+    gw.processOutbox();
+    await flushAsync();
+    assert.deepEqual(
+      pending.map((p) => p.deliveryId),
+      [first, second],
+    );
+    assert.equal(gw.store.getDelivery(first)?.status, "accepted");
+    assert.equal(gw.store.getDelivery(second)?.status, "accepted");
+  });
+  assert.deepEqual(unhandled, []);
+  assert.equal(track.maxInFlight, 1);
+  gw.close();
+  cleanup(dir);
+});
+
+test("send that synchronously kicks tick does not start a second drain over already queued deliveries", async () => {
+  let gw!: Gateway;
+  const { adapter, pending, track } = reentrantDeferredAdapter(() => {
+    gw.tick();
+  });
+  const opened = openWith(adapter, ROUTE);
+  gw = opened.gw;
+  const { clock, dir } = opened;
+  const unhandled = await collectUnhandledRejections(async () => {
+    const ids = ["a", "b", "c"].map((text) => {
+      const res = handle(
+        gw,
+        "delivery.enqueue",
+        { route: ROUTE, text, notAfter: clock.nowMs() + 60_000, requireApproval: true },
+        clock.nowMs(),
+      );
+      if (!res.ok) throw new Error(res.error.message);
+      const id = (res.body as { deliveryId: string }).deliveryId;
+      assert.equal(gw.approve(id).ok, true);
+      return id;
+    });
+    gw.processOutbox();
+    assert.equal(pending.length, 1, "reentrant tick must not start a second send");
+    for (let i = 0; i < ids.length; i += 1) {
+      await flushAsync();
+      assert.equal(pending.length, i + 1);
+      pending[i]!.receipt.resolve({ receiptLevel: "accepted", providerMessageId: `p:${ids[i]}` });
+    }
+    await flushAsync();
+    assert.deepEqual(
+      pending.map((p) => p.deliveryId),
+      ids,
+    );
+    for (const id of ids) assert.equal(gw.store.getDelivery(id)?.status, "accepted");
+  });
+  assert.deepEqual(unhandled, []);
+  assert.equal(track.maxInFlight, 1);
+  gw.close();
+  cleanup(dir);
+});
+
+test("synchronous send that enqueues another delivery still answers its receipt before the reentrant send", () => {
+  let gw!: Gateway;
+  let clock!: TestClock;
+  const sent: string[] = [];
+  let second = "";
+  let firstStatusAtSecondSend = "";
+  const adapter: SendAdapter = {
+    manifest: plainManifest(),
+    send(envelope) {
+      sent.push(envelope.deliveryId);
+      if (sent.length === 1) second = enqueue(gw, clock, ROUTE, "second").deliveryId;
+      else firstStatusAtSecondSend = gw.store.getDelivery(sent[0]!)?.status ?? "";
+      return { receiptLevel: "accepted", providerMessageId: `p:${envelope.deliveryId}` };
+    },
+  };
+  let dir = "";
+  ({ gw, clock, dir } = openWith(adapter, ROUTE));
+  const body = enqueue(gw, clock, ROUTE, "first");
+  assert.equal(body.status, "accepted");
+  assert.deepEqual(sent, [body.deliveryId, second]);
+  assert.equal(firstStatusAtSecondSend, "accepted");
+  assert.equal(gw.store.getDelivery(second)?.status, "accepted");
+  gw.close();
+  cleanup(dir);
+});

@@ -104,8 +104,9 @@ export class Gateway {
   readonly adapter: SendAdapter;
   crashNext: CrashPoint | null = null;
   private closed = false;
-  // Set while the single outbox drain waits on an async receipt; other kicks only request a rerun.
-  private outboxSettling: Promise<void> | null = null;
+  // Held by the single outbox drain from before its first send until it exits, including while it
+  // waits on an async receipt; other kicks (even reentrant ones from adapter.send) only request a rerun.
+  private outboxDraining = false;
   private outboxRerun = false;
 
   constructor(opts: { store: Store; clock: Clock; config: GatewayConfig; adapter: SendAdapter }) {
@@ -460,41 +461,49 @@ export class Gateway {
   }
 
   processOutbox(): void {
-    if (this.outboxSettling) {
+    if (this.outboxDraining) {
       this.outboxRerun = true;
       return;
     }
+    this.outboxDraining = true;
     this.drainOutbox(null, 0);
   }
 
-  // Synchronous receipts settle inline; an async receipt suspends the drain until it settles.
+  // Caller holds outboxDraining. Synchronous receipts settle inline; an async receipt suspends the
+  // drain, keeping ownership until it settles. Every other exit releases ownership.
   private drainOutbox(snapshot: DeliveryRow[] | null, start: number): void {
     let rows = snapshot;
     let index = start;
-    for (;;) {
-      if (this.closed || !this.store.dispatchEnabled()) return;
-      if (!rows) {
-        rows = this.store.queuedDeliveries();
-        index = 0;
-        this.outboxRerun = false;
-      }
-      for (; index < rows.length; index += 1) {
-        const row = this.store.getDelivery(rows[index]!.delivery_id);
-        if (row?.status !== "queued") continue;
-        const outcome = this.dispatchGuarded(row);
-        if (outcome === "stop") return;
-        if (outcome !== "done") {
-          const remaining = rows;
-          const next = index + 1;
-          this.outboxSettling = outcome.then((settled) => {
-            this.outboxSettling = null;
-            if (settled === "done") this.drainOutbox(remaining, next);
-          });
-          return;
+    let suspended = false;
+    try {
+      for (;;) {
+        if (this.closed || !this.store.dispatchEnabled()) return;
+        if (!rows) {
+          rows = this.store.queuedDeliveries();
+          index = 0;
+          this.outboxRerun = false;
         }
+        for (; index < rows.length; index += 1) {
+          const row = this.store.getDelivery(rows[index]!.delivery_id);
+          if (row?.status !== "queued") continue;
+          const outcome = this.dispatchGuarded(row);
+          if (outcome === "stop") return;
+          if (outcome !== "done") {
+            const remaining = rows;
+            const next = index + 1;
+            suspended = true;
+            void outcome.then((settled) => {
+              if (settled === "done") this.drainOutbox(remaining, next);
+              else this.outboxDraining = false;
+            });
+            return;
+          }
+        }
+        if (!this.outboxRerun) return;
+        rows = null;
       }
-      if (!this.outboxRerun) return;
-      rows = null;
+    } finally {
+      if (!suspended) this.outboxDraining = false;
     }
   }
 
