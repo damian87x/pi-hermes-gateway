@@ -125,6 +125,7 @@ declare module "node:process" {
     getuid(): number;
     getgid(): number;
     exit(code: number): never;
+    exitCode: number | string | undefined;
     argv: string[];
     execPath: string;
     env: Record<string, string | undefined>;

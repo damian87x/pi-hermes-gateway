@@ -15,6 +15,12 @@ test("loadWorkerProfile on missing id throws a helpful error and starts nothing"
   );
 });
 
+test("loadWorkerProfile rejects inherited registry names", () => {
+  for (const profileId of ["__proto__", "constructor", "toString", "hasOwnProperty"]) {
+    assert.throws(() => loadWorkerProfile({ profileId }), new RegExp(`unknown worker profile id "${profileId}"`));
+  }
+});
+
 test("loadWorkerProfile ignores an executablePath supplied in the job body", () => {
   const trusted = loadWorkerProfile({ profileId: "report" });
   const tampered = loadWorkerProfile({

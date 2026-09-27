@@ -17,7 +17,8 @@ const WORKER_PROFILES: Readonly<Record<string, WorkerProfile>> = Object.freeze({
 });
 
 export function loadWorkerProfile(job: WorkerJobBody): WorkerProfile {
-  const profile = WORKER_PROFILES[job.profileId];
+  // Own keys only: inherited names such as "__proto__" are not profiles.
+  const profile = Object.hasOwn(WORKER_PROFILES, job.profileId) ? WORKER_PROFILES[job.profileId] : undefined;
   if (!profile) {
     const known = Object.keys(WORKER_PROFILES).join(", ") || "none";
     throw new Error(`unknown worker profile id "${job.profileId}"; known profiles: ${known}`);
