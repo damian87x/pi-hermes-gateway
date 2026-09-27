@@ -359,6 +359,23 @@ export class Store {
     this.db.prepare("UPDATE deliveries SET dispatch_intent = 1, status = 'dispatching' WHERE delivery_id = ?").run(id);
   }
 
+  // One statement, so a job cancel either sees the row dispatching or this sees the job not active.
+  claimDispatchIntent(id: string): boolean {
+    const result = this.db
+      .prepare(
+        "UPDATE deliveries SET dispatch_intent = 1, status = 'dispatching' WHERE delivery_id = ? AND status = 'queued' " +
+          "AND (job_id IS NULL OR EXISTS (SELECT 1 FROM jobs WHERE jobs.job_id = deliveries.job_id AND jobs.status = 'active'))",
+      )
+      .run(id);
+    return Number(result.changes) === 1;
+  }
+
+  queuedJobDeliveries(jobId: string): DeliveryRow[] {
+    return this.db
+      .prepare("SELECT * FROM deliveries WHERE job_id = ? AND status = 'queued' ORDER BY created_at_ms")
+      .all(jobId) as DeliveryRow[];
+  }
+
   insertAudit(atMs: number, kind: string, payload: unknown): void {
     this.db.prepare("INSERT INTO audit(at_ms, kind, payload_json) VALUES(?,?,?)").run(atMs, kind, JSON.stringify(payload));
   }

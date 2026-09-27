@@ -20,9 +20,8 @@ import { Store, type DeliveryRow } from "./store.js";
 
 export type ApproveResult = ProtocolResult<{ kind: "job" | "delivery"; id: string; status: string }>;
 
+// Read, transition and audit under one writer lock so cancel or quarantine cannot race approval.
 export function approvePending(store: Store, id: string, nowMs: number): ApproveResult {
-  // Read, transition and audit under one writer lock so a concurrent cancel or quarantine
-  // either commits first (approval fails) or waits and overrides the approval.
   return store.transaction((): ApproveResult => {
     const job = store.getJob(id);
     if (job) {
@@ -188,8 +187,9 @@ export class Gateway {
         error: { code: "outbox_halted", message: "outbox is halted; restart the gateway to recover" },
       };
     }
-    if (req.method === "job.create") {
-      // job row, audit and request_log commit together so a crash cannot leave a job without its dedup entry
+    if (req.method === "job.create" || req.method === "job.cancel") {
+      // job row, audit and request_log commit together so a crash cannot leave a job without its dedup entry,
+      // and a cancel answers success only once its job and queued deliveries are committed
       return this.store.transaction(() => {
         const response = this.dispatchMethod(req);
         this.store.putRequest(req.requestId, JSON.stringify(response), nowMs);
@@ -275,8 +275,18 @@ export class Gateway {
       };
     }
     this.store.setJobStatus(jobId, status);
+    if (status === "cancelled") this.cancelQueuedJobDeliveries(jobId);
     this.audit(`job.${status}`, { jobId });
     return this.okBody(req, { jobId, status });
+  }
+
+  // Runs inside the job.cancel transaction. A dispatching row is already in flight and keeps its receipt.
+  private cancelQueuedJobDeliveries(jobId: string): void {
+    for (const row of this.store.queuedJobDeliveries(jobId)) {
+      this.store.setDeliveryStatus(row.delivery_id, "failed");
+      if (row.occurrence_id) this.store.setOccurrenceStatus(row.occurrence_id, "skipped");
+      this.audit("delivery.cancelled", { deliveryId: row.delivery_id, jobId, occurrenceId: row.occurrence_id });
+    }
   }
 
   private jobInspect(req: WireRequest): GatewayResponse {
@@ -604,6 +614,8 @@ export class Gateway {
   }
 
   private dispatchOne(row: DeliveryRow): Promise<void> | undefined {
+    // A paused job's row stays queued until resume; cancel has already failed a cancelled job's rows.
+    if (row.job_id && this.store.getJob(row.job_id)?.status !== "active") return;
     const now = this.clock.nowMs();
     this.audit("delivery.send.attempt", { deliveryId: row.delivery_id });
     if (this.crashNext === "claim") throw new InjectedCrash("claim");
@@ -641,7 +653,7 @@ export class Gateway {
       }
     }
     if (this.crashNext === "dispatch-intent") throw new InjectedCrash("dispatch-intent");
-    this.store.setDispatchIntent(row.delivery_id);
+    if (!this.store.claimDispatchIntent(row.delivery_id)) return;
     if (this.crashNext === "mid-send") this.adapter.crashMidSend = true;
     if (!this.routeAllowed(route).ok) {
       this.refuseInvalidRoute(row);
