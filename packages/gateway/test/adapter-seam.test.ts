@@ -659,6 +659,39 @@ test("async receipt whose accepted write fails halts the outbox: no unhandled re
   cleanup(dir);
 });
 
+test("halt notifier that throws is contained: no unhandled rejection, halt still set, audit still recorded, no resend", async () => {
+  const { adapter, pending } = reentrantDeferredAdapter(() => {});
+  const { gw, clock, dir } = openWith(adapter, ROUTE);
+  let notified = 0;
+  gw.onOutboxHalt = () => {
+    notified += 1;
+    throw new Error("injected notifier sink failure");
+  };
+  const side = new DatabaseSync(join(dir, "gateway.sqlite"));
+  let first = "";
+  const unhandled = await collectUnhandledRejections(async () => {
+    first = enqueue(gw, clock, ROUTE, "first").deliveryId;
+    enqueue(gw, clock, ROUTE, "second");
+    side.exec(BLOCK_ACCEPTED_TRIGGER);
+    pending[0]!.receipt.resolve({ receiptLevel: "accepted", providerMessageId: `p:${first}` });
+    await flushAsync();
+    assert.ok(gw.outboxHalt);
+    side.exec("DROP TRIGGER block_accepted");
+    gw.processOutbox();
+    gw.tick();
+    await flushAsync();
+  });
+  side.close();
+  assert.deepEqual(unhandled, []);
+  assert.equal(notified, 1);
+  assert.equal(pending.length, 1, "halted outbox sends nothing after a failed notifier");
+  assert.equal(gw.store.getDelivery(first)?.status, "dispatching");
+  assert.ok(gw.store.listAudit().some((a) => a.kind === "outbox.halted"));
+  assert.equal(JSON.stringify(gw.store.listAudit()).includes("injected notifier sink failure"), false);
+  gw.close();
+  cleanup(dir);
+});
+
 test("adapter rejection whose commit-unknown write fails halts the outbox and is never retried", async () => {
   let calls = 0;
   const adapter: SendAdapter = {

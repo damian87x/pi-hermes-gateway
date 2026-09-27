@@ -533,7 +533,11 @@ export class Gateway {
     this.outboxHalted = { error };
     this.outboxDraining = false;
     if (this.closed) return;
-    this.onOutboxHalt?.();
+    try {
+      this.onOutboxHalt?.();
+    } catch {
+      /* the notice is best-effort; the in-memory halt and the audit below do not depend on it */
+    }
     try {
       this.audit("outbox.halted", { reason: "dispatch-failed" });
     } catch {
