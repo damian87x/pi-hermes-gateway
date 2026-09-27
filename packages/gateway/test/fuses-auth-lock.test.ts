@@ -486,7 +486,7 @@ for (const fault of [
     assert.ok(gw.outboxHalt, "the failed refusal halts the outbox");
     const refused = gw.store.listDeliveries().find((d) => d.status !== "accepted");
     assert.equal(refused?.status, "queued", "the delivery is not marked failed without its occurrence and audit");
-    assert.equal(gw.store.getOccurrence(refused.occurrence_id!)?.status, "claimed");
+    assert.equal(gw.store.getOccurrence(refused.occurrence_id!)?.status, "pending", "the claim rolls back with the refusal");
     assert.deepEqual(sendRejectReasons(gw), []);
     gw.close();
     side.exec("DROP TRIGGER block_refusal");

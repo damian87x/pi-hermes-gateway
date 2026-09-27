@@ -330,7 +330,7 @@ test("a cancelled job's leftover queued delivery never dispatches and cannot be 
   cleanup(dir);
 });
 
-test("a job cancelled by another writer after the dispatch recheck is refused at the dispatch intent", () => {
+test("the conditional dispatch intent refuses a job no longer active inside the dispatch transaction; the whole claim rolls back unsent", () => {
   const dir = tmpDir();
   const dbPath = join(dir, "gateway.sqlite");
   const clock = new TestClock(START_MS);
@@ -339,7 +339,9 @@ test("a job cancelled by another writer after the dispatch recheck is refused at
   const side = new DatabaseSync(dbPath);
   try {
     const jobId = createOnceJob(gw, "raced-job");
-    // Lands the other writer's cancel between the owning-job recheck and the intent write.
+    // Flips the job inside the dispatch transaction, after its owning-job recheck, so only the intent's
+    // own job condition stands between the claim and a send. Cross-connection cancels cannot land here:
+    // see dispatch-cancel-race.test.ts.
     side.exec(
       "CREATE TRIGGER race_cancel AFTER INSERT ON audit WHEN NEW.kind = 'delivery.send.attempt' " +
         "BEGIN UPDATE jobs SET status = 'cancelled'; END",
@@ -347,10 +349,14 @@ test("a job cancelled by another writer after the dispatch recheck is refused at
     clock.set(Date.parse(AT_UTC));
     gw.tick();
     const [row] = gw.store.listDeliveries();
-    assert.equal(gw.store.getJob(jobId)?.status, "cancelled");
     assert.equal(adapter.sent.length, 0);
+    assert.ok(gw.outboxHalt, "an unclaimed intent halts the outbox");
     assert.equal(row?.status, "queued");
     assert.equal(row?.dispatch_intent, 0);
+    assert.equal(gw.store.getOccurrence(row.occurrence_id ?? "")?.status, "pending");
+    assert.equal(gw.store.getJob(jobId)?.status, "active", "the in-transaction flip rolls back with the claim");
+    assert.equal(gw.store.getAccountFuse(ROUTE.accountId), undefined, "no fuse debit is committed");
+    assert.equal(gw.store.listAudit().some((a) => a.kind === "delivery.send.attempt"), false);
   } finally {
     side.close();
     gw.close();

@@ -459,31 +459,28 @@ export class Gateway {
     this.audit("occurrence.skipped", { jobId, occurrenceId, scheduledInstantMs, reason });
   }
 
-  // Without a row the caller (admitJobOccurrence) already holds the transaction; with one, delivery,
-  // occurrence and audit commit together so a failed write leaves the row queued for re-evaluation.
-  private refuseInvalidRoute(row?: DeliveryRow, extra?: Record<string, unknown>): void {
-    if (row) {
-      this.store.transaction(() => {
-        this.store.setDeliveryStatus(row.delivery_id, "failed");
-        if (row.occurrence_id) this.store.setOccurrenceStatus(row.occurrence_id, "skipped");
-        this.audit("delivery.send.rejected", { deliveryId: row.delivery_id, reason: "invalid_route", ...extra });
-      });
-      return;
-    }
+  // The caller (admitJobOccurrence) already holds the transaction.
+  private refuseInvalidRoute(extra: Record<string, unknown>): void {
     this.audit("delivery.send.rejected", { reason: "invalid_route", ...extra });
   }
 
   // The occurrence, its delivery and audit commit together: findOccurrence treats any occurrence row as
-  // admitted, so a partial write would block every later tick from repairing it.
+  // admitted, so a partial write would block every later tick from repairing it. The job is reread under
+  // the writer lock because tick's snapshot may predate another writer's cancel; a paused job's row is
+  // admitted and held queued until resume.
   private admitJobOccurrence(jobId: string, scheduledInstantMs: number, text: string, route: DeliveryRoute): void {
-    this.store.transaction(() => this.insertJobOccurrence(jobId, scheduledInstantMs, text, route));
+    this.store.transaction(() => {
+      const status = this.store.getJob(jobId)?.status;
+      if (status !== "active" && status !== "paused") return;
+      this.insertJobOccurrence(jobId, scheduledInstantMs, text, route);
+    });
   }
 
   private insertJobOccurrence(jobId: string, scheduledInstantMs: number, text: string, route: DeliveryRoute): void {
     if (this.store.findOccurrence(jobId, scheduledInstantMs)) return;
     if (!this.routeAllowed(route).ok) {
       this.recordSkipped(jobId, scheduledInstantMs, "invalid_route");
-      this.refuseInvalidRoute(undefined, { jobId, scheduledInstantMs });
+      this.refuseInvalidRoute({ jobId, scheduledInstantMs });
       return;
     }
     const now = this.clock.nowMs();
@@ -614,60 +611,14 @@ export class Gateway {
   }
 
   private dispatchOne(row: DeliveryRow): Promise<void> | undefined {
-    // A paused job's row stays queued until resume; cancel has already failed a cancelled job's rows.
-    if (row.job_id && this.store.getJob(row.job_id)?.status !== "active") return;
-    const now = this.clock.nowMs();
-    this.audit("delivery.send.attempt", { deliveryId: row.delivery_id });
-    if (this.crashNext === "claim") throw new InjectedCrash("claim");
-    if (row.occurrence_id) {
-      const occ = this.store.getOccurrence(row.occurrence_id);
-      if (occ && (occ.status === "interrupted" || occ.status === "commit-unknown" || occ.status === "skipped")) {
-        return;
-      }
-      if (occ) this.store.setOccurrenceStatus(occ.occurrence_id, "claimed");
-    }
-    if (now >= row.not_after_ms) {
-      // Delivery, occurrence and audit commit together; a failed write leaves the row queued for re-evaluation.
-      this.store.transaction(() => {
-        this.store.setDeliveryStatus(row.delivery_id, "expired");
-        if (row.occurrence_id) this.store.setOccurrenceStatus(row.occurrence_id, "expired");
-        this.audit("delivery.expired", { deliveryId: row.delivery_id, notAfter: row.not_after_ms });
-      });
-      return;
-    }
     const route = JSON.parse(row.route_json) as DeliveryRoute;
-    if (!this.routeAllowed(route).ok) {
-      this.refuseInvalidRoute(row);
-      return;
-    }
-    // Checked before the fuses so an unsendable job spends no token or daily-cap slot.
-    if (row.text.length > this.adapter.manifest.maxTextLength) {
-      this.refuseSend(row, "text_too_long");
-      return;
-    }
-    // Recheck the job and row under the writer lock; cancellation, fuse debit and dispatch intent
-    // cannot interleave. A failed intent write rolls the debit back before any adapter call.
-    const intent = this.store.transaction((): ProtocolResult<true> | "deferred" => {
-      const current = this.store.getDelivery(row.delivery_id);
-      if (current?.status !== "queued" || (row.job_id && this.store.getJob(row.job_id)?.status !== "active")) {
-        return "deferred";
-      }
-      if (row.source === "job") {
-        const fuse = this.consumeFuses(route);
-        if (!fuse.ok) return fuse;
-      }
-      if (this.crashNext === "dispatch-intent") throw new InjectedCrash("dispatch-intent");
-      if (!this.store.claimDispatchIntent(row.delivery_id)) throw new Error("dispatch intent was not claimed");
-      return ok(true);
-    });
-    if (intent === "deferred") return;
-    if (!intent.ok) {
-      this.refuseSend(row, intent.error.code);
-      return;
-    }
+    // The claim, any expiry or refusal, the fuse debit and the dispatch intent commit under one writer lock,
+    // so another writer's cancel or pause lands wholly before or wholly after them. A failed write rolls
+    // the whole claim back and leaves the row queued for re-evaluation; the send runs only after commit.
+    if (!this.store.transaction(() => this.claimForSend(row, route))) return;
     if (this.crashNext === "mid-send") this.adapter.crashMidSend = true;
     if (!this.routeAllowed(route).ok) {
-      this.refuseInvalidRoute(row);
+      this.store.transaction(() => this.refuseSend(row, "invalid_route"));
       return;
     }
     let receipt: SendReceipt | PromiseLike<SendReceipt>;
@@ -694,14 +645,55 @@ export class Gateway {
     this.recordReceipt(row, receipt);
   }
 
-  // Delivery, occurrence and audit commit together: a refused row left with its occurrence claimed would
-  // never be skipped, and a failed write leaves the row queued for the halt and the next open to re-evaluate.
+  // Caller holds the transaction. Returns true once the row holds its dispatch intent and may be sent.
+  private claimForSend(row: DeliveryRow, route: DeliveryRoute): boolean {
+    // Reread under the writer lock: a row another writer already failed, or whose job is paused or
+    // cancelled, is left untouched. A paused job's row stays queued until resume.
+    if (this.store.getDelivery(row.delivery_id)?.status !== "queued") return false;
+    if (row.job_id && this.store.getJob(row.job_id)?.status !== "active") return false;
+    const now = this.clock.nowMs();
+    this.audit("delivery.send.attempt", { deliveryId: row.delivery_id });
+    if (this.crashNext === "claim") throw new InjectedCrash("claim");
+    if (row.occurrence_id) {
+      const occ = this.store.getOccurrence(row.occurrence_id);
+      if (occ && (occ.status === "interrupted" || occ.status === "commit-unknown" || occ.status === "skipped")) {
+        return false;
+      }
+      if (occ) this.store.setOccurrenceStatus(occ.occurrence_id, "claimed");
+    }
+    if (now >= row.not_after_ms) {
+      this.store.setDeliveryStatus(row.delivery_id, "expired");
+      if (row.occurrence_id) this.store.setOccurrenceStatus(row.occurrence_id, "expired");
+      this.audit("delivery.expired", { deliveryId: row.delivery_id, notAfter: row.not_after_ms });
+      return false;
+    }
+    if (!this.routeAllowed(route).ok) {
+      this.refuseSend(row, "invalid_route");
+      return false;
+    }
+    // Checked before the fuses so an unsendable job spends no token or daily-cap slot.
+    if (row.text.length > this.adapter.manifest.maxTextLength) {
+      this.refuseSend(row, "text_too_long");
+      return false;
+    }
+    if (row.source === "job") {
+      const fuse = this.consumeFuses(route);
+      if (!fuse.ok) {
+        this.refuseSend(row, fuse.error.code);
+        return false;
+      }
+    }
+    if (this.crashNext === "dispatch-intent") throw new InjectedCrash("dispatch-intent");
+    if (!this.store.claimDispatchIntent(row.delivery_id)) throw new Error("dispatch intent was not claimed");
+    return true;
+  }
+
+  // Caller holds the transaction. Delivery, occurrence and audit commit together: a refused row left with
+  // its occurrence claimed would never be skipped.
   private refuseSend(row: DeliveryRow, reason: string): void {
-    this.store.transaction(() => {
-      this.store.setDeliveryStatus(row.delivery_id, "failed");
-      if (row.occurrence_id) this.store.setOccurrenceStatus(row.occurrence_id, "skipped");
-      this.audit("delivery.send.rejected", { deliveryId: row.delivery_id, reason });
-    });
+    this.store.setDeliveryStatus(row.delivery_id, "failed");
+    if (row.occurrence_id) this.store.setOccurrenceStatus(row.occurrence_id, "skipped");
+    this.audit("delivery.send.rejected", { deliveryId: row.delivery_id, reason });
   }
 
   private recordReceipt(row: DeliveryRow, receipt: SendReceipt | undefined): void {

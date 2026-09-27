@@ -68,8 +68,9 @@ for (const path of paths) {
       const delivery = gw.store.listDeliveries()[0];
       assert.equal(delivery?.status, "queued", "the delivery is not terminal without its occurrence and audit");
       assert.equal(delivery.dispatch_intent, 0);
-      assert.equal(gw.store.getOccurrence(delivery.occurrence_id!)?.status, "claimed");
+      assert.equal(gw.store.getOccurrence(delivery.occurrence_id!)?.status, "pending", "the claim rolls back with the terminal write");
       assert.equal(auditCount(gw, path.audit), 0);
+      assert.equal(auditCount(gw, "delivery.send.attempt"), 0);
       gw.close();
       side.exec("DROP TRIGGER block_terminal");
       side.close();
