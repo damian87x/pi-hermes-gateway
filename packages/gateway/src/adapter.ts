@@ -12,9 +12,10 @@ export type SendReceipt = {
   reason?: string;
 };
 
+// A Promise receipt settles the delivery later; a rejection is treated like a commit-unknown receipt.
 export type SendAdapter = {
   manifest: AdapterManifest;
-  send(envelope: SendEnvelope): SendReceipt;
+  send(envelope: SendEnvelope): SendReceipt | Promise<SendReceipt>;
   crashMidSend?: boolean;
 };
 

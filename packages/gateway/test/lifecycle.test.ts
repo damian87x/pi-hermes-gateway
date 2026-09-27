@@ -5,8 +5,8 @@ import { userInfo } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
-import { createFakeAdapter, probeLingerEnabled, runDoctor, startDaemon, TestClock } from "../dist/index.js";
-import { cleanup, handle, ROUTE, tmpDir } from "./helpers.ts";
+import { createFakeAdapter, probeLingerEnabled, runDoctor, startDaemon, TestClock, type SendAdapter } from "../dist/index.js";
+import { cleanup, collectUnhandledRejections, deferred, flushAsync, handle, ROUTE, tmpDir } from "./helpers.ts";
 
 const cliPath = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
 const doctorSrcPath = fileURLToPath(new URL("../src/doctor.ts", import.meta.url));
@@ -144,6 +144,81 @@ test("restart still delivers once-at to fake sink; second daemon fails", () => {
   const sinkText = readFileSync(sink, "utf8");
   assert.equal(sinkText.match(/restart-once/g)?.length, 1);
   d3.stop();
+  cleanup(dir);
+});
+
+test("stop during a deferred async send: no closed-store write, restart records commit-unknown without replay", async () => {
+  const dir = tmpDir();
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
+  const clock = new TestClock(Date.UTC(2026, 0, 1, 10, 0, 0));
+  const receipt = deferred<{ receiptLevel: "accepted"; providerMessageId: string }>();
+  let sends = 0;
+  const asyncAdapter: SendAdapter = {
+    manifest: createFakeAdapter().manifest,
+    send() {
+      sends += 1;
+      return receipt.promise;
+    },
+  };
+  const unhandled = await collectUnhandledRejections(async () => {
+    const d1 = startDaemon({ profileDir: dir, routes: [ROUTE], clock, adapter: asyncAdapter, bindSocket: false });
+    let deliveryId: string;
+    try {
+      const res = handle(d1.gateway, "delivery.enqueue", { route: ROUTE, text: "deferred", notAfter: clock.nowMs() + 60_000 }, clock.nowMs());
+      assert.equal(res.ok, true);
+      const body = (res as { body: { deliveryId: string; status: string } }).body;
+      deliveryId = body.deliveryId;
+      assert.equal(body.status, "dispatching");
+    } finally {
+      d1.stop();
+    }
+    receipt.resolve({ receiptLevel: "accepted", providerMessageId: "late" });
+    await flushAsync();
+
+    const adapter2 = createFakeAdapter();
+    const d2 = startDaemon({ profileDir: dir, routes: [ROUTE], clock, adapter: adapter2, bindSocket: false });
+    try {
+      assert.equal(d2.gateway.store.getDelivery(deliveryId)?.status, "commit-unknown");
+      assert.ok(d2.gateway.store.listAudit().some((a) => a.kind === "crash.recover"));
+      assert.equal(d2.gateway.store.listAudit().some((a) => a.kind === "delivery.accepted"), false);
+      d2.gateway.tick();
+      assert.equal(adapter2.sent.length, 0);
+    } finally {
+      d2.stop();
+    }
+  });
+  assert.deepEqual(unhandled, []);
+  assert.equal(sends, 1);
+  cleanup(dir);
+});
+
+test("stop does not wait on a hung async send", async () => {
+  const dir = tmpDir();
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
+  const clock = new TestClock(Date.UTC(2026, 0, 1, 10, 0, 0));
+  const hungAdapter: SendAdapter = {
+    manifest: createFakeAdapter().manifest,
+    send() {
+      return new Promise(() => {});
+    },
+  };
+  const d1 = startDaemon({ profileDir: dir, routes: [ROUTE], clock, adapter: hungAdapter, bindSocket: false });
+  let deliveryId: string;
+  try {
+    const res = handle(d1.gateway, "delivery.enqueue", { route: ROUTE, text: "hung", notAfter: clock.nowMs() + 60_000 }, clock.nowMs());
+    deliveryId = (res as { body: { deliveryId: string } }).body.deliveryId;
+    assert.equal(d1.gateway.store.getDelivery(deliveryId)?.status, "dispatching");
+  } finally {
+    d1.stop();
+  }
+  const d2 = startDaemon({ profileDir: dir, routes: [ROUTE], clock, bindSocket: false });
+  try {
+    assert.equal(d2.gateway.store.getDelivery(deliveryId)?.status, "commit-unknown");
+  } finally {
+    d2.stop();
+  }
   cleanup(dir);
 });
 

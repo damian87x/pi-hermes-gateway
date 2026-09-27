@@ -67,3 +67,36 @@ export function handle(gw: Gateway, method: string, body: unknown, nowMs: number
   const req = wire(method, body, nowMs, requestId);
   return gw.handleRequest(req, frameLen(req));
 }
+
+export type Deferred<T> = { promise: Promise<T>; resolve(value: T): void; reject(err: unknown): void };
+
+export function deferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  let reject!: (err: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+// Lets pending adapter receipts and the gateway's outbox continuation run to completion.
+export async function flushAsync(rounds = 5): Promise<void> {
+  for (let i = 0; i < rounds; i += 1) await new Promise((resolve) => setImmediate(resolve));
+}
+
+// Records unhandled rejections raised while `fn` runs and its async work settles.
+export async function collectUnhandledRejections(fn: () => Promise<void>): Promise<unknown[]> {
+  const seen: unknown[] = [];
+  const onRejection = (reason: unknown) => {
+    seen.push(reason);
+  };
+  process.on("unhandledRejection", onRejection);
+  try {
+    await fn();
+    await flushAsync();
+  } finally {
+    process.off("unhandledRejection", onRejection);
+  }
+  return seen;
+}

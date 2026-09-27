@@ -1,16 +1,31 @@
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
+import { createServer, type Server } from "node:http";
 import { join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import {
   ADAPTER_API_VERSION,
   LIMITS,
   validateAdapterManifest,
+  type DeliveryRoute,
 } from "pi-hermes-gateway-protocol";
+import { createTelegramAdapter } from "../../adapter-telegram/src/index.ts";
+import { createSlackAdapter } from "../../adapter-slack/src/index.ts";
 import { loadSendAdapter } from "../dist/adapter-loader.js";
 import { isSendAdapter } from "../dist/adapter.js";
-import { openGateway } from "../dist/index.js";
-import { cleanup, handle, openTestGw, ROUTE, tmpDir } from "./helpers.ts";
+import { openGateway, TestClock, type Gateway, type SendAdapter } from "../dist/index.js";
+import {
+  cleanup,
+  collectUnhandledRejections,
+  deferred,
+  flushAsync,
+  handle,
+  openTestGw,
+  ROUTE,
+  tmpDir,
+  type Deferred,
+} from "./helpers.ts";
 
 function plainAdapter(sent: string[]) {
   const manifestResult = validateAdapterManifest({
@@ -107,7 +122,7 @@ test("adapter commit-unknown receipt is persisted and never auto-retried", () =>
   cleanup(dir);
 });
 
-test("unconfirmed adapter receipt (async/malformed) is commit-unknown, never accepted", () => {
+test("malformed synchronous adapter receipt is commit-unknown, never accepted", () => {
   const dir = tmpDir();
   const { gw, clock } = openTestGw({ dir });
   gw.close();
@@ -120,7 +135,7 @@ test("unconfirmed adapter receipt (async/malformed) is commit-unknown, never acc
     receiptLevels: ["accepted"],
   });
   if (!manifestResult.ok) throw new Error(manifestResult.error.message);
-  const receipts: unknown[] = [new Promise(() => {}), {}, undefined];
+  const receipts: unknown[] = [{}, undefined, { receiptLevel: "maybe" }];
   const adapter = {
     manifest: manifestResult.value,
     send() {
@@ -168,5 +183,283 @@ test("loadSendAdapter imports a module path factory without class identity", asy
   const adapter = await loadSendAdapter(modulePath, { id: "from-module" }, dir);
   assert.equal(isSendAdapter(adapter), true);
   assert.equal(adapter.manifest.adapterId, "from-module");
+  cleanup(dir);
+});
+
+const TELEGRAM_ROUTE: DeliveryRoute = { profileId: "profile-a", adapterId: "telegram", accountId: "bot-1", chatId: "1001" };
+const SLACK_ROUTE: DeliveryRoute = { profileId: "profile-a", adapterId: "slack", accountId: "team-1", chatId: "C123" };
+
+function openWith(adapter: SendAdapter, route: DeliveryRoute): { gw: Gateway; clock: TestClock; dir: string } {
+  const dir = tmpDir();
+  const clock = new TestClock(Date.UTC(2026, 0, 1, 10, 0, 0));
+  const { gateway } = openGateway({ dbPath: join(dir, "gateway.sqlite"), clock, routes: [route], adapter });
+  return { gw: gateway, clock, dir };
+}
+
+function enqueue(gw: Gateway, clock: TestClock, route: DeliveryRoute, text: string) {
+  const res = handle(gw, "delivery.enqueue", { route, text, notAfter: clock.nowMs() + 60_000 }, clock.nowMs());
+  if (!res.ok) throw new Error(res.error.message);
+  return res.body as { deliveryId: string; status: string };
+}
+
+function plainManifest() {
+  const manifestResult = validateAdapterManifest({
+    adapterId: "fake",
+    adapterApiVersion: ADAPTER_API_VERSION,
+    capabilities: ["send.text"],
+    configSchemaVersion: 1,
+    maxTextLength: LIMITS.maxTextChars,
+    receiptLevels: ["accepted"],
+  });
+  if (!manifestResult.ok) throw new Error(manifestResult.error.message);
+  return manifestResult.value;
+}
+
+test("actual Telegram adapter with async fake HTTP settles to accepted after the receipt resolves", async () => {
+  const http = deferred<{ kind: "ok"; status: number; json: unknown }>();
+  let posts = 0;
+  const adapter = createTelegramAdapter(
+    { kind: "dedicated-bot", token: "123456:ABC-DEF_token" },
+    {
+      post: () => {
+        posts += 1;
+        return http.promise;
+      },
+    },
+  );
+  const { gw, clock, dir } = openWith(adapter, TELEGRAM_ROUTE);
+  const unhandled = await collectUnhandledRejections(async () => {
+    const body = enqueue(gw, clock, TELEGRAM_ROUTE, "hello telegram");
+    assert.equal(body.status, "dispatching");
+    assert.equal(gw.store.getDelivery(body.deliveryId)?.dispatch_intent, 1);
+    http.resolve({ kind: "ok", status: 200, json: { ok: true, result: { message_id: 42 } } });
+    await flushAsync();
+    assert.equal(gw.store.getDelivery(body.deliveryId)?.status, "accepted");
+    gw.processOutbox();
+    await flushAsync();
+  });
+  assert.deepEqual(unhandled, []);
+  assert.equal(posts, 1);
+  assert.ok(gw.store.listAudit().some((a) => a.kind === "delivery.accepted"));
+  gw.close();
+  cleanup(dir);
+});
+
+test("actual Slack adapter with async fake HTTP settles to accepted after the receipt resolves", async () => {
+  const http = deferred<{ kind: "ok"; status: number; json: unknown }>();
+  let posts = 0;
+  const adapter = createSlackAdapter(
+    { kind: "bot-token", token: "xoxb-test-token" },
+    {
+      post: () => {
+        posts += 1;
+        return http.promise;
+      },
+    },
+  );
+  const { gw, clock, dir } = openWith(adapter, SLACK_ROUTE);
+  const unhandled = await collectUnhandledRejections(async () => {
+    const body = enqueue(gw, clock, SLACK_ROUTE, "hello slack");
+    assert.equal(body.status, "dispatching");
+    http.resolve({ kind: "ok", status: 200, json: { ok: true, ts: "1700000000.000100" } });
+    await flushAsync();
+    assert.equal(gw.store.getDelivery(body.deliveryId)?.status, "accepted");
+  });
+  assert.deepEqual(unhandled, []);
+  assert.equal(posts, 1);
+  gw.close();
+  cleanup(dir);
+});
+
+test("actual Telegram and Slack adapters record async timeout or rejected HTTP as commit-unknown", async () => {
+  const telegram = createTelegramAdapter(
+    { kind: "dedicated-bot", token: "123456:ABC-DEF_token" },
+    { post: async () => ({ kind: "timeout" as const }) },
+  );
+  const slack = createSlackAdapter(
+    { kind: "bot-token", token: "xoxb-test-token" },
+    { post: async () => Promise.reject(new Error("socket hang up xoxb-test-token")) },
+  );
+  for (const [adapter, route] of [
+    [telegram, TELEGRAM_ROUTE],
+    [slack, SLACK_ROUTE],
+  ] as const) {
+    const { gw, clock, dir } = openWith(adapter, route);
+    const unhandled = await collectUnhandledRejections(async () => {
+      const body = enqueue(gw, clock, route, "x");
+      await flushAsync();
+      assert.equal(gw.store.getDelivery(body.deliveryId)?.status, "commit-unknown");
+    });
+    assert.deepEqual(unhandled, []);
+    assert.equal(JSON.stringify(gw.store.listAudit()).includes("xoxb-test-token"), false);
+    gw.close();
+    cleanup(dir);
+  }
+});
+
+test("Telegram adapter loaded with its default HTTP client settles accepted against a loopback fake server", async () => {
+  const server: Server = createServer((req, res) => {
+    req.resume();
+    req.on("end", () => {
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({ ok: true, result: { message_id: 7 } }));
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const addr = server.address();
+  if (!addr || typeof addr === "string") throw new Error("expected tcp address");
+  const modulePath = fileURLToPath(new URL("../../adapter-telegram/src/index.ts", import.meta.url));
+  const adapter = await loadSendAdapter(modulePath, {
+    kind: "dedicated-bot",
+    token: "123456:ABC-DEF_token",
+    apiOrigin: `http://127.0.0.1:${addr.port}`,
+  });
+  const { gw, clock, dir } = openWith(adapter, TELEGRAM_ROUTE);
+  try {
+    const body = enqueue(gw, clock, TELEGRAM_ROUTE, "loopback");
+    for (let i = 0; i < 100 && gw.store.getDelivery(body.deliveryId)?.status === "dispatching"; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.equal(gw.store.getDelivery(body.deliveryId)?.status, "accepted");
+  } finally {
+    gw.close();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    cleanup(dir);
+  }
+});
+
+test("generic adapter rejected Promise is commit-unknown, not unhandled, and never auto-retried", async () => {
+  let calls = 0;
+  const adapter: SendAdapter = {
+    manifest: plainManifest(),
+    send() {
+      calls += 1;
+      return Promise.reject(new Error("transport exploded"));
+    },
+  };
+  const { gw, clock, dir } = openWith(adapter, ROUTE);
+  let deliveryId = "";
+  const unhandled = await collectUnhandledRejections(async () => {
+    deliveryId = enqueue(gw, clock, ROUTE, "x").deliveryId;
+    await flushAsync();
+    gw.processOutbox();
+    gw.tick();
+    await flushAsync();
+  });
+  assert.deepEqual(unhandled, []);
+  assert.equal(calls, 1);
+  assert.equal(gw.store.getDelivery(deliveryId)?.status, "commit-unknown");
+  const audit = gw.store.listAudit().find((a) => a.kind === "delivery.commit-unknown");
+  assert.ok(audit);
+  assert.equal(audit.payload_json.includes("transport exploded"), false);
+  gw.close();
+  cleanup(dir);
+});
+
+test("synchronous adapter throw is commit-unknown and never auto-retried", () => {
+  let calls = 0;
+  const adapter: SendAdapter = {
+    manifest: plainManifest(),
+    send() {
+      calls += 1;
+      throw new Error("sync transport exploded");
+    },
+  };
+  const { gw, clock, dir } = openWith(adapter, ROUTE);
+  const body = enqueue(gw, clock, ROUTE, "x");
+  assert.equal(body.status, "commit-unknown");
+  gw.processOutbox();
+  assert.equal(calls, 1);
+  assert.equal(gw.store.getDelivery(body.deliveryId)?.status, "commit-unknown");
+  gw.close();
+  cleanup(dir);
+});
+
+test("async resolved commit-unknown receipt is persisted and never auto-retried", async () => {
+  let calls = 0;
+  const adapter: SendAdapter = {
+    manifest: plainManifest(),
+    async send() {
+      calls += 1;
+      return { receiptLevel: "commit-unknown", reason: "timeout" };
+    },
+  };
+  const { gw, clock, dir } = openWith(adapter, ROUTE);
+  const body = enqueue(gw, clock, ROUTE, "x");
+  await flushAsync();
+  assert.equal(gw.store.getDelivery(body.deliveryId)?.status, "commit-unknown");
+  gw.processOutbox();
+  await flushAsync();
+  assert.equal(calls, 1);
+  gw.close();
+  cleanup(dir);
+});
+
+test("overlapping enqueues and ticks drain once: one send in flight, each delivery sent exactly once", async () => {
+  const pending: Array<{ deliveryId: string; receipt: Deferred<{ receiptLevel: "accepted"; providerMessageId: string }> }> = [];
+  let inFlight = 0;
+  let maxInFlight = 0;
+  const adapter: SendAdapter = {
+    manifest: plainManifest(),
+    send(envelope) {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      const receipt = deferred<{ receiptLevel: "accepted"; providerMessageId: string }>();
+      pending.push({ deliveryId: envelope.deliveryId, receipt });
+      return receipt.promise.finally(() => {
+        inFlight -= 1;
+      });
+    },
+  };
+  const { gw, clock, dir } = openWith(adapter, ROUTE);
+  const ids: string[] = [];
+  const unhandled = await collectUnhandledRejections(async () => {
+    ids.push(enqueue(gw, clock, ROUTE, "a").deliveryId);
+    ids.push(enqueue(gw, clock, ROUTE, "b").deliveryId);
+    gw.tick();
+    gw.processOutbox();
+    ids.push(enqueue(gw, clock, ROUTE, "c").deliveryId);
+    gw.tick();
+    for (let i = 0; i < ids.length; i += 1) {
+      await flushAsync();
+      assert.equal(pending.length, i + 1, "exactly one send is in flight at a time");
+      const next = pending[i]!;
+      next.receipt.resolve({ receiptLevel: "accepted", providerMessageId: `p:${next.deliveryId}` });
+      gw.tick();
+      gw.processOutbox();
+    }
+    await flushAsync();
+  });
+  assert.deepEqual(unhandled, []);
+  assert.equal(maxInFlight, 1);
+  assert.deepEqual(
+    pending.map((p) => p.deliveryId),
+    ids,
+  );
+  for (const id of ids) assert.equal(gw.store.getDelivery(id)?.status, "accepted");
+  gw.close();
+  cleanup(dir);
+});
+
+test("hung async send leaves its row dispatching; close does not wait and reopen records commit-unknown", async () => {
+  let calls = 0;
+  const adapter: SendAdapter = {
+    manifest: plainManifest(),
+    send() {
+      calls += 1;
+      return new Promise(() => {});
+    },
+  };
+  const { gw, clock, dir } = openWith(adapter, ROUTE);
+  const body = enqueue(gw, clock, ROUTE, "x");
+  assert.equal(body.status, "dispatching");
+  await flushAsync();
+  assert.equal(gw.store.getDelivery(body.deliveryId)?.status, "dispatching");
+  gw.close();
+  const reopened = openGateway({ dbPath: join(dir, "gateway.sqlite"), clock, routes: [ROUTE], adapter });
+  assert.equal(reopened.gateway.store.getDelivery(body.deliveryId)?.status, "commit-unknown");
+  reopened.gateway.processOutbox();
+  assert.equal(calls, 1);
+  reopened.gateway.close();
   cleanup(dir);
 });

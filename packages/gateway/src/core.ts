@@ -91,12 +91,22 @@ class InjectedCrash extends Error {
   }
 }
 
+function isPromiseLike(value: unknown): value is PromiseLike<SendReceipt> {
+  return typeof value === "object" && value !== null && typeof (value as { then?: unknown }).then === "function";
+}
+
+type DispatchOutcome = "done" | "stop";
+
 export class Gateway {
   readonly store: Store;
   readonly clock: Clock;
   readonly config: GatewayConfig;
   readonly adapter: SendAdapter;
   crashNext: CrashPoint | null = null;
+  private closed = false;
+  // Set while the single outbox drain waits on an async receipt; other kicks only request a rerun.
+  private outboxSettling: Promise<void> | null = null;
+  private outboxRerun = false;
 
   constructor(opts: { store: Store; clock: Clock; config: GatewayConfig; adapter: SendAdapter }) {
     this.store = opts.store;
@@ -108,7 +118,9 @@ export class Gateway {
     }
   }
 
+  // Does not wait for a pending send: its row stays dispatching and reopen records commit-unknown.
   close(): void {
+    this.closed = true;
     this.store.close();
   }
 
@@ -448,22 +460,65 @@ export class Gateway {
   }
 
   processOutbox(): void {
-    if (!this.store.dispatchEnabled()) return;
-    for (const row of this.store.queuedDeliveries()) {
-      try {
-        this.dispatchOne(row);
-      } catch (err) {
-        if (err instanceof InjectedCrash) {
-          this.applyCrash(row, err.point);
-          this.crashNext = null;
+    if (this.outboxSettling) {
+      this.outboxRerun = true;
+      return;
+    }
+    this.drainOutbox(null, 0);
+  }
+
+  // Synchronous receipts settle inline; an async receipt suspends the drain until it settles.
+  private drainOutbox(snapshot: DeliveryRow[] | null, start: number): void {
+    let rows = snapshot;
+    let index = start;
+    for (;;) {
+      if (this.closed || !this.store.dispatchEnabled()) return;
+      if (!rows) {
+        rows = this.store.queuedDeliveries();
+        index = 0;
+        this.outboxRerun = false;
+      }
+      for (; index < rows.length; index += 1) {
+        const row = this.store.getDelivery(rows[index]!.delivery_id);
+        if (row?.status !== "queued") continue;
+        const outcome = this.dispatchGuarded(row);
+        if (outcome === "stop") return;
+        if (outcome !== "done") {
+          const remaining = rows;
+          const next = index + 1;
+          this.outboxSettling = outcome.then((settled) => {
+            this.outboxSettling = null;
+            if (settled === "done") this.drainOutbox(remaining, next);
+          });
           return;
         }
-        throw err;
       }
+      if (!this.outboxRerun) return;
+      rows = null;
     }
   }
 
-  private dispatchOne(row: DeliveryRow): void {
+  private dispatchGuarded(row: DeliveryRow): DispatchOutcome | Promise<DispatchOutcome> {
+    try {
+      const settling = this.dispatchOne(row);
+      if (!settling) return "done";
+      return settling.then(
+        () => "done",
+        (err: unknown) => this.stopOnInjectedCrash(row, err),
+      );
+    } catch (err) {
+      return this.stopOnInjectedCrash(row, err);
+    }
+  }
+
+  private stopOnInjectedCrash(row: DeliveryRow, err: unknown): "stop" {
+    if (!(err instanceof InjectedCrash)) throw err;
+    if (!this.closed) this.applyCrash(row, err.point);
+    this.crashNext = null;
+    return "stop";
+  }
+
+  private dispatchOne(row: DeliveryRow): Promise<void> | undefined {
     const now = this.clock.nowMs();
     this.audit("delivery.send.attempt", { deliveryId: row.delivery_id });
     if (this.crashNext === "claim") throw new InjectedCrash("claim");
@@ -505,17 +560,32 @@ export class Gateway {
       this.refuseInvalidRoute(row);
       return;
     }
-    let receipt: SendReceipt;
+    let receipt: SendReceipt | PromiseLike<SendReceipt>;
     try {
       receipt = this.adapter.send({
         deliveryId: row.delivery_id,
         route,
         text: row.text,
       });
-    } catch (err) {
+    } catch {
       if (this.crashNext === "mid-send") throw new InjectedCrash("mid-send");
-      throw err;
+      this.recordReceipt(row, { receiptLevel: "commit-unknown", reason: "adapter-threw" });
+      return;
     }
+    if (isPromiseLike(receipt)) {
+      return Promise.resolve(receipt).then(
+        (settled) => this.recordReceipt(row, settled),
+        () => {
+          if (this.crashNext === "mid-send") throw new InjectedCrash("mid-send");
+          this.recordReceipt(row, { receiptLevel: "commit-unknown", reason: "adapter-rejected" });
+        },
+      );
+    }
+    this.recordReceipt(row, receipt);
+  }
+
+  private recordReceipt(row: DeliveryRow, receipt: SendReceipt | undefined): void {
+    if (this.closed) return;
     if (this.crashNext === "before-receipt") throw new InjectedCrash("before-receipt");
     if (receipt?.receiptLevel !== "accepted") {
       this.store.setDeliveryStatus(row.delivery_id, "commit-unknown");
