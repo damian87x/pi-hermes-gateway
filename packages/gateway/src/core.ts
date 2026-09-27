@@ -256,11 +256,25 @@ export class Gateway {
     const jobId = (req.body as { jobId: string }).jobId;
     const job = this.store.getJob(jobId);
     if (!job) return { ok: false, requestId: req.requestId, error: { code: "invalid_body", message: "unknown job" } };
+    if (status === "paused" && job.status === "pending-approval") {
+      return {
+        ok: false,
+        requestId: req.requestId,
+        error: { code: "invalid_body", message: "job is pending approval" },
+      };
+    }
     if (status === "active" && job.status === "pending-approval") {
       return {
         ok: false,
         requestId: req.requestId,
         error: { code: "invalid_body", message: "job is pending approval" },
+      };
+    }
+    if (status === "active" && job.status === "cancelled") {
+      return {
+        ok: false,
+        requestId: req.requestId,
+        error: { code: "invalid_body", message: "job is cancelled" },
       };
     }
     this.store.setJobStatus(jobId, status);

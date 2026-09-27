@@ -96,6 +96,109 @@ test("job.resume does not activate a pending-approval job", () => {
   cleanup(dir);
 });
 
+test("job.pause cannot launder a pending-approval job into paused, then resume", () => {
+  const { gw, clock, dir, adapter } = openTestGw();
+  const at = "2026-01-01T12:00:00.000Z";
+  const created = handle(
+    gw,
+    "job.create",
+    {
+      kind: "static-text",
+      text: "no-launder",
+      route: ROUTE,
+      schedule: { type: "once", atUtc: at },
+      requireApproval: true,
+    },
+    clock.nowMs(),
+  );
+  assert.equal(created.ok, true);
+  if (!created.ok) throw new Error("create failed");
+  const jobId = (created.body as { jobId: string }).jobId;
+
+  const paused = handle(gw, "job.pause", { jobId }, clock.nowMs());
+  assert.equal(paused.ok, false);
+  assert.equal(gw.store.getJob(jobId)?.status, "pending-approval");
+
+  const resumed = handle(gw, "job.resume", { jobId }, clock.nowMs());
+  assert.equal(resumed.ok, false);
+  assert.equal(gw.store.getJob(jobId)?.status, "pending-approval");
+
+  clock.set(Date.parse(at));
+  gw.tick();
+  assert.equal(adapter.sent.length, 0);
+  gw.close();
+  cleanup(dir);
+});
+
+test("a cancelled job cannot resume and tick does not send", () => {
+  const { gw, clock, dir, adapter } = openTestGw();
+  const at = "2026-01-01T12:00:00.000Z";
+  const created = handle(
+    gw,
+    "job.create",
+    {
+      kind: "static-text",
+      text: "no-resume-after-cancel",
+      route: ROUTE,
+      schedule: { type: "once", atUtc: at },
+    },
+    clock.nowMs(),
+  );
+  assert.equal(created.ok, true);
+  if (!created.ok) throw new Error("create failed");
+  const jobId = (created.body as { jobId: string }).jobId;
+  assert.equal(gw.store.getJob(jobId)?.status, "active");
+
+  const cancelled = handle(gw, "job.cancel", { jobId }, clock.nowMs());
+  assert.equal(cancelled.ok, true);
+  assert.equal(gw.store.getJob(jobId)?.status, "cancelled");
+
+  const resumed = handle(gw, "job.resume", { jobId }, clock.nowMs());
+  assert.equal(resumed.ok, false);
+  assert.equal(gw.store.getJob(jobId)?.status, "cancelled");
+
+  clock.set(Date.parse(at));
+  gw.tick();
+  assert.equal(adapter.sent.length, 0);
+  gw.close();
+  cleanup(dir);
+});
+
+test("an approved active job can pause and resume normally", () => {
+  const { gw, clock, dir, adapter } = openTestGw();
+  const at = "2026-01-01T12:00:00.000Z";
+  const created = handle(
+    gw,
+    "job.create",
+    {
+      kind: "static-text",
+      text: "pause-resume-ok",
+      route: ROUTE,
+      schedule: { type: "once", atUtc: at },
+    },
+    clock.nowMs(),
+  );
+  assert.equal(created.ok, true);
+  if (!created.ok) throw new Error("create failed");
+  const jobId = (created.body as { jobId: string }).jobId;
+  assert.equal(gw.store.getJob(jobId)?.status, "active");
+
+  const paused = handle(gw, "job.pause", { jobId }, clock.nowMs());
+  assert.equal(paused.ok, true);
+  assert.equal(gw.store.getJob(jobId)?.status, "paused");
+
+  const resumed = handle(gw, "job.resume", { jobId }, clock.nowMs());
+  assert.equal(resumed.ok, true);
+  assert.equal(gw.store.getJob(jobId)?.status, "active");
+
+  clock.set(Date.parse(at));
+  gw.tick();
+  assert.equal(adapter.sent.length, 1);
+  assert.equal(adapter.sent[0]?.text, "pause-resume-ok");
+  gw.close();
+  cleanup(dir);
+});
+
 test("approve of unknown or already-active id fails", () => {
   const { gw, clock, dir } = openTestGw();
   const created = handle(
