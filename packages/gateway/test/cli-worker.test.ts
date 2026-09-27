@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
+import { EventEmitter } from "node:events";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -404,8 +405,9 @@ test("store: persistent WAL contention fails within the init budget and closes t
   const elapsedMs = performance.now() - startedMs;
   t.mock.restoreAll();
   assert.ok(elapsedMs >= 4_900 && elapsedMs < 7_000, `elapsed ${elapsedMs}ms`);
-  // Retries sleep between attempts instead of spinning.
-  assert.ok(walAttempts.length > 1 && walAttempts.length <= 5_000 / 20, `${walAttempts.length} attempts`);
+  // Retries sleep between attempts instead of spinning. A starved scheduler may spend the whole
+  // budget after the first BUSY, so one attempt is valid; the busy-then-success test proves retry.
+  assert.ok(walAttempts.length >= 1 && walAttempts.length <= 5_000 / 20, `${walAttempts.length} attempts`);
   assert.equal(handles.size, 1);
   for (const db of handles) assert.equal(db.isOpen, false);
 });
@@ -506,11 +508,69 @@ async function concurrentFreshProfileRound(t, round, children) {
   }
 }
 
-test("cli-worker: simultaneous independent CLI processes on a fresh profile spawn exactly one worker per day", { timeout: 240_000 }, async (t) => {
+// SIGKILL every still-open CLI child and wait, at most graceMs, until each has closed (been reaped).
+// Resolves to the number still open rather than throwing, so later fixture hooks still reap workers.
+async function killAndReap(children, graceMs = 5_000) {
+  let open = children.size;
+  const closed = [...children].map((child) => new Promise((resolve) => {
+    child.once("close", () => {
+      open -= 1;
+      resolve();
+    });
+    child.kill("SIGKILL");
+  }));
+  await new Promise((resolve) => {
+    const timer = setTimeout(resolve, graceMs);
+    Promise.all(closed).then(() => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+  return open;
+}
+
+test("cli-worker: parent-timeout teardown kills and reaps hung CLI children, within a bound", { timeout: 15_000 }, async (t) => {
+  await avoidUtcMidnight();
+  // The state a timed-out round leaves: live CLI children, each blocked on a hung detached worker.
   const children = new Set();
-  // A per-child deadline kills stragglers; this also covers a failing or timed-out test.
   t.after(() => {
     for (const child of children) child.kill("SIGKILL");
+  });
+  const closes = [];
+  for (const fixture of [setup(t, "hang"), setup(t, "hang")]) {
+    const child = spawn(process.execPath, fixture.argv(["report", "occ-1"]), { env: fixture.env(), stdio: "ignore" });
+    children.add(child);
+    closes.push(new Promise((resolve) => child.once("close", () => {
+      children.delete(child);
+      resolve();
+    })));
+    const deadline = Date.now() + 10_000;
+    while (!existsSync(fixture.marker) || !readFileSync(fixture.marker, "utf8").endsWith("\n")) {
+      assert.ok(Date.now() < deadline, "worker never started");
+      await sleep(20);
+    }
+    assert.equal(fixture.spawns(), 1);
+  }
+  assert.equal(children.size, 2);
+  const pids = [...children].map((child) => child.pid);
+  assert.equal(await killAndReap(children), 0);
+  assert.equal(children.size, 0);
+  await Promise.all(closes);
+  for (const pid of pids) assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
+
+  // A child that never closes bounds the wait instead of hanging cleanup.
+  const stuck = Object.assign(new EventEmitter(), { kill: () => true });
+  const startedMs = performance.now();
+  assert.equal(await killAndReap(new Set([stuck]), 50), 1);
+  assert.ok(performance.now() - startedMs < 1_000);
+});
+
+test("cli-worker: simultaneous independent CLI processes on a fresh profile spawn exactly one worker per day", { timeout: 240_000 }, async (t) => {
+  const children = new Set();
+  // A per-child deadline kills stragglers; on a timed-out test, reap them before fixtures are removed.
+  t.after(async () => {
+    const open = await killAndReap(children);
+    if (open > 0) t.diagnostic(`${open} CLI children still open after SIGKILL`);
   });
   for (let round = 1; round <= 50; round += 1) await concurrentFreshProfileRound(t, round, children);
 });
