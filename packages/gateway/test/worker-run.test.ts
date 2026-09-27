@@ -15,12 +15,24 @@ if (process.env.MARKER) appendFileSync(process.env.MARKER, String(process.pid) +
 process.stdout.write("worker ok\\n");
 `;
 
-function setup(limit = 1) {
+const HANGING_WORKER = `
+const { appendFileSync } = require("node:fs");
+if (process.env.MARKER) appendFileSync(process.env.MARKER, String(process.pid) + "\\n");
+setInterval(() => {}, 1000);
+`;
+
+const FAILING_WORKER = `
+const { appendFileSync } = require("node:fs");
+if (process.env.MARKER) appendFileSync(process.env.MARKER, String(process.pid) + "\\n");
+process.exit(3);
+`;
+
+function setup(limit = 1, script = FAKE_WORKER) {
   const dir = mkdtempSync(join(tmpdir(), "w1e-"));
-  const script = join(dir, "fake-worker.cjs");
-  writeFileSync(script, FAKE_WORKER);
+  const scriptPath = join(dir, "fake-worker.cjs");
+  writeFileSync(scriptPath, script);
   const marker = join(dir, "marker");
-  const fakeProfile = { id: "fake", executablePath: process.execPath, args: [script] };
+  const fakeProfile = { id: "fake", executablePath: process.execPath, args: [scriptPath] };
   const dbPath = profilePaths(dir).dbPath;
   let store = new Store(dbPath);
   store.migrate();
@@ -316,6 +328,69 @@ test("worker-run: admission samples the clock only after winning the writer lock
     }
   } finally {
     holder.kill("SIGKILL");
+    done();
+  }
+});
+
+test("worker-run: a worker timeout is rejected, not completed, and leaves the claim interrupted", async () => {
+  const { deps, job, done, dbPath, reopen } = setup(1, HANGING_WORKER);
+  deps.timeoutMs = 50;
+  try {
+    await assert.rejects(runWorkerJob(job, deps), /worker did not complete.*"kind":"timeout"/);
+    assert.equal(deps.results.get(job.occurrenceId), undefined);
+    assert.deepEqual(deps.results.list(), []);
+    reopen();
+    const reader = new Store(dbPath);
+    try {
+      assert.equal(
+        reader.db.prepare("SELECT status FROM worker_claims WHERE occurrence_id = ?").get(job.occurrenceId).status,
+        "interrupted",
+      );
+    } finally {
+      reader.close();
+    }
+    // The spent claim is not retried automatically; the same occurrence is a duplicate...
+    assert.deepEqual(await runWorkerJob(job, deps), { status: "rejected", reason: "duplicate" });
+    // ...and a new occurrence finds the day's single invocation already spent.
+    assert.equal((await runWorkerJob({ ...job, occurrenceId: "occ-2" }, deps)).reason, "budget_exhausted");
+  } finally {
+    done();
+  }
+});
+
+test("worker-run: a nonzero worker exit is rejected, not completed, and leaves the claim interrupted", async () => {
+  const { deps, job, done, dbPath, reopen } = setup(1, FAILING_WORKER);
+  try {
+    await assert.rejects(runWorkerJob(job, deps), /worker did not complete.*"kind":"rejected".*"code":3/);
+    assert.equal(deps.results.get(job.occurrenceId), undefined);
+    assert.deepEqual(deps.results.list(), []);
+    reopen();
+    const reader = new Store(dbPath);
+    try {
+      assert.equal(
+        reader.db.prepare("SELECT status FROM worker_claims WHERE occurrence_id = ?").get(job.occurrenceId).status,
+        "interrupted",
+      );
+    } finally {
+      reader.close();
+    }
+    assert.deepEqual(await runWorkerJob(job, deps), { status: "rejected", reason: "duplicate" });
+    assert.equal((await runWorkerJob({ ...job, occurrenceId: "occ-2" }, deps)).reason, "budget_exhausted");
+  } finally {
+    done();
+  }
+});
+
+test("worker-run: a successful result is still accepted and completed unchanged", async () => {
+  const { marker, deps, job, done } = setup(1, FAKE_WORKER);
+  try {
+    const outcome = await runWorkerJob(job, deps);
+    assert.equal(outcome.status, "accepted");
+    assert.deepEqual(outcome.row.value, { kind: "ok", text: "worker ok" });
+    assert.deepEqual(deps.results.get(job.occurrenceId), outcome.row);
+    assert.equal(deps.results.list().length, 1);
+    assert.equal(Number(readFileSync(marker, "utf8")) > 0, true);
+  } finally {
     done();
   }
 });

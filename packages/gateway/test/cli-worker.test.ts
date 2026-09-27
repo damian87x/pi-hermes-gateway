@@ -211,10 +211,12 @@ test("cli-worker: separate processes reject a repeated occurrence and a second o
 
 test("cli-worker: a failing worker still consumes the daily invocation", async (t) => {
   await avoidUtcMidnight();
-  const { run, spawns } = setup(t, "fail");
+  const { run, spawns, claims } = setup(t, "fail");
   const first = run(["report", "occ-1"]);
-  assert.equal(first.status, 0, first.stderr);
-  assert.deepEqual(outcome(first).row.value, { kind: "rejected", reason: "exit", code: 3 });
+  assert.equal(first.status, 1, first.stderr);
+  assert.equal(first.stdout, "");
+  assert.match(first.stderr, /worker did not complete/);
+  assert.deepEqual(claims(), [{ occurrence_id: "occ-1", status: "interrupted" }]);
   assert.deepEqual(outcome(run(["report", "occ-2"])), exhausted);
   assert.equal(spawns(), 1);
 });

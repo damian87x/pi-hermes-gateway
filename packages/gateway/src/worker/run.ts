@@ -46,6 +46,8 @@ export async function runWorkerJob(job: RunWorkerJobInput, deps: RunWorkerJobDep
       maxOutputBytes: deps.maxOutputBytes,
       ...(deps.env ? { env: deps.env } : {}),
     });
+    // Only a completed run may accept; timeouts and rejections fall through to the interrupt path below.
+    if (result.kind !== "ok") throw new Error(`worker did not complete: ${JSON.stringify(result)}`);
     return { status: "accepted", row: deps.results.complete(job.occurrenceId, result, deps.nowMs()) };
   } catch (error) {
     // Spawn/result failures are uncertain: retain the claim, never silently retry.
