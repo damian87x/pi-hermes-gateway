@@ -195,7 +195,7 @@ test("stop during a deferred async send: no closed-store write, restart records 
 });
 
 const OUTBOX_HALT_DIAGNOSTIC =
-  "gateway outbox halted: a delivery receipt could not be recorded; no further sends until restart; remaining dispatching deliveries become commit-unknown on restart\n";
+  "gateway outbox halted: dispatch persistence failed; no further sends until restart; remaining dispatching deliveries become commit-unknown on restart\n";
 
 test("async accepted receipt that cannot be written halts the daemon outbox with one stderr diagnostic even if its audit fails; restart recovers commit-unknown and sends the queued row once", async () => {
   const dir = tmpDir();

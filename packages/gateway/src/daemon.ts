@@ -29,7 +29,7 @@ export const DEFAULT_TICK_INTERVAL_MS = 60_000;
 
 // Fixed text only: the underlying store error may carry raw SQL or secrets.
 const OUTBOX_HALT_DIAGNOSTIC =
-  "gateway outbox halted: a delivery receipt could not be recorded; no further sends until restart; remaining dispatching deliveries become commit-unknown on restart\n";
+  "gateway outbox halted: dispatch persistence failed; no further sends until restart; remaining dispatching deliveries become commit-unknown on restart\n";
 
 export type Daemon = {
   gateway: Gateway;
