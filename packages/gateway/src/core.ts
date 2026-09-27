@@ -187,10 +187,14 @@ export class Gateway {
         error: { code: "outbox_halted", message: "outbox is halted; restart the gateway to recover" },
       };
     }
-    if (req.method === "job.create" || req.method === "job.cancel") {
+    if (req.method === "job.create" || req.method === "job.pause" || req.method === "job.resume" || req.method === "job.cancel") {
       // job row, audit and request_log commit together so a crash cannot leave a job without its dedup entry,
-      // and a cancel answers success only once its job and queued deliveries are committed
+      // and a cancel answers success only once its job and queued deliveries are committed. The job status
+      // and the dedup entry are reread under the writer lock: another Store may have committed a cancel or
+      // this requestId since the reads above.
       return this.store.transaction(() => {
+        const committed = this.store.getRequest(req.requestId);
+        if (committed) return JSON.parse(committed) as GatewayResponse;
         const response = this.dispatchMethod(req);
         this.store.putRequest(req.requestId, JSON.stringify(response), nowMs);
         return response;
