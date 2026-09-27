@@ -36,6 +36,26 @@ declare module "node:sqlite" {
   }
 }
 
+declare const process: {
+  getuid(): number;
+};
+
+declare module "node:fs" {
+  export function lstatSync(path: string): {
+    uid: number;
+    mode: number;
+    isFile(): boolean;
+  };
+  export function readFileSync(path: string, encoding: "utf8"): string;
+}
+
+declare module "node:crypto" {
+  export function createHash(algorithm: "sha256"): {
+    update(data: string): { digest(): Uint8Array };
+  };
+  export function timingSafeEqual(a: Uint8Array, b: Uint8Array): boolean;
+}
+
 declare module "node:path" {
   export function join(...parts: string[]): string;
 }
@@ -44,7 +64,7 @@ declare module "node:http" {
   export type IncomingMessage = {
     method?: string;
     url?: string;
-    headers: { host?: string | string[] };
+    headers: { host?: string | string[]; authorization?: string };
   };
   export type ServerResponse = {
     statusCode: number;
