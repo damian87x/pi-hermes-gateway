@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { userInfo } from "node:os";
 import { join, relative } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { createFakeAdapter, probeLingerEnabled, runDoctor, startDaemon, TestClock, type SendAdapter } from "../dist/index.js";
@@ -190,6 +191,70 @@ test("stop during a deferred async send: no closed-store write, restart records 
   });
   assert.deepEqual(unhandled, []);
   assert.equal(sends, 1);
+  cleanup(dir);
+});
+
+test("async accepted receipt that cannot be written halts the daemon outbox; restart recovers commit-unknown and sends the queued row once", async () => {
+  const dir = tmpDir();
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
+  const clock = new TestClock(Date.UTC(2026, 0, 1, 10, 0, 0));
+  const receipt = deferred<{ receiptLevel: "accepted"; providerMessageId: string }>();
+  const asyncSent: string[] = [];
+  const asyncAdapter: SendAdapter = {
+    manifest: createFakeAdapter().manifest,
+    send(envelope) {
+      asyncSent.push(envelope.deliveryId);
+      return receipt.promise;
+    },
+  };
+  let first = "";
+  let second = "";
+  const unhandled = await collectUnhandledRejections(async () => {
+    const d1 = startDaemon({ profileDir: dir, routes: [ROUTE], clock, adapter: asyncAdapter, bindSocket: false });
+    const side = new DatabaseSync(join(dir, "gateway.sqlite"));
+    try {
+      const enqueue = (text: string) => {
+        const res = handle(d1.gateway, "delivery.enqueue", { route: ROUTE, text, notAfter: clock.nowMs() + 60_000 }, clock.nowMs());
+        return (res as { body: { deliveryId: string } }).body.deliveryId;
+      };
+      first = enqueue("first");
+      second = enqueue("second");
+      side.exec(
+        "CREATE TRIGGER block_accepted BEFORE UPDATE OF status ON deliveries WHEN NEW.status = 'accepted' " +
+          "BEGIN SELECT RAISE(ABORT, 'injected accepted write failure'); END",
+      );
+      receipt.resolve({ receiptLevel: "accepted", providerMessageId: "p:first" });
+      await flushAsync();
+      assert.ok(d1.gateway.outboxHalt);
+      side.exec("DROP TRIGGER block_accepted");
+      d1.gateway.tick();
+      await flushAsync();
+      assert.deepEqual(asyncSent, [first]);
+      assert.equal(d1.gateway.store.getDelivery(first)?.status, "dispatching");
+      assert.equal(d1.gateway.store.getDelivery(second)?.status, "queued");
+    } finally {
+      side.close();
+      d1.stop();
+    }
+
+    const adapter2 = createFakeAdapter();
+    const d2 = startDaemon({ profileDir: dir, routes: [ROUTE], clock, adapter: adapter2, bindSocket: false });
+    try {
+      assert.equal(d2.gateway.outboxHalt, null);
+      assert.equal(d2.gateway.store.getDelivery(first)?.status, "commit-unknown");
+      assert.equal(d2.gateway.store.getDelivery(second)?.status, "accepted");
+      d2.gateway.tick();
+      assert.deepEqual(
+        adapter2.sent.map((e) => e.deliveryId),
+        [second],
+      );
+    } finally {
+      d2.stop();
+    }
+  });
+  assert.deepEqual(unhandled, []);
+  assert.deepEqual(asyncSent, [first]);
   cleanup(dir);
 });
 

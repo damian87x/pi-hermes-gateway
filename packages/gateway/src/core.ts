@@ -108,6 +108,9 @@ export class Gateway {
   // waits on an async receipt; other kicks (even reentrant ones from adapter.send) only request a rerun.
   private outboxDraining = false;
   private outboxRerun = false;
+  // Set when recording an async receipt, or the drain resumed after it, throws (e.g. the receipt write fails).
+  // The outbox then sends nothing more in this process; reopen records the dispatching row commit-unknown.
+  private outboxHalted: { error: unknown } | null = null;
 
   constructor(opts: { store: Store; clock: Clock; config: GatewayConfig; adapter: SendAdapter }) {
     this.store = opts.store;
@@ -117,6 +120,10 @@ export class Gateway {
     if (this.config.notAfterBoundMs < 1 || this.config.notAfterBoundMs > LIMITS.maxNotAfterMs) {
       throw new Error("notAfterBoundMs must be in (0, 24h]");
     }
+  }
+
+  get outboxHalt(): { error: unknown } | null {
+    return this.outboxHalted;
   }
 
   // Does not wait for a pending send: its row stays dispatching and reopen records commit-unknown.
@@ -461,6 +468,7 @@ export class Gateway {
   }
 
   processOutbox(): void {
+    if (this.outboxHalted) return;
     if (this.outboxDraining) {
       this.outboxRerun = true;
       return;
@@ -492,10 +500,12 @@ export class Gateway {
             const remaining = rows;
             const next = index + 1;
             suspended = true;
-            void outcome.then((settled) => {
-              if (settled === "done") this.drainOutbox(remaining, next);
-              else this.outboxDraining = false;
-            });
+            void outcome
+              .then((settled) => {
+                if (settled === "done") this.drainOutbox(remaining, next);
+                else this.outboxDraining = false;
+              })
+              .catch((err: unknown) => this.haltOutbox(err));
             return;
           }
         }
@@ -504,6 +514,17 @@ export class Gateway {
       }
     } finally {
       if (!suspended) this.outboxDraining = false;
+    }
+  }
+
+  private haltOutbox(error: unknown): void {
+    this.outboxHalted = { error };
+    this.outboxDraining = false;
+    if (this.closed) return;
+    try {
+      this.audit("outbox.halted", { reason: "dispatch-failed" });
+    } catch {
+      /* the store is already failing; the in-memory halt still stops dispatch */
     }
   }
 
