@@ -170,5 +170,9 @@ async function cli(): Promise<number | undefined> {
   return undefined;
 }
 
-const exitCode = await cli();
+// Errors that escape a command (e.g. the ledger cannot be opened) end it with a diagnostic, not a stack.
+const exitCode = await cli().catch((err: unknown) => {
+  process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
+  return 1;
+});
 if (exitCode !== undefined) process.exitCode = exitCode;

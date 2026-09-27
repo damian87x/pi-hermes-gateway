@@ -73,6 +73,39 @@ CREATE TABLE IF NOT EXISTS fuse_route_day (
 );
 `;
 
+declare const performance: { now(): number };
+
+// SQLite reports SQLITE_BUSY without calling the busy handler while another connection holds a
+// lock during conversion to WAL, so concurrent first opens of a fresh ledger fail despite
+// busy_timeout. Only this transaction-free statement is retried, against one deadline.
+const WAL_INIT_BUDGET_MS = 5000;
+const WAL_INIT_RETRY_SLEEP_MS = 25;
+const SQLITE_BUSY = 5;
+const SQLITE_BUSY_SNAPSHOT = 517;
+
+function isSqliteBusy(err: unknown): boolean {
+  const errcode = (err as { errcode?: unknown } | null)?.errcode;
+  return typeof errcode === "number" && (errcode & 0xff) === SQLITE_BUSY && errcode !== SQLITE_BUSY_SNAPSHOT;
+}
+
+function enableWal(db: DatabaseSync): void {
+  const deadlineMs = performance.now() + WAL_INIT_BUDGET_MS;
+  const sleeper = new Int32Array(new SharedArrayBuffer(4));
+  for (;;) {
+    db.exec(`PRAGMA busy_timeout = ${Math.ceil(deadlineMs - performance.now())};`);
+    try {
+      db.exec("PRAGMA journal_mode = WAL;");
+      return;
+    } catch (err) {
+      if (!isSqliteBusy(err)) throw err;
+      const sleepMs = Math.min(WAL_INIT_RETRY_SLEEP_MS, deadlineMs - performance.now());
+      if (sleepMs <= 0) throw err;
+      Atomics.wait(sleeper, 0, 0, sleepMs);
+      if (performance.now() >= deadlineMs) throw err;
+    }
+  }
+}
+
 export type JobRow = {
   job_id: string;
   kind: string;
@@ -118,10 +151,16 @@ export class Store {
 
   constructor(path: string) {
     this.path = path;
-    this.db = new DatabaseSync(path);
-    this.db.exec("PRAGMA busy_timeout = 5000;");
-    this.db.exec("PRAGMA journal_mode = WAL;");
-    this.db.exec("PRAGMA foreign_keys = ON;");
+    const db = new DatabaseSync(path);
+    try {
+      enableWal(db);
+      db.exec("PRAGMA busy_timeout = 5000;");
+      db.exec("PRAGMA foreign_keys = ON;");
+    } catch (err) {
+      db.close();
+      throw err;
+    }
+    this.db = db;
   }
 
   userVersion(): number {
@@ -177,6 +216,8 @@ export class Store {
   }
 
   close(): void {
+    // migrate() already closed the connection when it rejected a newer schema.
+    if (!(this.db as DatabaseSync & { readonly isOpen: boolean }).isOpen) return;
     try {
       this.db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
     } catch {

@@ -7,6 +7,7 @@ import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+import { SCHEMA_VERSION, Store } from "../dist/store.js";
 import { handle, openTestGw, ROUTE } from "./helpers.ts";
 
 const CLI = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
@@ -299,29 +300,217 @@ test("cli-worker: finite CLI errors keep their status and never fall through to 
   assert.equal(existsSync(join(profileDir, "gateway.sock")), false);
 });
 
-test("cli-worker: simultaneous independent CLI processes spawn at most one worker per day", { timeout: 20_000 }, async (t) => {
+test("cli-worker: a CLI whose ledger cannot be opened exits 1 with a diagnostic, not a stack", (t) => {
+  const { profileDir, argv, env, spawns } = setup(t);
+  writeFileSync(join(profileDir, "gateway.sqlite"), "x".repeat(4096), { mode: 0o600 });
+  const worker = spawnSync(process.execPath, argv(["report", "occ-1"]), { encoding: "utf8", env: env(), timeout: 10_000 });
+  const approve = spawnSync(process.execPath, [CLI, "--profile", profileDir, "approve", "job-1"], { encoding: "utf8", timeout: 10_000 });
+  for (const result of [worker, approve]) {
+    assert.equal(result.status, 1, result.stderr);
+    assert.equal(result.stderr, "file is not a database\n");
+    assert.equal(result.stdout, "");
+  }
+  assert.equal(spawns(), 0);
+  assert.equal(existsSync(join(profileDir, "gateway.sock")), false);
+});
+
+test("cli-worker: a newer ledger schema is reported, not masked by closing the store twice", (t) => {
+  const { profileDir, argv, env, spawns } = setup(t);
+  const db = new DatabaseSync(join(profileDir, "gateway.sqlite"));
+  db.exec(`PRAGMA user_version = ${SCHEMA_VERSION + 1}`);
+  db.close();
+  const worker = spawnSync(process.execPath, argv(["report", "occ-1"]), { encoding: "utf8", env: env(), timeout: 10_000 });
+  const approve = spawnSync(process.execPath, [CLI, "--profile", profileDir, "approve", "job-1"], { encoding: "utf8", timeout: 10_000 });
+  for (const result of [worker, approve]) {
+    assert.equal(result.status, 1, result.stderr);
+    assert.equal(result.stderr, `schema version ${SCHEMA_VERSION + 1} is newer than binary ${SCHEMA_VERSION}\n`);
+    assert.equal(result.stdout, "");
+  }
+  assert.equal(spawns(), 0);
+});
+
+const sqliteExec = DatabaseSync.prototype.exec;
+
+// Capture every connection a Store constructor opens, and each attempt to enable WAL.
+function instrumentStoreInit(t, { onWal = (run) => run(), onExec = (sql, run) => run() } = {}) {
+  const handles = new Set();
+  const walAttempts = [];
+  t.mock.method(DatabaseSync.prototype, "exec", function (sql) {
+    handles.add(this);
+    const run = (text = sql) => sqliteExec.call(this, text);
+    if (!/^PRAGMA journal_mode = WAL/.test(sql)) return onExec(sql, run);
+    const attempt = { atMs: performance.now() };
+    walAttempts.push(attempt);
+    try {
+      return onWal(run, walAttempts.length);
+    } catch (err) {
+      attempt.error = { code: err.code, errcode: err.errcode, errstr: err.errstr, message: err.message };
+      throw err;
+    }
+  });
+  return { handles, walAttempts };
+}
+
+function rollbackJournalDb(t) {
+  const dir = mkdtempSync(join(tmpdir(), "store-wal-init-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const path = join(dir, "gateway.sqlite");
+  const blocker = new DatabaseSync(path);
+  t.after(() => blocker.close());
+  blocker.exec("CREATE TABLE held(x); BEGIN IMMEDIATE; INSERT INTO held VALUES(1);");
+  // Bypasses instrumentation, which only observes Store connections.
+  const release = () => sqliteExec.call(blocker, "ROLLBACK");
+  return { path, release };
+}
+
+test("store: WAL initialization retries a real SQLITE_BUSY and then opens normally", (t) => {
+  const { path, release } = rollbackJournalDb(t);
+  let busyTimeoutSet = 0;
+  const { handles, walAttempts } = instrumentStoreInit(t, {
+    // First attempt: no busy wait, so SQLite itself reports the held lock at once.
+    onExec: (sql, run) => (/^PRAGMA busy_timeout/.test(sql) && busyTimeoutSet++ === 0 ? run("PRAGMA busy_timeout = 0") : run()),
+    onWal: (run, attempt) => {
+      try {
+        return run();
+      } finally {
+        if (attempt === 1) release();
+      }
+    },
+  });
+  const store = new Store(path);
+  t.mock.restoreAll();
+  try {
+    assert.deepEqual(walAttempts.map((a) => a.error), [
+      { code: "ERR_SQLITE_ERROR", errcode: 5, errstr: "database is locked", message: "database is locked" },
+      undefined,
+    ]);
+    assert.deepEqual([...handles], [store.db]);
+    assert.equal(store.db.isTransaction, false);
+    assert.equal(store.db.prepare("PRAGMA journal_mode").get().journal_mode, "wal");
+    assert.equal(store.db.prepare("PRAGMA foreign_keys").get().foreign_keys, 1);
+    assert.equal(store.db.prepare("PRAGMA busy_timeout").get().timeout, 5000);
+    store.migrate();
+    assert.equal(store.userVersion(), SCHEMA_VERSION);
+  } finally {
+    store.close();
+  }
+});
+
+test("store: persistent WAL contention fails within the init budget and closes the handle", { timeout: 15_000 }, (t) => {
+  const { path } = rollbackJournalDb(t);
+  const { handles, walAttempts } = instrumentStoreInit(t);
+  const startedMs = performance.now();
+  assert.throws(() => new Store(path), (err) => err.errcode === 5 && err.message === "database is locked");
+  const elapsedMs = performance.now() - startedMs;
+  t.mock.restoreAll();
+  assert.ok(elapsedMs >= 4_900 && elapsedMs < 7_000, `elapsed ${elapsedMs}ms`);
+  // Retries sleep between attempts instead of spinning.
+  assert.ok(walAttempts.length > 1 && walAttempts.length <= 5_000 / 20, `${walAttempts.length} attempts`);
+  assert.equal(handles.size, 1);
+  for (const db of handles) assert.equal(db.isOpen, false);
+});
+
+test("store: non-busy WAL initialization errors fail at once and close the handle", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "store-wal-init-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const notDb = join(dir, "not-a-db.sqlite");
+  writeFileSync(notDb, "x".repeat(4096));
+  const real = instrumentStoreInit(t);
+  assert.throws(() => new Store(notDb), (err) => err.errcode === 26 && err.message === "file is not a database");
+  t.mock.restoreAll();
+  assert.equal(real.walAttempts.length, 1);
+  for (const db of real.handles) assert.equal(db.isOpen, false);
+
+  // SQLITE_LOCKED, BUSY_SNAPSHOT, generic errors and "locked" messages are not contention to wait out.
+  const errors = [
+    Object.assign(new Error("database table is locked"), { code: "ERR_SQLITE_ERROR", errcode: 6 }),
+    Object.assign(new Error("database is locked"), { code: "ERR_SQLITE_ERROR", errcode: 517 }),
+    Object.assign(new Error("database is locked"), { code: "ERR_SQLITE_ERROR" }),
+    new Error("database is locked"),
+  ];
+  for (const [i, thrown] of errors.entries()) {
+    const { handles, walAttempts } = instrumentStoreInit(t, { onWal: () => { throw thrown; } });
+    assert.throws(() => new Store(join(dir, `synthetic-${i}.sqlite`)), (err) => err === thrown);
+    t.mock.restoreAll();
+    assert.equal(walAttempts.length, 1, thrown.message);
+    assert.equal(handles.size, 1);
+    for (const db of handles) assert.equal(db.isOpen, false);
+  }
+
+  const late = new Error("foreign keys unavailable");
+  const { handles } = instrumentStoreInit(t, { onExec: (sql, run) => (/^PRAGMA foreign_keys/.test(sql) ? (() => { throw late; })() : run()) });
+  assert.throws(() => new Store(join(dir, "late.sqlite")), (err) => err === late);
+  t.mock.restoreAll();
+  assert.equal(handles.size, 1);
+  for (const db of handles) assert.equal(db.isOpen, false);
+});
+
+test("store: close after migrate rejected a newer schema keeps the original error", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "store-wal-init-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const store = new Store(join(dir, "gateway.sqlite"));
+  store.db.exec(`PRAGMA user_version = ${SCHEMA_VERSION + 1}`);
+  assert.throws(() => store.migrate(), /is newer than binary/);
+  store.close();
+});
+
+// One round: four independent CLI processes, one previously nonexistent ledger, released together.
+async function concurrentFreshProfileRound(t, round, children) {
   await avoidUtcMidnight();
-  const { dir, env, argv, spawns, claims } = setup(t, "slow");
+  const { dir, profileDir, env, argv, spawns, claims } = setup(t, "slow");
   const barrier = join(dir, "barrier");
   mkdirSync(barrier);
   const count = 4;
-  const runs = Array.from({ length: count }, (_, i) => new Promise((resolve, reject) => {
+  const results = await Promise.all(Array.from({ length: count }, (_, i) => new Promise((resolve) => {
     const child = spawn(process.execPath, argv(["report", `occ-${i}`]), {
       env: env(undefined, { CLI_WORKER_TEST_BARRIER: JSON.stringify({ dir: barrier, count }) }),
       stdio: ["ignore", "pipe", "pipe"],
     });
+    children.add(child);
     let stdout = "";
     let stderr = "";
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGKILL");
+    }, 15_000);
     child.stdout.on("data", (chunk) => { stdout += chunk; });
     child.stderr.on("data", (chunk) => { stderr += chunk; });
-    child.once("error", reject);
-    child.once("close", (code) => resolve({ code, stdout, stderr }));
-  }));
-  const results = await Promise.all(runs);
-  for (const result of results) assert.notEqual(result.stdout, "", result.stderr);
-  const outcomes = results.map(outcome);
-  assert.equal(outcomes.filter((o) => o.status === "accepted").length, 1, JSON.stringify(outcomes));
-  assert.deepEqual(outcomes.filter((o) => o.status !== "accepted"), Array(count - 1).fill(exhausted));
-  assert.equal(spawns(), 1);
-  assert.equal(claims().length, 1);
+    child.once("error", (err) => { stderr += `spawn error: ${err.message}`; });
+    child.once("close", (code, signal) => {
+      clearTimeout(timer);
+      children.delete(child);
+      resolve({ occurrenceId: `occ-${i}`, code, signal, timedOut, stdout, stderr });
+    });
+  })));
+  const details = `round ${round}: ${JSON.stringify(results)}`;
+  for (const result of results) {
+    assert.ok(/^\{.*\}\n$/.test(result.stdout), `incomplete JSON; ${details}`);
+  }
+  const accepted = results.filter((r) => JSON.parse(r.stdout).status === "accepted");
+  assert.equal(accepted.length, 1, details);
+  assert.equal(accepted[0].code, 0, details);
+  for (const rejected of results.filter((r) => r !== accepted[0])) {
+    assert.deepEqual(JSON.parse(rejected.stdout), exhausted, details);
+    assert.equal(rejected.code, 1, details);
+  }
+  assert.equal(spawns(), 1, details);
+  assert.deepEqual(claims(), [{ occurrence_id: accepted[0].occurrenceId, status: "completed" }], details);
+  const db = new DatabaseSync(join(profileDir, "gateway.sqlite"), { readOnly: true });
+  try {
+    assert.equal(db.prepare("PRAGMA journal_mode").get().journal_mode, "wal", details);
+    assert.equal(db.prepare("PRAGMA user_version").get().user_version, SCHEMA_VERSION, details);
+    assert.equal(db.prepare("PRAGMA integrity_check").get().integrity_check, "ok", details);
+  } finally {
+    db.close();
+  }
+}
+
+test("cli-worker: simultaneous independent CLI processes on a fresh profile spawn exactly one worker per day", { timeout: 240_000 }, async (t) => {
+  const children = new Set();
+  // A per-child deadline kills stragglers; this also covers a failing or timed-out test.
+  t.after(() => {
+    for (const child of children) child.kill("SIGKILL");
+  });
+  for (let round = 1; round <= 50; round += 1) await concurrentFreshProfileRound(t, round, children);
 });
