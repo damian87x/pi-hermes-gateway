@@ -58,6 +58,80 @@ test("injected send success returns accepted provider id", () => {
   assert.equal(calls[0]?.timeoutMs, 50);
 });
 
+test("injected sync ok with missing providerMessageId is commit-unknown, no fake id", () => {
+  const adapter = createWhatsAppAdapter(
+    { kind: "send-only" },
+    {
+      send() {
+        return { kind: "ok" };
+      },
+    },
+  );
+  const receipt = adapter.send({ deliveryId: "dlv-missing", route: ROUTE, text: "hi" });
+  assert.equal(receipt.receiptLevel, "commit-unknown");
+  assert.equal(receipt.reason, "whatsapp-send-unconfirmed");
+  assert.equal(receipt.providerMessageId, undefined);
+});
+
+test("injected sync ok with empty/whitespace providerMessageId is commit-unknown, no fake id", () => {
+  const adapter = createWhatsAppAdapter(
+    { kind: "send-only" },
+    {
+      send() {
+        return { kind: "ok", providerMessageId: "   " };
+      },
+    },
+  );
+  const receipt = adapter.send({ deliveryId: "dlv-blank", route: ROUTE, text: "hi" });
+  assert.equal(receipt.receiptLevel, "commit-unknown");
+  assert.equal(receipt.reason, "whatsapp-send-unconfirmed");
+  assert.equal(receipt.providerMessageId, undefined);
+});
+
+test("injected Promise ok with missing providerMessageId is commit-unknown, no fake id", async () => {
+  const adapter = createWhatsAppAdapter(
+    { kind: "send-only" },
+    {
+      async send() {
+        return { kind: "ok" };
+      },
+    },
+  );
+  const receipt = await adapter.send({ deliveryId: "dlv-async-missing", route: ROUTE, text: "hi" });
+  assert.equal(receipt.receiptLevel, "commit-unknown");
+  assert.equal(receipt.reason, "whatsapp-send-unconfirmed");
+  assert.equal(receipt.providerMessageId, undefined);
+});
+
+test("injected Promise ok with empty providerMessageId is commit-unknown, no fake id", async () => {
+  const adapter = createWhatsAppAdapter(
+    { kind: "send-only" },
+    {
+      async send() {
+        return { kind: "ok", providerMessageId: "" };
+      },
+    },
+  );
+  const receipt = await adapter.send({ deliveryId: "dlv-async-blank", route: ROUTE, text: "hi" });
+  assert.equal(receipt.receiptLevel, "commit-unknown");
+  assert.equal(receipt.reason, "whatsapp-send-unconfirmed");
+  assert.equal(receipt.providerMessageId, undefined);
+});
+
+test("injected Promise ok with nonempty providerMessageId is accepted", async () => {
+  const adapter = createWhatsAppAdapter(
+    { kind: "send-only" },
+    {
+      async send() {
+        return { kind: "ok", providerMessageId: "wamid.async-1" };
+      },
+    },
+  );
+  const receipt = await adapter.send({ deliveryId: "dlv-async-ok", route: ROUTE, text: "hi" });
+  assert.equal(receipt.receiptLevel, "accepted");
+  assert.equal(receipt.providerMessageId, "wamid.async-1");
+});
+
 test("injected send timeout is commit-unknown with no retry", () => {
   let calls = 0;
   const adapter = createAdapter(

@@ -92,14 +92,16 @@ export function parseSendOnlyConfig(input: unknown): WhatsAppSendOnlyConfig {
   return parsed;
 }
 
-function receiptFromResult(result: WhatsAppSendResult, deliveryId: string): WhatsAppSendReceipt {
+function receiptFromResult(result: WhatsAppSendResult): WhatsAppSendReceipt {
   if (result.kind === "timeout") {
     return { receiptLevel: "commit-unknown", reason: "timeout" };
   }
   if (result.kind === "ok") {
     const id = result.providerMessageId;
-    const providerMessageId = typeof id === "string" && id.length > 0 ? id : deliveryId;
-    return { receiptLevel: "accepted", providerMessageId };
+    if (typeof id === "string" && id.trim().length > 0) {
+      return { receiptLevel: "accepted", providerMessageId: id };
+    }
+    return { receiptLevel: "commit-unknown", reason: "whatsapp-send-unconfirmed" };
   }
   return { receiptLevel: "commit-unknown", reason: "whatsapp-send-unconfirmed" };
 }
@@ -141,11 +143,11 @@ export function createWhatsAppAdapter(
         });
         if (isThenable<WhatsAppSendResult>(result)) {
           return Promise.resolve(result).then(
-            (resolved) => receiptFromResult(resolved, envelope.deliveryId),
+            (resolved) => receiptFromResult(resolved),
             fail,
           );
         }
-        return receiptFromResult(result, envelope.deliveryId);
+        return receiptFromResult(result);
       } catch (err) {
         return fail(err);
       }
