@@ -503,3 +503,83 @@ for (const fault of [
     cleanup(dir);
   });
 }
+
+function fuseState(dbPath: string): { tokens: number | null; dayCount: number } {
+  const side = new DatabaseSync(dbPath);
+  try {
+    const account = side.prepare("SELECT tokens FROM fuse_account WHERE account_id = ?").get(ROUTE.accountId);
+    const day = side.prepare("SELECT COALESCE(SUM(count), 0) AS n FROM fuse_route_day").get();
+    return { tokens: account ? Number(account.tokens) : null, dayCount: Number(day?.n) };
+  } finally {
+    side.close();
+  }
+}
+
+for (const cap of [
+  { name: "token bucket", opts: { tokenBucketCapacity: 1, tokenBucketRefillPerMs: 0 } },
+  { name: "daily cap", opts: { tokenBucketCapacity: 5, tokenBucketRefillPerMs: 0, dailyCapPerRoute: 1 } },
+]) {
+  test(`job whose dispatch-intent write fails rolls back its ${cap.name} debit and halts; restart sends once`, () => {
+    const at = "2026-01-01T12:00:00.000Z";
+    const { gw, clock, dir, adapter } = openTestGw(cap.opts);
+    const dbPath = join(dir, "gateway.sqlite");
+    createOnceJob(gw, clock, "only", at);
+    const side = new DatabaseSync(dbPath);
+    side.exec(
+      "CREATE TRIGGER block_intent BEFORE UPDATE ON deliveries WHEN NEW.status = 'dispatching' BEGIN SELECT RAISE(ABORT, 'injected intent write failure'); END",
+    );
+    clock.set(Date.parse(at));
+    gw.tick();
+    assert.equal(adapter.sent.length, 0);
+    assert.ok(gw.outboxHalt, "the failed intent write halts the outbox");
+    const row = gw.store.listDeliveries()[0];
+    assert.equal(row?.status, "queued");
+    assert.equal(row?.dispatch_intent, 0);
+    assert.deepEqual(fuseState(dbPath), { tokens: null, dayCount: 0 }, "neither the token nor the daily-cap debit is committed");
+    assert.deepEqual(sendRejectReasons(gw), []);
+    gw.close();
+    side.exec("DROP TRIGGER block_intent");
+    side.close();
+
+    const { gw: gw2, adapter: adapter2 } = openTestGw({ clock, dir, ...cap.opts });
+    gw2.tick();
+    gw2.tick();
+    assert.equal(adapter2.sent.length, 1, "restart sends the unsent job exactly once");
+    assert.deepEqual(gw2.store.listDeliveries().map((d) => d.status), ["accepted"]);
+    assert.deepEqual(gw2.store.listOccurrences().map((o) => o.status), ["completed"]);
+    assert.deepEqual(sendRejectReasons(gw2), []);
+    assert.deepEqual(fuseState(dbPath), { tokens: cap.opts.tokenBucketCapacity - 1, dayCount: 1 }, "debited exactly once");
+    gw2.close();
+
+    const { gw: gw3, adapter: adapter3 } = openTestGw({ clock, dir, ...cap.opts });
+    gw3.tick();
+    assert.equal(adapter3.sent.length, 0, "a further restart never resends");
+    assert.deepEqual(fuseState(dbPath), { tokens: cap.opts.tokenBucketCapacity - 1, dayCount: 1 });
+    gw3.close();
+    cleanup(dir);
+  });
+}
+
+test("job crash at dispatch-intent rolls back its fuse debit and is commit-unknown; restart never sends it", () => {
+  const at = "2026-01-01T12:00:00.000Z";
+  const { gw, clock, dir, adapter } = openTestGw({ tokenBucketCapacity: 1, tokenBucketRefillPerMs: 0 });
+  const dbPath = join(dir, "gateway.sqlite");
+  createOnceJob(gw, clock, "only", at);
+  gw.crashNext = "dispatch-intent";
+  clock.set(Date.parse(at));
+  gw.tick();
+  assert.equal(adapter.sent.length, 0);
+  assert.equal(gw.store.listDeliveries()[0]?.status, "commit-unknown");
+  assert.equal(gw.store.listOccurrences()[0]?.status, "commit-unknown");
+  assert.deepEqual(fuseState(dbPath), { tokens: null, dayCount: 0 });
+  gw.close();
+
+  const { gw: gw2, adapter: adapter2 } = openTestGw({ clock, dir, tokenBucketCapacity: 1, tokenBucketRefillPerMs: 0 });
+  gw2.tick();
+  gw2.tick();
+  assert.equal(adapter2.sent.length, 0);
+  assert.equal(gw2.store.listDeliveries()[0]?.status, "commit-unknown");
+  assert.deepEqual(sendRejectReasons(gw2), []);
+  gw2.close();
+  cleanup(dir);
+});

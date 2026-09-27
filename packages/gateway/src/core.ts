@@ -645,15 +645,26 @@ export class Gateway {
       this.refuseSend(row, "text_too_long");
       return;
     }
-    if (row.source === "job") {
-      const fuse = this.consumeFuses(route);
-      if (!fuse.ok) {
-        this.refuseSend(row, fuse.error.code);
-        return;
+    // Recheck the job and row under the writer lock; cancellation, fuse debit and dispatch intent
+    // cannot interleave. A failed intent write rolls the debit back before any adapter call.
+    const intent = this.store.transaction((): ProtocolResult<true> | "deferred" => {
+      const current = this.store.getDelivery(row.delivery_id);
+      if (current?.status !== "queued" || (row.job_id && this.store.getJob(row.job_id)?.status !== "active")) {
+        return "deferred";
       }
+      if (row.source === "job") {
+        const fuse = this.consumeFuses(route);
+        if (!fuse.ok) return fuse;
+      }
+      if (this.crashNext === "dispatch-intent") throw new InjectedCrash("dispatch-intent");
+      if (!this.store.claimDispatchIntent(row.delivery_id)) throw new Error("dispatch intent was not claimed");
+      return ok(true);
+    });
+    if (intent === "deferred") return;
+    if (!intent.ok) {
+      this.refuseSend(row, intent.error.code);
+      return;
     }
-    if (this.crashNext === "dispatch-intent") throw new InjectedCrash("dispatch-intent");
-    if (!this.store.claimDispatchIntent(row.delivery_id)) return;
     if (this.crashNext === "mid-send") this.adapter.crashMidSend = true;
     if (!this.routeAllowed(route).ok) {
       this.refuseInvalidRoute(row);
