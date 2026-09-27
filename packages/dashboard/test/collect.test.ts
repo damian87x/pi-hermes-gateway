@@ -63,6 +63,52 @@ test("collectStatus lists pending-approval jobs and deliveries", () => {
   }
 });
 
+test("collectStatus counts and lists from one snapshot when a writer commits between them", () => {
+  const { dir, dbPath } = makeProfile({ jobs: 0, occurrences: 0, deliveries: 0 });
+  const setup = new DatabaseSync(dbPath);
+  setup.exec("PRAGMA journal_mode = WAL;");
+  setup.close();
+  const originalPrepare = DatabaseSync.prototype.prepare;
+  let committed = false;
+  DatabaseSync.prototype.prepare = function (this: DatabaseSync, sql: string) {
+    if (!committed && sql.startsWith("SELECT job_id")) {
+      committed = true;
+      const writer = new DatabaseSync(dbPath);
+      writer.exec("BEGIN IMMEDIATE");
+      writer
+        .prepare(
+          "INSERT INTO jobs(job_id, kind, text, route_json, schedule_json, status, created_at_ms, watermark_ms) VALUES('job-late','static-text','late','{}','{}','active',1,1)",
+        )
+        .run();
+      writer
+        .prepare(
+          "INSERT INTO deliveries(delivery_id, job_id, occurrence_id, source, route_json, text, not_after_ms, status, request_id, created_at_ms) VALUES('dlv-late','job-late',NULL,'job','{}','late',2,'queued',NULL,1)",
+        )
+        .run();
+      writer.exec("COMMIT");
+      writer.close();
+    }
+    return originalPrepare.call(this, sql);
+  } as typeof originalPrepare;
+  try {
+    const status = collectStatus(dbPath);
+    assert.equal(committed, true);
+    assert.equal(status.jobsTotal, status.jobs.length);
+    assert.equal(status.deliveriesTotal, status.deliveries.length);
+    assert.equal(status.jobsTotal, 0);
+    assert.equal(status.deliveriesTotal, 0);
+    DatabaseSync.prototype.prepare = originalPrepare;
+    const after = collectStatus(dbPath);
+    assert.equal(after.jobsTotal, 1);
+    assert.deepEqual(after.jobs.map((job) => job.jobId), ["job-late"]);
+    assert.equal(after.deliveriesTotal, 1);
+    assert.deepEqual(after.deliveries.map((delivery) => delivery.deliveryId), ["dlv-late"]);
+  } finally {
+    DatabaseSync.prototype.prepare = originalPrepare;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("collectStatus throws when the profile DB is missing", () => {
   const { dir } = makeProfile({ jobs: 0, occurrences: 0, deliveries: 0 });
   try {

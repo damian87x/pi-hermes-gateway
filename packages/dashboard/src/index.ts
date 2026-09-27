@@ -105,6 +105,8 @@ function countRows(db: DatabaseSync, table: "jobs" | "occurrences" | "deliveries
 export function collectStatus(dbPath: string): DashboardStatus {
   const db = new DatabaseSync(dbPath, { readOnly: true });
   try {
+    // One read transaction, so counts and lists come from the same snapshot.
+    db.exec("BEGIN");
     const jobsTotal = countRows(db, "jobs");
     const occurrencesTotal = countRows(db, "occurrences");
     const deliveriesTotal = countRows(db, "deliveries");
@@ -145,6 +147,7 @@ export function collectStatus(dbPath: string): DashboardStatus {
         createdAtMs: asNumber(row.created_at_ms),
         text: clip(asString(row.text)),
       }));
+    db.exec("COMMIT");
     return {
       jobs,
       occurrences,
