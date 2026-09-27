@@ -221,7 +221,8 @@ test("an enqueue queued behind an async holder answers a racing Store with its r
   assert.equal(owner.store.getDelivery(deliveryId)?.status, "accepted");
   assert.equal(sent.filter((id) => id === deliveryId).length, 1);
   assert.equal(sent.length, 2);
-  assert.deepEqual(enqueue(racer), first, "the settled row is not replayed");
+  assert.deepEqual(enqueue(racer), ok(deliveryId, "accepted"), "the replay reports the settled row, not the queued snapshot");
+  assert.equal(sent.filter((id) => id === deliveryId).length, 1, "the replay does not re-admit or resend");
   assert.equal(owner.store.getAccountFuse(ROUTE.accountId)?.tokens, 0);
   assert.equal(owner.store.getRouteDay(ROUTE_KEY, DAY), 2);
   racer.close();
@@ -251,7 +252,7 @@ test("a pending-approval enqueue answers a racing Store with its pending respons
   owner.tick();
   racer.tick();
   assert.deepEqual(sent, [deliveryId]);
-  assert.deepEqual(enqueue(racer, body), first, "the recorded response is replayed, not re-admitted");
+  assert.deepEqual(enqueue(racer, body), ok(deliveryId, "accepted"), "the replay reports the sent row, not re-admitted");
   racer.tick();
   assert.deepEqual(sent, [deliveryId]);
   racer.close();
@@ -346,6 +347,53 @@ for (const fault of [
     cleanup(dir);
   });
 }
+
+test("an enqueue answered dispatching before its async receipt settles is replayed with the accepted status once it does", async () => {
+  const dir = tmpDir();
+  const dbPath = join(dir, "gateway.sqlite");
+  const clock = new TestClock(START_MS);
+  const sent: string[] = [];
+  const receipt = deferred<SendReceipt>();
+  const gw = open(dbPath, clock, countingAdapter(sent, undefined, () => receipt.promise));
+  const first = enqueue(gw);
+  const deliveryId = requestDelivery(gw)[0]?.delivery_id ?? "";
+  assert.deepEqual(first, ok(deliveryId, "dispatching"));
+  assert.deepEqual(enqueue(gw), first, "an unsettled send replays dispatching");
+
+  receipt.resolve({ receiptLevel: "accepted" });
+  await flushAsync();
+  assertOneAdmission(gw, "accepted", "delivery.enqueue");
+  assert.deepEqual(enqueue(gw), ok(deliveryId, "accepted"));
+  gw.tick();
+  assert.deepEqual(sent, [deliveryId]);
+  gw.close();
+
+  const reopened = open(dbPath, clock, countingAdapter(sent));
+  assert.deepEqual(enqueue(reopened), ok(deliveryId, "accepted"));
+  reopened.close();
+  cleanup(dir);
+});
+
+test("an enqueue answered dispatching whose daemon stops before the receipt is replayed commit-unknown after restart and never resent", () => {
+  const dir = tmpDir();
+  const dbPath = join(dir, "gateway.sqlite");
+  const clock = new TestClock(START_MS);
+  const sent: string[] = [];
+  const gw = open(dbPath, clock, countingAdapter(sent, undefined, () => deferred<SendReceipt>().promise));
+  const first = enqueue(gw);
+  const deliveryId = requestDelivery(gw)[0]?.delivery_id ?? "";
+  assert.deepEqual(first, ok(deliveryId, "dispatching"));
+  gw.close();
+
+  const reopened = open(dbPath, clock, countingAdapter(sent));
+  assertOneAdmission(reopened, "commit-unknown", "delivery.enqueue");
+  assert.deepEqual(enqueue(reopened), ok(deliveryId, "commit-unknown"));
+  reopened.tick();
+  assert.deepEqual(enqueue(reopened), ok(deliveryId, "commit-unknown"));
+  assert.deepEqual(sent, [deliveryId], "the uncertain send is not replayed");
+  reopened.close();
+  cleanup(dir);
+});
 
 test("an enqueue whose post-send request_log write fails keeps its one send; the retry answers the accepted row", () => {
   const dir = tmpDir();

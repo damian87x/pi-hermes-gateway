@@ -169,7 +169,7 @@ export class Gateway {
     const req = parsed.value;
     const prior = this.store.getRequest(req.requestId);
     if (prior) {
-      return JSON.parse(prior) as GatewayResponse;
+      return this.replay(req, prior);
     }
     if (req.method === "delivery.enqueue") {
       const existing = this.store.getDeliveryByRequestId(req.requestId);
@@ -194,7 +194,7 @@ export class Gateway {
       // this requestId since the reads above.
       return this.store.transaction(() => {
         const committed = this.store.getRequest(req.requestId);
-        if (committed) return JSON.parse(committed) as GatewayResponse;
+        if (committed) return this.replay(req, committed);
         const response = this.dispatchMethod(req);
         this.store.putRequest(req.requestId, JSON.stringify(response), nowMs);
         return response;
@@ -230,6 +230,18 @@ export class Gateway {
 
   private okBody(req: WireRequest, body: unknown): GatewayResponse {
     return { ok: true, requestId: req.requestId, body };
+  }
+
+  // A recorded enqueue response may predate its row's receipt, or the restart that recorded it
+  // commit-unknown, so a response naming this request's delivery is answered with that row's live status.
+  private replay(req: WireRequest, recorded: string): GatewayResponse {
+    const response = JSON.parse(recorded) as GatewayResponse;
+    if (!response.ok) return response;
+    const deliveryId = (response.body as { deliveryId?: unknown } | null)?.deliveryId;
+    if (typeof deliveryId !== "string") return response;
+    const row = this.store.getDeliveryByRequestId(req.requestId);
+    if (row?.delivery_id !== deliveryId) return response;
+    return this.okBody(req, { deliveryId, status: row.status });
   }
 
   private jobCreate(req: WireRequest): GatewayResponse {
@@ -320,7 +332,7 @@ export class Gateway {
       // Reread under the writer lock: another Store may have committed this requestId's response or
       // delivery since handleRequest's reads, and must not be answered with a second debit or rejection.
       const committed = this.store.getRequest(req.requestId);
-      if (committed) return JSON.parse(committed) as GatewayResponse;
+      if (committed) return this.replay(req, committed);
       const existing = this.store.getDeliveryByRequestId(req.requestId);
       if (existing) return this.okBody(req, { deliveryId: existing.delivery_id, status: existing.status });
       // A response settled here commits with its row or rejection, so a racing Store's recheck returns it.

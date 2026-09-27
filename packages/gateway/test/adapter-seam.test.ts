@@ -807,7 +807,10 @@ test("synchronous receipt whose accepted write fails halts the outbox: response 
   assert.equal(reopened.store.getDelivery(first.deliveryId)?.status, "commit-unknown");
   reopened.processOutbox();
   assert.deepEqual(sent, [first.deliveryId], "the uncertain row is never replayed");
-  assert.deepEqual(enqueueResult(reopened, clock, "first", "req-sync-halt-first"), firstResponse);
+  assert.deepEqual(enqueueResult(reopened, clock, "first", "req-sync-halt-first"), {
+    ...firstResponse,
+    body: { ...first, status: "commit-unknown" },
+  });
   assert.deepEqual(sent, [first.deliveryId]);
   reopened.close();
   cleanup(dir);
