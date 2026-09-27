@@ -521,7 +521,8 @@ export class Gateway {
     let suspended = false;
     try {
       for (;;) {
-        if (this.closed || !this.store.dispatchEnabled()) return;
+        // Quarantine is checked on its own so persisted contradictory flags never dispatch.
+        if (this.closed || !this.store.dispatchEnabled() || this.store.getMeta("quarantine") === "1") return;
         if (!rows) {
           rows = this.store.queuedDeliveries();
           index = 0;
@@ -738,9 +739,12 @@ export class Gateway {
   }
 
   resumeDispatch(): void {
-    this.store.setMeta("dispatch_enabled", "1");
-    this.store.setMeta("quarantine", "0");
-    this.audit("dispatch.resume", {});
+    // All-or-nothing: a failed write leaves both flags and the audit as they were.
+    this.store.transaction(() => {
+      this.store.setMeta("dispatch_enabled", "1");
+      this.store.setMeta("quarantine", "0");
+      this.audit("dispatch.resume", {});
+    });
   }
 
   recoverStuckDispatching(): void {

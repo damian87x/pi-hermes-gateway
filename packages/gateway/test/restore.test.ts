@@ -643,3 +643,112 @@ test("backup is taken before migrate from v0", () => {
   assert.equal(existsSync(bak[0]!), true);
   cleanup(dir);
 });
+
+function quarantinedDaemonProfile(): { dir: string; dbPath: string; clock: TestClock } {
+  const dir = tmpDir();
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
+  const clock = new TestClock(Date.UTC(2026, 0, 1, 10, 0, 0));
+  const d = startDaemon({ profileDir: dir, routes: [ROUTE], clock, bindSocket: false });
+  d.gateway.restoreQuarantine(clock.nowMs(), clock.nowMs());
+  d.stop();
+  return { dir, dbPath: join(dir, "gateway.sqlite"), clock };
+}
+
+function persistedDispatchFlags(dbPath: string): { dispatchEnabled: string; quarantine: string; resumes: number } {
+  const side = new DatabaseSync(dbPath);
+  try {
+    const meta = (k: string) => (side.prepare("SELECT v FROM meta WHERE k = ?").get(k) as { v: string }).v;
+    const resumes = side.prepare("SELECT COUNT(*) AS n FROM audit WHERE kind = 'dispatch.resume'").get()?.n;
+    return { dispatchEnabled: meta("dispatch_enabled"), quarantine: meta("quarantine"), resumes: Number(resumes) };
+  } finally {
+    side.close();
+  }
+}
+
+// A daemon restarted into a still-quarantined profile accepts direct enqueues but sends none of them;
+// only a later successful operator resume sends each exactly once.
+function directEnqueueHeldUntilResume(dir: string, clock: TestClock): void {
+  const held = startDaemon({ profileDir: dir, routes: [ROUTE], clock, bindSocket: false });
+  const ids: string[] = [];
+  try {
+    for (const text of ["held-1", "held-2"]) {
+      const enq = handle(held.gateway, "delivery.enqueue", { route: ROUTE, text, notAfter: clock.nowMs() + 60_000 }, clock.nowMs());
+      assert.equal(enq.ok, true);
+      ids.push((enq.body as { deliveryId: string }).deliveryId);
+    }
+    held.gateway.processOutbox();
+    held.gateway.tick();
+    assert.equal(held.adapter.sent.length, 0);
+    assert.deepEqual(ids.map((id) => held.gateway.store.getDelivery(id)?.status), ["queued", "queued"]);
+  } finally {
+    held.stop();
+  }
+
+  const resumed = startDaemon({ profileDir: dir, routes: [ROUTE], clock, bindSocket: false, resumeDispatch: true });
+  try {
+    assert.deepEqual(resumed.adapter.sent.map((e) => e.deliveryId).sort(), [...ids].sort());
+    assert.equal(resumed.gateway.store.getMeta("quarantine"), "0");
+    assert.equal(resumed.gateway.store.dispatchEnabled(), true);
+  } finally {
+    resumed.stop();
+  }
+}
+
+function failedResumeStaysQuarantined(trigger: string, dropTrigger: string, failure: RegExp): void {
+  const { dir, dbPath, clock } = quarantinedDaemonProfile();
+  const setup = new DatabaseSync(dbPath);
+  setup.exec(trigger);
+  setup.close();
+  assert.throws(
+    () => startDaemon({ profileDir: dir, routes: [ROUTE], clock, bindSocket: false, resumeDispatch: true }),
+    failure,
+  );
+  assert.deepEqual(persistedDispatchFlags(dbPath), { dispatchEnabled: "0", quarantine: "1", resumes: 0 });
+  const side = new DatabaseSync(dbPath);
+  side.exec(dropTrigger);
+  side.close();
+
+  directEnqueueHeldUntilResume(dir, clock);
+  assert.deepEqual(persistedDispatchFlags(dbPath), { dispatchEnabled: "1", quarantine: "0", resumes: 1 });
+  cleanup(dir);
+}
+
+test("resume whose dispatch_enabled write fails rolls back whole; restart keeps direct enqueues unsent until resume", () => {
+  failedResumeStaysQuarantined(
+    "CREATE TRIGGER block_resume_enable BEFORE UPDATE ON meta WHEN NEW.k = 'dispatch_enabled' AND NEW.v = '1' " +
+      "BEGIN SELECT RAISE(ABORT, 'injected dispatch_enabled failure'); END",
+    "DROP TRIGGER block_resume_enable",
+    /injected dispatch_enabled failure/,
+  );
+});
+
+test("resume whose quarantine write fails rolls back whole; restart keeps direct enqueues unsent until resume", () => {
+  failedResumeStaysQuarantined(
+    "CREATE TRIGGER block_resume_quarantine BEFORE UPDATE ON meta WHEN NEW.k = 'quarantine' AND NEW.v = '0' " +
+      "BEGIN SELECT RAISE(ABORT, 'injected quarantine failure'); END",
+    "DROP TRIGGER block_resume_quarantine",
+    /injected quarantine failure/,
+  );
+});
+
+test("resume whose audit write fails rolls back whole; restart keeps direct enqueues unsent until resume", () => {
+  failedResumeStaysQuarantined(
+    "CREATE TRIGGER block_resume_audit BEFORE INSERT ON audit WHEN NEW.kind = 'dispatch.resume' " +
+      "BEGIN SELECT RAISE(ABORT, 'injected resume audit failure'); END",
+    "DROP TRIGGER block_resume_audit",
+    /injected resume audit failure/,
+  );
+});
+
+test("persisted contradictory dispatch_enabled=1 quarantine=1 never dispatches until resume", () => {
+  const { dir, dbPath, clock } = quarantinedDaemonProfile();
+  const side = new DatabaseSync(dbPath);
+  side.exec("UPDATE meta SET v = '1' WHERE k = 'dispatch_enabled'");
+  side.close();
+  assert.deepEqual(persistedDispatchFlags(dbPath), { dispatchEnabled: "1", quarantine: "1", resumes: 0 });
+
+  directEnqueueHeldUntilResume(dir, clock);
+  assert.deepEqual(persistedDispatchFlags(dbPath), { dispatchEnabled: "1", quarantine: "0", resumes: 1 });
+  cleanup(dir);
+});
