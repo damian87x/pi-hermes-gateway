@@ -163,15 +163,18 @@ export function collectStatus(dbPath: string): DashboardStatus {
   }
 }
 
+// Strips only a nonempty decimal port; a malformed suffix leaves the host unmatched by the allowlist.
 export function hostName(hostHeader: string): string {
   const host = hostHeader.trim().toLowerCase();
   if (host.startsWith("[")) {
     const end = host.indexOf("]");
     if (end === -1) return host;
-    return host.slice(0, end + 1);
+    const rest = host.slice(end + 1);
+    if (rest === "" || /^:[0-9]+$/.test(rest)) return host.slice(0, end + 1);
+    return host;
   }
   const colon = host.lastIndexOf(":");
-  if (colon !== -1 && host.indexOf(":") === colon) {
+  if (colon !== -1 && host.indexOf(":") === colon && /^[0-9]+$/.test(host.slice(colon + 1))) {
     return host.slice(0, colon);
   }
   return host;

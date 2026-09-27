@@ -279,6 +279,39 @@ test("forged Host is 403 even with the owner token, and never collects", async (
   }
 });
 
+test("Host with a non-numeric or empty port suffix is 403 even with the owner token, and never collects", async () => {
+  const { dir } = makeProfile();
+  const { calls, collect } = countingCollect();
+  const { dash, port } = await start({ profileDir: dir, collect });
+  try {
+    for (const host of [
+      "localhost:evil.com",
+      "localhost:",
+      `localhost:${port}x`,
+      "localhost:+80",
+      "localhost: 80",
+      "127.0.0.1:evil.com",
+      "[::1]:evil.com",
+      "[::1]:",
+      "[::1]evil.com",
+      `[::1]:${port}x`,
+    ]) {
+      const res = await raw(port, "/api/status", { Host: host, ...AUTH });
+      assert.equal(res.status, 403, host);
+      assert.equal(res.body.includes("secret-"), false);
+    }
+    assert.equal(calls.n, 0);
+    for (const host of [`localhost:${port}`, `127.0.0.1:${port}`, `[::1]:${port}`, "[::1]"]) {
+      assert.equal((await raw(port, "/api/status", { Host: host })).status, 401, host);
+      assert.equal((await raw(port, "/api/status", { Host: host, ...AUTH })).status, 200, host);
+    }
+    assert.equal(calls.n, 4);
+  } finally {
+    await dash.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("non-loopback or hostname bind is rejected before listening", () => {
   const { dir } = makeProfile();
   writeToken(dir);
