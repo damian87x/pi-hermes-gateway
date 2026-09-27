@@ -400,3 +400,106 @@ for (const fault of [
     cleanup(dir);
   });
 }
+
+function sendRejectReasons(gw: Gateway): string[] {
+  return gw.store
+    .listAudit()
+    .filter((r) => r.kind === "delivery.send.rejected")
+    .map((r) => (JSON.parse(r.payload_json) as { reason: string }).reason);
+}
+
+function createOnceJob(gw: Gateway, clock: TestClock, text: string, at: string) {
+  const created = handle(gw, "job.create", { kind: "static-text", text, route: ROUTE, schedule: { type: "once", atUtc: at } }, clock.nowMs());
+  assert.equal(created.ok, true);
+}
+
+test("job refused by the token bucket fails its delivery and skips its occurrence; restart never resends it", () => {
+  const at = "2026-01-01T12:00:00.000Z";
+  const { gw, clock, dir, adapter } = openTestGw({ tokenBucketCapacity: 1, tokenBucketRefillPerMs: 0 });
+  createOnceJob(gw, clock, "first", at);
+  createOnceJob(gw, clock, "second", at);
+  clock.set(Date.parse(at));
+  gw.tick();
+  assert.equal(adapter.sent.length, 1);
+  assert.deepEqual(gw.store.listDeliveries().map((d) => d.status).sort(), ["accepted", "failed"]);
+  assert.deepEqual(gw.store.listOccurrences().map((o) => o.status).sort(), ["completed", "skipped"]);
+  assert.deepEqual(sendRejectReasons(gw), ["rate_limited"]);
+  gw.close();
+
+  // A refilled bucket after restart must not revive the refused occurrence or its delivery.
+  const later = new TestClock(Date.parse(at) + 3_600_000);
+  const { gw: gw2, adapter: adapter2 } = openTestGw({ clock: later, dir, tokenBucketCapacity: 5, tokenBucketRefillPerMs: 1 });
+  gw2.tick();
+  gw2.tick();
+  assert.equal(adapter2.sent.length, 0);
+  assert.deepEqual(gw2.store.listDeliveries().map((d) => d.status).sort(), ["accepted", "failed"]);
+  assert.deepEqual(gw2.store.listOccurrences().map((o) => o.status).sort(), ["completed", "skipped"]);
+  assert.deepEqual(sendRejectReasons(gw2), ["rate_limited"]);
+  gw2.close();
+  cleanup(dir);
+});
+
+test("job text over a shrunk adapter maxTextLength is refused before any fuse debit and its occurrence is skipped", () => {
+  const at = "2026-01-01T12:00:00.000Z";
+  const { gw, clock, dir } = openTestGw();
+  createOnceJob(gw, clock, "0123456789", at);
+  gw.close();
+
+  const scheduled = new TestClock(Date.parse(at));
+  const small = createFakeAdapter({ maxTextLength: 5 });
+  const open = () =>
+    openGateway({ dbPath: join(dir, "gateway.sqlite"), clock: scheduled, routes: [ROUTE], adapter: small }).gateway;
+  const gw2 = open();
+  gw2.tick();
+  assert.equal(small.sent.length, 0);
+  assert.equal(gw2.store.listDeliveries()[0]?.status, "failed");
+  assert.equal(gw2.store.listOccurrences()[0]?.status, "skipped");
+  assert.deepEqual(sendRejectReasons(gw2), ["text_too_long"]);
+  assert.equal(gw2.store.getAccountFuse(ROUTE.accountId), undefined, "no token is spent on a refused send");
+  const side = new DatabaseSync(join(dir, "gateway.sqlite"));
+  assert.equal(side.prepare("SELECT COUNT(*) AS n FROM fuse_route_day").get()?.n, 0, "no daily-cap slot is spent");
+  side.close();
+  gw2.close();
+
+  const gw3 = open();
+  gw3.tick();
+  assert.equal(small.sent.length, 0, "restart never resends the refused row");
+  assert.deepEqual(sendRejectReasons(gw3), ["text_too_long"]);
+  gw3.close();
+  cleanup(dir);
+});
+
+for (const fault of [
+  { name: "occurrence skip", trigger: "BEFORE UPDATE ON occurrences WHEN NEW.status = 'skipped'" },
+  { name: "refusal audit", trigger: "BEFORE INSERT ON audit WHEN NEW.kind = 'delivery.send.rejected'" },
+]) {
+  test(`job refusal whose ${fault.name} write fails rolls back the whole refusal and halts; restart refuses once`, () => {
+    const at = "2026-01-01T12:00:00.000Z";
+    const { gw, clock, dir, adapter } = openTestGw({ tokenBucketCapacity: 1, tokenBucketRefillPerMs: 0 });
+    createOnceJob(gw, clock, "first", at);
+    createOnceJob(gw, clock, "second", at);
+    const side = new DatabaseSync(join(dir, "gateway.sqlite"));
+    side.exec(`CREATE TRIGGER block_refusal ${fault.trigger} BEGIN SELECT RAISE(ABORT, 'injected refusal write failure'); END`);
+    clock.set(Date.parse(at));
+    gw.tick();
+    assert.equal(adapter.sent.length, 1);
+    assert.ok(gw.outboxHalt, "the failed refusal halts the outbox");
+    const refused = gw.store.listDeliveries().find((d) => d.status !== "accepted");
+    assert.equal(refused?.status, "queued", "the delivery is not marked failed without its occurrence and audit");
+    assert.equal(gw.store.getOccurrence(refused.occurrence_id!)?.status, "claimed");
+    assert.deepEqual(sendRejectReasons(gw), []);
+    gw.close();
+    side.exec("DROP TRIGGER block_refusal");
+    side.close();
+
+    const { gw: gw2, adapter: adapter2 } = openTestGw({ clock, dir, tokenBucketCapacity: 1, tokenBucketRefillPerMs: 0 });
+    gw2.tick();
+    gw2.tick();
+    assert.equal(adapter2.sent.length, 0);
+    assert.deepEqual(gw2.store.listDeliveries().map((d) => d.status).sort(), ["accepted", "failed"]);
+    assert.deepEqual(gw2.store.listOccurrences().map((o) => o.status).sort(), ["completed", "skipped"]);
+    assert.deepEqual(sendRejectReasons(gw2), ["rate_limited"]);
+    gw2.close();
+    cleanup(dir);
+  });
+}

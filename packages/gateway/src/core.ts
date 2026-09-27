@@ -617,18 +617,17 @@ export class Gateway {
       this.refuseInvalidRoute(row);
       return;
     }
+    // Checked before the fuses so an unsendable job spends no token or daily-cap slot.
+    if (row.text.length > this.adapter.manifest.maxTextLength) {
+      this.refuseSend(row, "text_too_long");
+      return;
+    }
     if (row.source === "job") {
       const fuse = this.consumeFuses(route);
       if (!fuse.ok) {
-        this.store.setDeliveryStatus(row.delivery_id, "failed");
-        this.audit("delivery.send.rejected", { deliveryId: row.delivery_id, reason: fuse.error.code });
+        this.refuseSend(row, fuse.error.code);
         return;
       }
-    }
-    if (row.text.length > this.adapter.manifest.maxTextLength) {
-      this.store.setDeliveryStatus(row.delivery_id, "failed");
-      this.audit("delivery.send.rejected", { deliveryId: row.delivery_id, reason: "text_too_long" });
-      return;
     }
     if (this.crashNext === "dispatch-intent") throw new InjectedCrash("dispatch-intent");
     this.store.setDispatchIntent(row.delivery_id);
@@ -659,6 +658,16 @@ export class Gateway {
       );
     }
     this.recordReceipt(row, receipt);
+  }
+
+  // Delivery, occurrence and audit commit together: a refused row left with its occurrence claimed would
+  // never be skipped, and a failed write leaves the row queued for the halt and the next open to re-evaluate.
+  private refuseSend(row: DeliveryRow, reason: string): void {
+    this.store.transaction(() => {
+      this.store.setDeliveryStatus(row.delivery_id, "failed");
+      if (row.occurrence_id) this.store.setOccurrenceStatus(row.occurrence_id, "skipped");
+      this.audit("delivery.send.rejected", { deliveryId: row.delivery_id, reason });
+    });
   }
 
   private recordReceipt(row: DeliveryRow, receipt: SendReceipt | undefined): void {
