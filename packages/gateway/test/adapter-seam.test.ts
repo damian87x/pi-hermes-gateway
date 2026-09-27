@@ -12,9 +12,11 @@ import { isSendAdapter } from "../dist/adapter.js";
 import { openGateway } from "../dist/index.js";
 import { cleanup, handle, openTestGw, ROUTE, tmpDir } from "./helpers.ts";
 
-function plainAdapter(sent: string[]) {
+const PLAIN_ROUTE = { ...ROUTE, adapterId: "plain" };
+
+function plainAdapter(sent: string[], adapterId = "plain") {
   const manifestResult = validateAdapterManifest({
-    adapterId: "plain",
+    adapterId,
     adapterApiVersion: ADAPTER_API_VERSION,
     capabilities: ["send.text"],
     configSchemaVersion: 1,
@@ -49,17 +51,114 @@ test("gateway accepts a structural send adapter that is not FakeAdapter", () => 
   const opened = openGateway({
     dbPath: join(dir, "plain.sqlite"),
     clock,
-    routes: [ROUTE],
+    routes: [PLAIN_ROUTE],
     adapter,
   });
   const res = handle(
     opened.gateway,
     "delivery.enqueue",
-    { route: ROUTE, text: "hello", notAfter: clock.nowMs() + 60_000 },
+    { route: PLAIN_ROUTE, text: "hello", notAfter: clock.nowMs() + 60_000 },
     clock.nowMs(),
   );
   assert.equal(res.ok, true);
   assert.equal(sent.length, 1);
+  opened.gateway.close();
+  cleanup(dir);
+});
+
+test("route adapterId must match the loaded adapter manifest before enqueue, job and dispatch", () => {
+  const dir = tmpDir();
+  const { gw, clock } = openTestGw({ dir });
+  gw.close();
+  const sent: string[] = [];
+  const opened = openGateway({
+    dbPath: join(dir, "telegram.sqlite"),
+    clock,
+    routes: [ROUTE],
+    adapter: plainAdapter(sent, "telegram"),
+  });
+  const store = opened.gateway.store;
+  const enq = handle(
+    opened.gateway,
+    "delivery.enqueue",
+    { route: ROUTE, text: "hello", notAfter: clock.nowMs() + 60_000 },
+    clock.nowMs(),
+  );
+  assert.equal(enq.ok, false);
+  assert.equal(enq.ok ? undefined : enq.error.code, "invalid_route");
+  assert.equal(store.listDeliveries().length, 0);
+  const job = handle(
+    opened.gateway,
+    "job.create",
+    {
+      kind: "static-text",
+      text: "slot",
+      route: ROUTE,
+      schedule: { type: "daily", localTime: "12:00", timeZone: "UTC" },
+    },
+    clock.nowMs(),
+  );
+  assert.equal(job.ok, false);
+  assert.equal(job.ok ? undefined : job.error.code, "invalid_route");
+  assert.equal(store.listJobs().length, 0);
+  store.insertDelivery({
+    delivery_id: "dlv_mismatch",
+    job_id: null,
+    occurrence_id: null,
+    source: "enqueue",
+    route_json: JSON.stringify(ROUTE),
+    text: "queued",
+    not_after_ms: clock.nowMs() + 60_000,
+    status: "queued",
+    request_id: null,
+    created_at_ms: clock.nowMs(),
+    dispatch_intent: 0,
+  });
+  opened.gateway.processOutbox();
+  assert.equal(store.getDelivery("dlv_mismatch")?.status, "failed");
+  assert.equal(store.getDelivery("dlv_mismatch")?.dispatch_intent, 0);
+  store.insertJob({
+    job_id: "job_mismatch",
+    kind: "static-text",
+    text: "slot",
+    route_json: JSON.stringify(ROUTE),
+    schedule_json: JSON.stringify({ type: "daily", localTime: "10:00", timeZone: "UTC" }),
+    status: "active",
+    created_at_ms: clock.nowMs() - 60_000,
+    watermark_ms: clock.nowMs() - 60_000,
+  });
+  opened.gateway.tick();
+  assert.deepEqual(
+    store.listOccurrences("job_mismatch").map((occ) => occ.status),
+    ["skipped"],
+  );
+  assert.equal(store.listDeliveries().length, 1);
+  assert.equal(sent.length, 0);
+  opened.gateway.close();
+  cleanup(dir);
+});
+
+test("custom adapter dispatches routes carrying its own adapterId", () => {
+  const dir = tmpDir();
+  const { gw, clock } = openTestGw({ dir });
+  gw.close();
+  const sent: string[] = [];
+  const telegramRoute = { ...ROUTE, adapterId: "telegram" };
+  const opened = openGateway({
+    dbPath: join(dir, "telegram.sqlite"),
+    clock,
+    routes: [telegramRoute],
+    adapter: plainAdapter(sent, "telegram"),
+  });
+  const res = handle(
+    opened.gateway,
+    "delivery.enqueue",
+    { route: telegramRoute, text: "hello", notAfter: clock.nowMs() + 60_000 },
+    clock.nowMs(),
+  );
+  assert.equal(res.ok, true);
+  assert.equal(sent.length, 1);
+  assert.equal(opened.gateway.store.listDeliveries()[0]?.status, "accepted");
   opened.gateway.close();
   cleanup(dir);
 });
@@ -88,13 +187,13 @@ test("adapter commit-unknown receipt is persisted and never auto-retried", () =>
   const opened = openGateway({
     dbPath: join(dir, "unknown.sqlite"),
     clock,
-    routes: [ROUTE],
+    routes: [PLAIN_ROUTE],
     adapter,
   });
   handle(
     opened.gateway,
     "delivery.enqueue",
-    { route: ROUTE, text: "hello", notAfter: clock.nowMs() + 60_000 },
+    { route: PLAIN_ROUTE, text: "hello", notAfter: clock.nowMs() + 60_000 },
     clock.nowMs(),
   );
   const row = opened.gateway.store.listDeliveries()[0];
@@ -130,11 +229,11 @@ test("unconfirmed adapter receipt (async/malformed) is commit-unknown, never acc
   const opened = openGateway({
     dbPath: join(dir, "unconfirmed.sqlite"),
     clock,
-    routes: [ROUTE],
+    routes: [PLAIN_ROUTE],
     adapter,
   });
   for (const text of ["a", "b", "c"]) {
-    handle(opened.gateway, "delivery.enqueue", { route: ROUTE, text, notAfter: clock.nowMs() + 60_000 }, clock.nowMs());
+    handle(opened.gateway, "delivery.enqueue", { route: PLAIN_ROUTE, text, notAfter: clock.nowMs() + 60_000 }, clock.nowMs());
   }
   const statuses = opened.gateway.store.listDeliveries().map((row) => row.status);
   assert.deepEqual(statuses, ["commit-unknown", "commit-unknown", "commit-unknown"]);

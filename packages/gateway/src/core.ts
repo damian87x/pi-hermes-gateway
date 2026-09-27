@@ -116,6 +116,9 @@ export class Gateway {
   routeAllowed(input: unknown): ProtocolResult<DeliveryRoute> {
     const parsed = validateDeliveryRoute(input);
     if (!parsed.ok) return parsed;
+    if (parsed.value.adapterId !== this.adapter.manifest.adapterId) {
+      return fail("invalid_route", "route adapterId does not match the loaded adapter");
+    }
     const allowed = this.config.routes.some((r) => sameRoute(r, parsed.value));
     if (!allowed) return fail("invalid_route", "route is not authorised");
     return ok(parsed.value);

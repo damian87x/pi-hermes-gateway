@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync, chmodSync } from "node:fs";
+import { ADAPTER_API_VERSION, LIMITS, validateAdapterManifest } from "pi-hermes-gateway-protocol";
 import { createFakeAdapter, openGateway, replaceDbWithBackup, SCHEMA_VERSION, startDaemon, TestClock } from "../dist/index.js";
 import { cleanup, handle, openTestGw, ROUTE, tmpDir } from "./helpers.ts";
 
@@ -244,6 +245,83 @@ test("explicit restore copies backup and quarantines before tick", () => {
     assert.equal(occ.length, 1);
     assert.equal(occ[0]?.status, "skipped");
     assert.equal(existsSync(join(dir, "gateway.sqlite.pre-restore")), true);
+  } finally {
+    d2.stop();
+    cleanup(dir);
+  }
+});
+
+function telegramStub(sent: string[]) {
+  const manifestResult = validateAdapterManifest({
+    adapterId: "telegram",
+    adapterApiVersion: ADAPTER_API_VERSION,
+    capabilities: ["send.text"],
+    configSchemaVersion: 1,
+    maxTextLength: LIMITS.maxTextChars,
+    receiptLevels: ["accepted"],
+  });
+  if (!manifestResult.ok) throw new Error(manifestResult.error.message);
+  return {
+    manifest: manifestResult.value,
+    send(envelope: { deliveryId: string }) {
+      sent.push(envelope.deliveryId);
+      return { receiptLevel: "accepted" as const, providerMessageId: `telegram:${envelope.deliveryId}` };
+    },
+  };
+}
+
+test("restore of a real-adapter profile materializes with the fake adapter and still quarantines", () => {
+  const dir = tmpDir();
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
+  const telegramRoute = { ...ROUTE, adapterId: "telegram" };
+  const clock = new TestClock(Date.UTC(2026, 0, 1, 11, 0, 0));
+  const sent1: string[] = [];
+  const d1 = startDaemon({
+    profileDir: dir,
+    routes: [telegramRoute],
+    adapter: telegramStub(sent1),
+    clock,
+    bindSocket: false,
+    tickIntervalMs: 60_000,
+  });
+  handle(
+    d1.gateway,
+    "job.create",
+    {
+      kind: "static-text",
+      text: "slot",
+      route: telegramRoute,
+      schedule: { type: "daily", localTime: "12:00", timeZone: "UTC" },
+    },
+    clock.nowMs(),
+  );
+  const backupTime = clock.nowMs();
+  d1.gateway.store.db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+  const backup = join(dir, "backup.sqlite");
+  copyFileSync(join(dir, "gateway.sqlite"), backup);
+  clock.set(Date.UTC(2026, 0, 1, 12, 0, 0));
+  d1.gateway.tick();
+  assert.equal(sent1.length, 1);
+  d1.stop();
+  const sent2: string[] = [];
+  const d2 = startDaemon({
+    profileDir: dir,
+    routes: [telegramRoute],
+    adapter: telegramStub(sent2),
+    clock: new TestClock(Date.UTC(2026, 0, 1, 12, 0, 30)),
+    bindSocket: false,
+    tickIntervalMs: 60_000,
+    restoreFromBackup: backup,
+    backupTimeMs: backupTime,
+  });
+  try {
+    assert.equal(d2.gateway.store.getMeta("quarantine"), "1");
+    assert.equal(d2.gateway.store.dispatchEnabled(), false);
+    assert.equal(sent2.length, 0);
+    const occ = d2.gateway.store.listOccurrences();
+    assert.equal(occ.length, 1);
+    assert.equal(occ[0]?.status, "skipped");
   } finally {
     d2.stop();
     cleanup(dir);

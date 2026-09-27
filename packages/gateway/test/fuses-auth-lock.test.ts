@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
+import { ADAPTER_API_VERSION, LIMITS, validateAdapterManifest } from "pi-hermes-gateway-protocol";
 import { acquireProfileLock, startDaemon, TestClock } from "../dist/index.js";
 import { cleanup, handle, openTestGw, ROUTE, tmpDir, wire, frameLen } from "./helpers.ts";
 
@@ -87,6 +88,52 @@ test("wrong profile mode fails closed", () => {
   assert.throws(() => {
     startDaemon({ profileDir: dir, routes: [ROUTE], clock, bindSocket: false });
   }, /0700/);
+  cleanup(dir);
+});
+
+function stubAdapter(adapterId: string, sent: string[]) {
+  const manifestResult = validateAdapterManifest({
+    adapterId,
+    adapterApiVersion: ADAPTER_API_VERSION,
+    capabilities: ["send.text"],
+    configSchemaVersion: 1,
+    maxTextLength: LIMITS.maxTextChars,
+    receiptLevels: ["accepted"],
+  });
+  if (!manifestResult.ok) throw new Error(manifestResult.error.message);
+  return {
+    manifest: manifestResult.value,
+    send(envelope: { deliveryId: string }) {
+      sent.push(envelope.deliveryId);
+      return { receiptLevel: "accepted" as const, providerMessageId: `${adapterId}:${envelope.deliveryId}` };
+    },
+  };
+}
+
+test("daemon startup rejects configured routes whose adapterId differs from the loaded adapter", () => {
+  const dir = tmpDir();
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
+  const clock = new TestClock(Date.UTC(2026, 0, 1, 10, 0, 0));
+  const sent: string[] = [];
+  const telegramRoute = { ...ROUTE, adapterId: "telegram" };
+  assert.throws(() => {
+    startDaemon({ profileDir: dir, routes: [ROUTE], adapter: stubAdapter("telegram", sent), clock, bindSocket: false });
+  }, /adapterId/);
+  assert.throws(() => {
+    startDaemon({ profileDir: dir, routes: [telegramRoute], clock, bindSocket: false });
+  }, /adapterId/);
+  const d = startDaemon({
+    profileDir: dir,
+    routes: [telegramRoute],
+    adapter: stubAdapter("telegram", sent),
+    clock,
+    bindSocket: false,
+  });
+  const res = handle(d.gateway, "delivery.enqueue", { route: telegramRoute, text: "hi", notAfter: clock.nowMs() + 60_000 }, clock.nowMs());
+  assert.equal(res.ok, true);
+  assert.equal(sent.length, 1);
+  d.stop();
   cleanup(dir);
 });
 

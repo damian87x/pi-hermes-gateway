@@ -207,6 +207,12 @@ export function startDaemon(opts: {
     if (intervalMs > DEFAULT_TICK_INTERVAL_MS || intervalMs < 1) {
       throw new Error("tick interval must be in (0, 60s]");
     }
+    const adapter = opts.adapter ?? createFakeAdapter();
+    for (const route of opts.routes) {
+      if (route.adapterId !== adapter.manifest.adapterId) {
+        throw new Error(`route adapterId ${route.adapterId} does not match adapter ${adapter.manifest.adapterId}`);
+      }
+    }
     const clock = opts.clock ?? new SystemClock();
     const tickGraceMs = Math.max(DEFAULT_CONFIG.tickGraceMs, intervalMs + TICK_GRACE_MARGIN_MS);
     if (!opts.restoreFromBackup) recoverInterruptedRestore(paths.dbPath);
@@ -220,7 +226,6 @@ export function startDaemon(opts: {
       });
     }
     if (opts.bindSocket !== false) unlinkOwnedSocket(paths.socketPath);
-    const adapter = opts.adapter ?? createFakeAdapter();
     const opened = openGateway({
       dbPath: paths.dbPath,
       clock,
