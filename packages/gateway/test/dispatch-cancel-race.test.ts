@@ -437,3 +437,112 @@ for (const path of [
     cleanup(dir);
   });
 }
+
+const MISSED_MS = Date.parse(AT) + 10 * 60_000;
+
+for (const race of [
+  { method: "job.cancel", status: "cancelled" },
+  { method: "job.pause", status: "paused" },
+]) {
+  test(`${race.method} from a second Store after tick's active-job snapshot, before a missed slot, records no skip and keeps the watermark`, (t) => {
+    const dir = tmpDir();
+    const dbPath = join(dir, "gateway.sqlite");
+    const clock = new TestClock(START_MS);
+    const { gw, adapter } = open(dbPath, clock);
+    const other = openOtherWriter(dbPath, clock);
+    const jobId = createOnceJob(gw);
+    clock.set(MISSED_MS);
+
+    const outcomes = raceAfter(t, gw.store, "listJobs", () => true, () => tryJobRequest(other, race.method, jobId, "race-request"));
+    gw.tick();
+    t.mock.restoreAll();
+    assert.deepEqual(outcomes, ["committed"]);
+
+    const assertNothingRecorded = (target: Gateway) => {
+      assert.equal(target.store.getJob(jobId)?.status, race.status);
+      assert.equal(target.store.getJob(jobId)?.watermark_ms, START_MS);
+      assert.deepEqual(target.store.listOccurrences(jobId), []);
+      assert.deepEqual(target.store.listDeliveries(), []);
+      assert.equal(auditCount(target, "occurrence.skipped"), 0);
+      assert.equal(auditCount(target, `job.${race.status}`), 1);
+    };
+    assert.equal(adapter.sent.length, 0);
+    assertNothingRecorded(gw);
+    other.close();
+    gw.close();
+
+    const { gw: reopened, adapter: fresh } = open(dbPath, clock);
+    try {
+      reopened.tick();
+      clock.add(60_000);
+      reopened.tick();
+      assert.equal(fresh.sent.length, 0);
+      assertNothingRecorded(reopened);
+    } finally {
+      reopened.close();
+    }
+    cleanup(dir);
+  });
+}
+
+test("job.cancel from a second Store between two missed slots keeps the earlier skip and records no later skip or watermark", (t) => {
+  const dir = tmpDir();
+  const dbPath = join(dir, "gateway.sqlite");
+  const clock = new TestClock(START_MS);
+  const { gw, adapter } = open(dbPath, clock);
+  const other = openOtherWriter(dbPath, clock);
+  const res = handle(
+    gw,
+    "job.create",
+    { kind: "static-text", text: "raced", route: ROUTE, schedule: { type: "daily", localTime: "10:01", timeZone: "UTC" } },
+    clock.nowMs(),
+  );
+  assert.equal(res.ok, true);
+  const jobId = (res as { body: { jobId: string } }).body.jobId;
+  clock.set(MISSED_MS + 24 * 60 * 60_000);
+
+  // Fires before the first store call outside a transaction once the first missed skip is written:
+  // the next slot's own skip check, or its writer transaction.
+  const outcomes: string[] = [];
+  for (const method of ["findOccurrence", "transaction"] as const) {
+    const original = (gw.store[method] as (...args: unknown[]) => unknown).bind(gw.store);
+    t.mock.method(gw.store, method, (...args: unknown[]) => {
+      if (outcomes.length === 0 && !gw.store.db.isTransaction && auditCount(gw, "occurrence.skipped") === 1) {
+        outcomes.push(tryJobRequest(other, "job.cancel", jobId, "race-cancel"));
+      }
+      return original(...args);
+    });
+  }
+  gw.tick();
+  t.mock.restoreAll();
+  assert.deepEqual(outcomes, ["committed"]);
+
+  const firstSlot = Date.parse(AT);
+  const assertOnlyEarlierSkip = (target: Gateway) => {
+    assert.equal(target.store.getJob(jobId)?.status, "cancelled");
+    assert.equal(target.store.getJob(jobId)?.watermark_ms, START_MS);
+    assert.deepEqual(
+      target.store.listOccurrences(jobId).map((o) => [o.scheduled_instant_ms, o.status]),
+      [[firstSlot, "skipped"]],
+    );
+    assert.deepEqual(target.store.listDeliveries(), []);
+    assert.equal(auditCount(target, "occurrence.skipped"), 1);
+    assert.equal(auditCount(target, "job.cancelled"), 1);
+  };
+  assert.equal(adapter.sent.length, 0);
+  assertOnlyEarlierSkip(gw);
+  other.close();
+  gw.close();
+
+  const { gw: reopened, adapter: fresh } = open(dbPath, clock);
+  try {
+    reopened.tick();
+    clock.add(24 * 60 * 60_000);
+    reopened.tick();
+    assert.equal(fresh.sent.length, 0);
+    assertOnlyEarlierSkip(reopened);
+  } finally {
+    reopened.close();
+  }
+  cleanup(dir);
+});

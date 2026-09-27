@@ -433,18 +433,29 @@ export class Gateway {
         missed.sort((a, b) => a - b);
         const skipMissed = this.config.catchUpPolicy === "skip" || onTime.length > 0;
         if (skipMissed) {
-          for (const ms of missed) this.recordSkipped(job.job_id, ms, "missed");
+          for (const ms of missed) this.recordMissed(job.job_id, ms);
         } else {
-          for (const ms of missed.slice(0, -1)) this.recordSkipped(job.job_id, ms, "missed");
+          for (const ms of missed.slice(0, -1)) this.recordMissed(job.job_id, ms);
           const latest = missed[missed.length - 1];
           if (latest !== undefined) {
             this.admitJobOccurrence(job.job_id, latest, job.text, JSON.parse(job.route_json) as DeliveryRoute);
           }
         }
       }
-      this.store.setWatermark(job.job_id, now);
+      // A job cancelled or paused since the snapshot keeps its watermark.
+      this.store.transaction(() => {
+        if (this.store.getJob(job.job_id)?.status === "active") this.store.setWatermark(job.job_id, now);
+      });
     }
     this.processOutbox();
+  }
+
+  // Like admission, rereads the job under the writer lock: tick's snapshot may predate another writer's
+  // cancel or pause, and neither may gain a new missed skip.
+  private recordMissed(jobId: string, scheduledInstantMs: number): void {
+    this.store.transaction(() => {
+      if (this.store.getJob(jobId)?.status === "active") this.recordSkipped(jobId, scheduledInstantMs, "missed");
+    });
   }
 
   private recordSkipped(jobId: string, scheduledInstantMs: number, reason: string): void {
