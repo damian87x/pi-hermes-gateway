@@ -13,6 +13,7 @@ import {
 } from "node:fs";
 import { dirname } from "node:path";
 import type { Server } from "node:net";
+import process from "node:process";
 import { DatabaseSync } from "node:sqlite";
 import type { Clock } from "./clock.js";
 import { SystemClock } from "./clock.js";
@@ -25,6 +26,10 @@ import { assertSocketMode, ensureProfileDir, profilePaths, unlinkOwnedSocket } f
 import { SCHEMA_VERSION } from "./store.js";
 
 export const DEFAULT_TICK_INTERVAL_MS = 60_000;
+
+// Fixed text only: the underlying store error may carry raw SQL or secrets.
+const OUTBOX_HALT_DIAGNOSTIC =
+  "gateway outbox halted: a delivery receipt could not be recorded; no further sends until restart, which marks that delivery commit-unknown\n";
 
 export type Daemon = {
   gateway: Gateway;
@@ -236,6 +241,7 @@ export function startDaemon(opts: {
     });
     const gw = opened.gateway;
     gateway = gw;
+    gw.onOutboxHalt = () => process.stderr.write(OUTBOX_HALT_DIAGNOSTIC);
     if (gw.store.getMeta("restore_pending") === "1") {
       if (opts.resumeDispatch) throw new Error("restore materialization pending");
       finishRestorePending(gw, clock);

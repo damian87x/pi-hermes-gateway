@@ -5,9 +5,9 @@ import { chmodSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { PROTOCOL_VERSION } from "pi-hermes-gateway-protocol";
-import { createFakeAdapter, openGateway, sendIpc, startDaemon, TestClock } from "../dist/index.js";
+import { createFakeAdapter, openGateway, sendIpc, startDaemon, TestClock, type SendAdapter } from "../dist/index.js";
 import { listenIpc } from "../dist/ipc.js";
-import { cleanup, handle, openTestGw, ROUTE, tmpDir } from "./helpers.ts";
+import { cleanup, collectUnhandledRejections, flushAsync, handle, openTestGw, ROUTE, tmpDir } from "./helpers.ts";
 
 function enqueueNow(gw: ReturnType<typeof openTestGw>["gw"], clockNow: number, text = "x") {
   return handle(gw, "delivery.enqueue", { route: ROUTE, text, notAfter: clockNow + 60_000 }, clockNow);
@@ -63,6 +63,58 @@ test("crash before receipt write: commit-unknown even if adapter observed send",
   assert.equal(adapter.sent.length, 1);
   gw.processOutbox();
   assert.equal(adapter.sent.length, 1);
+  gw.close();
+  cleanup(dir);
+});
+
+function openAsyncGw(send: SendAdapter["send"]) {
+  const dir = tmpDir();
+  const clock = new TestClock(Date.UTC(2026, 0, 1, 10, 0, 0));
+  const adapter: SendAdapter = { manifest: createFakeAdapter().manifest, send };
+  const { gateway } = openGateway({ dbPath: join(dir, "gateway.sqlite"), clock, routes: [ROUTE], adapter });
+  return { gw: gateway, clock, dir };
+}
+
+test("crash before receipt write with async receipt: commit-unknown, sent once, drain stops", async () => {
+  let sends = 0;
+  const { gw, clock, dir } = openAsyncGw(async (envelope) => {
+    sends += 1;
+    return { receiptLevel: "accepted", providerMessageId: `p:${envelope.deliveryId}` };
+  });
+  const unhandled = await collectUnhandledRejections(async () => {
+    gw.crashNext = "before-receipt";
+    enqueueNow(gw, clock.nowMs(), "a");
+    await flushAsync();
+    const row = gw.store.listDeliveries()[0];
+    assert.equal(row?.status, "commit-unknown");
+    assert.ok(gw.store.listAudit().some((a) => a.kind === "crash.before-receipt"));
+    assert.equal(gw.crashNext, null);
+    gw.processOutbox();
+    await flushAsync();
+  });
+  assert.deepEqual(unhandled, []);
+  assert.equal(sends, 1);
+  gw.close();
+  cleanup(dir);
+});
+
+test("crash mid-send with async rejection: commit-unknown, never auto-retried", async () => {
+  let sends = 0;
+  const { gw, clock, dir } = openAsyncGw(async () => {
+    sends += 1;
+    throw new Error("injected async mid-send crash");
+  });
+  const unhandled = await collectUnhandledRejections(async () => {
+    gw.crashNext = "mid-send";
+    enqueueNow(gw, clock.nowMs());
+    await flushAsync();
+    assert.equal(gw.store.listDeliveries()[0]?.status, "commit-unknown");
+    assert.ok(gw.store.listAudit().some((a) => a.kind === "crash.mid-send"));
+    gw.processOutbox();
+    await flushAsync();
+  });
+  assert.deepEqual(unhandled, []);
+  assert.equal(sends, 1);
   gw.close();
   cleanup(dir);
 });

@@ -3,10 +3,11 @@ import { spawn } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { userInfo } from "node:os";
 import { join, relative } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
-import { createFakeAdapter, probeLingerEnabled, runDoctor, startDaemon, TestClock } from "../dist/index.js";
-import { cleanup, handle, ROUTE, tmpDir } from "./helpers.ts";
+import { createFakeAdapter, probeLingerEnabled, runDoctor, startDaemon, TestClock, type SendAdapter } from "../dist/index.js";
+import { cleanup, collectUnhandledRejections, deferred, flushAsync, handle, ROUTE, tmpDir } from "./helpers.ts";
 
 const cliPath = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
 const doctorSrcPath = fileURLToPath(new URL("../src/doctor.ts", import.meta.url));
@@ -144,6 +145,168 @@ test("restart still delivers once-at to fake sink; second daemon fails", () => {
   const sinkText = readFileSync(sink, "utf8");
   assert.equal(sinkText.match(/restart-once/g)?.length, 1);
   d3.stop();
+  cleanup(dir);
+});
+
+test("stop during a deferred async send: no closed-store write, restart records commit-unknown without replay", async () => {
+  const dir = tmpDir();
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
+  const clock = new TestClock(Date.UTC(2026, 0, 1, 10, 0, 0));
+  const receipt = deferred<{ receiptLevel: "accepted"; providerMessageId: string }>();
+  let sends = 0;
+  const asyncAdapter: SendAdapter = {
+    manifest: createFakeAdapter().manifest,
+    send() {
+      sends += 1;
+      return receipt.promise;
+    },
+  };
+  const unhandled = await collectUnhandledRejections(async () => {
+    const d1 = startDaemon({ profileDir: dir, routes: [ROUTE], clock, adapter: asyncAdapter, bindSocket: false });
+    let deliveryId: string;
+    try {
+      const res = handle(d1.gateway, "delivery.enqueue", { route: ROUTE, text: "deferred", notAfter: clock.nowMs() + 60_000 }, clock.nowMs());
+      assert.equal(res.ok, true);
+      const body = (res as { body: { deliveryId: string; status: string } }).body;
+      deliveryId = body.deliveryId;
+      assert.equal(body.status, "dispatching");
+    } finally {
+      d1.stop();
+    }
+    receipt.resolve({ receiptLevel: "accepted", providerMessageId: "late" });
+    await flushAsync();
+
+    const adapter2 = createFakeAdapter();
+    const d2 = startDaemon({ profileDir: dir, routes: [ROUTE], clock, adapter: adapter2, bindSocket: false });
+    try {
+      assert.equal(d2.gateway.store.getDelivery(deliveryId)?.status, "commit-unknown");
+      assert.ok(d2.gateway.store.listAudit().some((a) => a.kind === "crash.recover"));
+      assert.equal(d2.gateway.store.listAudit().some((a) => a.kind === "delivery.accepted"), false);
+      d2.gateway.tick();
+      assert.equal(adapter2.sent.length, 0);
+    } finally {
+      d2.stop();
+    }
+  });
+  assert.deepEqual(unhandled, []);
+  assert.equal(sends, 1);
+  cleanup(dir);
+});
+
+const OUTBOX_HALT_DIAGNOSTIC =
+  "gateway outbox halted: a delivery receipt could not be recorded; no further sends until restart, which marks that delivery commit-unknown\n";
+
+test("async accepted receipt that cannot be written halts the daemon outbox with one stderr diagnostic even if its audit fails; restart recovers commit-unknown and sends the queued row once", async () => {
+  const dir = tmpDir();
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
+  const clock = new TestClock(Date.UTC(2026, 0, 1, 10, 0, 0));
+  const receipt = deferred<{ receiptLevel: "accepted"; providerMessageId: string }>();
+  const asyncSent: string[] = [];
+  const asyncAdapter: SendAdapter = {
+    manifest: createFakeAdapter().manifest,
+    send(envelope) {
+      asyncSent.push(envelope.deliveryId);
+      return receipt.promise;
+    },
+  };
+  let first = "";
+  let second = "";
+  const unhandled = await collectUnhandledRejections(async () => {
+    const d1 = startDaemon({ profileDir: dir, routes: [ROUTE], clock, adapter: asyncAdapter, bindSocket: false });
+    const side = new DatabaseSync(join(dir, "gateway.sqlite"));
+    try {
+      const enqueue = (text: string) => {
+        const res = handle(d1.gateway, "delivery.enqueue", { route: ROUTE, text, notAfter: clock.nowMs() + 60_000 }, clock.nowMs());
+        return (res as { body: { deliveryId: string } }).body.deliveryId;
+      };
+      first = enqueue("first");
+      second = enqueue("second");
+      side.exec(
+        "CREATE TRIGGER block_accepted BEFORE UPDATE OF status ON deliveries WHEN NEW.status = 'accepted' " +
+          "BEGIN SELECT RAISE(ABORT, 'injected accepted write failure'); END",
+      );
+      side.exec(
+        "CREATE TRIGGER block_halt_audit BEFORE INSERT ON audit WHEN NEW.kind = 'outbox.halted' " +
+          "BEGIN SELECT RAISE(ABORT, 'injected audit write failure'); END",
+      );
+      const stderrWrites: string[] = [];
+      const realStderrWrite = process.stderr.write;
+      process.stderr.write = ((chunk: string | Uint8Array) => {
+        stderrWrites.push(String(chunk));
+        return true;
+      }) as typeof process.stderr.write;
+      try {
+        receipt.resolve({ receiptLevel: "accepted", providerMessageId: "p:first" });
+        await flushAsync();
+        assert.ok(d1.gateway.outboxHalt);
+        side.exec("DROP TRIGGER block_accepted");
+        side.exec("DROP TRIGGER block_halt_audit");
+        d1.gateway.tick();
+        const fresh = handle(d1.gateway, "delivery.enqueue", { route: ROUTE, text: "fresh", notAfter: clock.nowMs() + 60_000 }, clock.nowMs());
+        assert.equal(fresh.ok, false);
+        assert.equal((fresh as { error: { code: string } }).error.code, "outbox_halted");
+        await flushAsync();
+      } finally {
+        process.stderr.write = realStderrWrite;
+      }
+      assert.deepEqual(stderrWrites, [OUTBOX_HALT_DIAGNOSTIC]);
+      assert.equal(d1.gateway.store.listAudit().some((a) => a.kind === "outbox.halted"), false);
+      assert.deepEqual(asyncSent, [first]);
+      assert.equal(d1.gateway.store.getDelivery(first)?.status, "dispatching");
+      assert.equal(d1.gateway.store.getDelivery(second)?.status, "queued");
+    } finally {
+      side.close();
+      d1.stop();
+    }
+
+    const adapter2 = createFakeAdapter();
+    const d2 = startDaemon({ profileDir: dir, routes: [ROUTE], clock, adapter: adapter2, bindSocket: false });
+    try {
+      assert.equal(d2.gateway.outboxHalt, null);
+      assert.equal(d2.gateway.store.getDelivery(first)?.status, "commit-unknown");
+      assert.equal(d2.gateway.store.getDelivery(second)?.status, "accepted");
+      d2.gateway.tick();
+      assert.deepEqual(
+        adapter2.sent.map((e) => e.deliveryId),
+        [second],
+      );
+    } finally {
+      d2.stop();
+    }
+  });
+  assert.deepEqual(unhandled, []);
+  assert.deepEqual(asyncSent, [first]);
+  cleanup(dir);
+});
+
+test("stop does not wait on a hung async send", async () => {
+  const dir = tmpDir();
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
+  const clock = new TestClock(Date.UTC(2026, 0, 1, 10, 0, 0));
+  const hungAdapter: SendAdapter = {
+    manifest: createFakeAdapter().manifest,
+    send() {
+      return new Promise(() => {});
+    },
+  };
+  const d1 = startDaemon({ profileDir: dir, routes: [ROUTE], clock, adapter: hungAdapter, bindSocket: false });
+  let deliveryId: string;
+  try {
+    const res = handle(d1.gateway, "delivery.enqueue", { route: ROUTE, text: "hung", notAfter: clock.nowMs() + 60_000 }, clock.nowMs());
+    deliveryId = (res as { body: { deliveryId: string } }).body.deliveryId;
+    assert.equal(d1.gateway.store.getDelivery(deliveryId)?.status, "dispatching");
+  } finally {
+    d1.stop();
+  }
+  const d2 = startDaemon({ profileDir: dir, routes: [ROUTE], clock, bindSocket: false });
+  try {
+    assert.equal(d2.gateway.store.getDelivery(deliveryId)?.status, "commit-unknown");
+  } finally {
+    d2.stop();
+  }
   cleanup(dir);
 });
 
