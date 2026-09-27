@@ -8,8 +8,8 @@ export const LIST_LIMIT = 100;
 export const TEXT_LIMIT = 256;
 export const DEFAULT_ALLOWED_HOSTS: ReadonlySet<string> = new Set(["127.0.0.1", "localhost", "[::1]"]);
 const TOKEN_FILE = "dashboard.token";
-// At least 256 bits as hex (64 chars) or base64url (43 chars).
-const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43,}$/;
+// Canonical form of 32 random bytes as hex (`openssl rand -hex 32`). Syntax only; randomness is the owner's job.
+const TOKEN_PATTERN = /^[0-9a-f]{64}$/;
 
 const PAGE = `<!doctype html>
 <meta charset="utf-8">
@@ -205,7 +205,7 @@ function readOwnerToken(profileDir: string): Uint8Array {
   if ((stat.mode & 0o077) !== 0) throw new Error(`${TOKEN_FILE} must not be group/other accessible (chmod 600)`);
   const token = readFileSync(path, "utf8").trim();
   if (!TOKEN_PATTERN.test(token)) {
-    throw new Error(`${TOKEN_FILE} must hold at least 43 base64url or 64 hex characters`);
+    throw new Error(`${TOKEN_FILE} must hold exactly 64 lowercase hex characters (openssl rand -hex 32)`);
   }
   return digest(token);
 }

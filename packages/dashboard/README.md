@@ -21,12 +21,13 @@ The token lives in `<profileDir>/dashboard.token`. It is read once when `createD
 - exists and is a regular file (no symlink),
 - is owned by the current user,
 - has no group or other permission bits (for example mode `0600`),
-- contains at least 43 base64url or 64 hex characters after trimming whitespace.
+- contains exactly 64 lowercase hex characters (`0-9a-f`) after trimming whitespace. Any other length or form, including base64 and uppercase hex, is rejected.
 
-To generate it as the profile owner:
+The check covers the format only. It cannot tell whether the value is random. The owner must generate the 32 bytes with a cryptographically secure random generator, for example as the profile owner:
 
 ```sh
 (umask 077 && openssl rand -hex 32 > "$PROFILE/dashboard.token")
+chmod 600 "$PROFILE/dashboard.token"
 ```
 
 The token is never passed on the command line or through the environment, and never logged. Error messages name the file, not its contents. To rotate it, rewrite the file and restart the dashboard.

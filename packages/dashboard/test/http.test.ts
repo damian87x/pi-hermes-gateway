@@ -366,6 +366,31 @@ test("missing, symlinked, group/other-readable or weak token file fails closed",
   }
 });
 
+test("token file must hold exactly 64 lowercase hex characters", () => {
+  const { dir } = makeProfile();
+  const hex = randomBytes(64).toString("hex");
+  try {
+    const rejected = [
+      hex.slice(0, 43),
+      hex.slice(0, 44),
+      hex.slice(0, 63),
+      hex.slice(0, 65),
+      hex.slice(0, 128),
+      TOKEN.toUpperCase(),
+      randomBytes(32).toString("base64url"),
+      randomBytes(48).toString("base64url"),
+    ];
+    for (const token of rejected) {
+      writeToken(dir, token);
+      assert.throws(() => createDashboard({ profileDir: dir }), /dashboard\.token/, `length ${token.length}`);
+    }
+    writeToken(dir, hex.slice(0, 64));
+    assert.doesNotThrow(() => createDashboard({ profileDir: dir }));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("token file owned by another uid fails closed", (t) => {
   if (process.getuid?.() !== 0) {
     t.skip("chown to another uid needs root");
