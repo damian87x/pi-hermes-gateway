@@ -57,6 +57,62 @@ test("mock chat.postMessage success returns accepted provider id", () => {
   assert.deepEqual(calls[0]?.body, { channel: "C1001", text: "hi" });
 });
 
+test("HTTP 500 with ok:true body is commit-unknown, not accepted", () => {
+  const adapter = createSlackAdapter(
+    { kind: "bot-token", token: TOKEN },
+    {
+      post() {
+        return { kind: "ok", status: 500, json: { ok: true, ts: "1405894322.002768" } };
+      },
+    },
+  );
+  const receipt = adapter.send({ deliveryId: "dlv-500", route: ROUTE, text: "hi" });
+  assert.equal(receipt.receiptLevel, "commit-unknown");
+  assert.equal(receipt.providerMessageId, undefined);
+});
+
+test("2xx ok:true with missing ts is commit-unknown, not the deliveryId", () => {
+  const adapter = createSlackAdapter(
+    { kind: "bot-token", token: TOKEN },
+    {
+      post() {
+        return { kind: "ok", status: 200, json: { ok: true } };
+      },
+    },
+  );
+  const receipt = adapter.send({ deliveryId: "dlv-missing-id", route: ROUTE, text: "hi" });
+  assert.equal(receipt.receiptLevel, "commit-unknown");
+  assert.equal(receipt.providerMessageId, undefined);
+});
+
+test("2xx ok:true with invalid ts is commit-unknown", () => {
+  const adapter = createSlackAdapter(
+    { kind: "bot-token", token: TOKEN },
+    {
+      post() {
+        return { kind: "ok", status: 200, json: { ok: true, ts: "" } };
+      },
+    },
+  );
+  const receipt = adapter.send({ deliveryId: "dlv-empty-id", route: ROUTE, text: "hi" });
+  assert.equal(receipt.receiptLevel, "commit-unknown");
+  assert.equal(receipt.providerMessageId, undefined);
+});
+
+test("2xx with body error (ok:false) is commit-unknown", () => {
+  const adapter = createSlackAdapter(
+    { kind: "bot-token", token: TOKEN },
+    {
+      post() {
+        return { kind: "ok", status: 200, json: { ok: false, error: "channel_not_found" } };
+      },
+    },
+  );
+  const receipt = adapter.send({ deliveryId: "dlv-body-error", route: ROUTE, text: "hi" });
+  assert.equal(receipt.receiptLevel, "commit-unknown");
+  assert.equal(receipt.providerMessageId, undefined);
+});
+
 test("mock chat.postMessage timeout is commit-unknown", () => {
   let calls = 0;
   const adapter = createAdapter(

@@ -128,18 +128,27 @@ export async function defaultTelegramHttpPost(request: TelegramHttpRequest): Pro
   }
 }
 
-function receiptFromResult(result: TelegramHttpResult, deliveryId: string): TelegramSendReceipt {
+function receiptFromResult(result: TelegramHttpResult): TelegramSendReceipt {
   if (result.kind === "timeout") {
     return { receiptLevel: "commit-unknown", reason: "timeout" };
   }
   const json = result.json;
-  if (typeof json === "object" && json !== null && (json as { ok?: unknown }).ok === true) {
-    const message = (json as { result?: { message_id?: unknown } }).result;
-    const id = message?.message_id;
-    const providerMessageId = typeof id === "number" || typeof id === "string" ? String(id) : deliveryId;
-    return { receiptLevel: "accepted", providerMessageId };
+  const ok = typeof json === "object" && json !== null && (json as { ok?: unknown }).ok === true;
+  if (!ok || result.status < 200 || result.status > 299) {
+    return { receiptLevel: "commit-unknown", reason: "telegram-send-unconfirmed" };
   }
-  return { receiptLevel: "commit-unknown", reason: "telegram-send-unconfirmed" };
+  const message = (json as { result?: { message_id?: unknown } }).result;
+  const id = message?.message_id;
+  const providerMessageId =
+    typeof id === "number" && Number.isFinite(id)
+      ? String(id)
+      : typeof id === "string" && id.trim().length > 0
+        ? id
+        : undefined;
+  if (providerMessageId === undefined) {
+    return { receiptLevel: "commit-unknown", reason: "telegram-send-unconfirmed" };
+  }
+  return { receiptLevel: "accepted", providerMessageId };
 }
 
 export function createTelegramAdapter(
@@ -177,11 +186,11 @@ export function createTelegramAdapter(
         });
         if (isThenable<TelegramHttpResult>(result)) {
           return Promise.resolve(result).then(
-            (resolved) => receiptFromResult(resolved, envelope.deliveryId),
+            (resolved) => receiptFromResult(resolved),
             fail,
           );
         }
-        return receiptFromResult(result, envelope.deliveryId);
+        return receiptFromResult(result);
       } catch (err) {
         return fail(err);
       }

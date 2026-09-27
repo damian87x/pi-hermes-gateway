@@ -52,6 +52,62 @@ test("mock sendMessage success returns accepted provider id", () => {
   assert.deepEqual(calls[0]?.body, { chat_id: "1001", text: "hi" });
 });
 
+test("HTTP 500 with ok:true body is commit-unknown, not accepted", () => {
+  const adapter = createTelegramAdapter(
+    { kind: "dedicated-bot", token: TOKEN },
+    {
+      post() {
+        return { kind: "ok", status: 500, json: { ok: true, result: { message_id: 77 } } };
+      },
+    },
+  );
+  const receipt = adapter.send({ deliveryId: "dlv-500", route: ROUTE, text: "hi" });
+  assert.equal(receipt.receiptLevel, "commit-unknown");
+  assert.equal(receipt.providerMessageId, undefined);
+});
+
+test("2xx ok:true with missing message_id is commit-unknown, not the deliveryId", () => {
+  const adapter = createTelegramAdapter(
+    { kind: "dedicated-bot", token: TOKEN },
+    {
+      post() {
+        return { kind: "ok", status: 200, json: { ok: true, result: {} } };
+      },
+    },
+  );
+  const receipt = adapter.send({ deliveryId: "dlv-missing-id", route: ROUTE, text: "hi" });
+  assert.equal(receipt.receiptLevel, "commit-unknown");
+  assert.equal(receipt.providerMessageId, undefined);
+});
+
+test("2xx ok:true with invalid message_id is commit-unknown", () => {
+  const adapter = createTelegramAdapter(
+    { kind: "dedicated-bot", token: TOKEN },
+    {
+      post() {
+        return { kind: "ok", status: 200, json: { ok: true, result: { message_id: "" } } };
+      },
+    },
+  );
+  const receipt = adapter.send({ deliveryId: "dlv-empty-id", route: ROUTE, text: "hi" });
+  assert.equal(receipt.receiptLevel, "commit-unknown");
+  assert.equal(receipt.providerMessageId, undefined);
+});
+
+test("2xx with body error (ok:false) is commit-unknown", () => {
+  const adapter = createTelegramAdapter(
+    { kind: "dedicated-bot", token: TOKEN },
+    {
+      post() {
+        return { kind: "ok", status: 200, json: { ok: false, description: "Bad Request" } };
+      },
+    },
+  );
+  const receipt = adapter.send({ deliveryId: "dlv-body-error", route: ROUTE, text: "hi" });
+  assert.equal(receipt.receiptLevel, "commit-unknown");
+  assert.equal(receipt.providerMessageId, undefined);
+});
+
 test("mock sendMessage timeout is commit-unknown", () => {
   const adapter = createAdapter(
     { kind: "dedicated-bot", token: TOKEN, timeoutMs: 5 },

@@ -149,17 +149,26 @@ export async function defaultSlackHttpPost(request: SlackHttpRequest): Promise<S
   }
 }
 
-function receiptFromResult(result: SlackHttpResult, deliveryId: string): SlackSendReceipt {
+function receiptFromResult(result: SlackHttpResult): SlackSendReceipt {
   if (result.kind === "timeout") {
     return { receiptLevel: "commit-unknown", reason: "timeout" };
   }
   const json = result.json;
-  if (typeof json === "object" && json !== null && (json as { ok?: unknown }).ok === true) {
-    const ts = (json as { ts?: unknown }).ts;
-    const providerMessageId = typeof ts === "number" || typeof ts === "string" ? String(ts) : deliveryId;
-    return { receiptLevel: "accepted", providerMessageId };
+  const ok = typeof json === "object" && json !== null && (json as { ok?: unknown }).ok === true;
+  if (!ok || result.status < 200 || result.status > 299) {
+    return { receiptLevel: "commit-unknown", reason: "slack-send-unconfirmed" };
   }
-  return { receiptLevel: "commit-unknown", reason: "slack-send-unconfirmed" };
+  const ts = (json as { ts?: unknown }).ts;
+  const providerMessageId =
+    typeof ts === "number" && Number.isFinite(ts)
+      ? String(ts)
+      : typeof ts === "string" && ts.trim().length > 0
+        ? ts
+        : undefined;
+  if (providerMessageId === undefined) {
+    return { receiptLevel: "commit-unknown", reason: "slack-send-unconfirmed" };
+  }
+  return { receiptLevel: "accepted", providerMessageId };
 }
 
 export function createSlackAdapter(
@@ -197,11 +206,11 @@ export function createSlackAdapter(
         });
         if (isThenable<SlackHttpResult>(result)) {
           return Promise.resolve(result).then(
-            (resolved) => receiptFromResult(resolved, envelope.deliveryId),
+            (resolved) => receiptFromResult(resolved),
             fail,
           );
         }
-        return receiptFromResult(result, envelope.deliveryId);
+        return receiptFromResult(result);
       } catch (err) {
         return fail(err);
       }
