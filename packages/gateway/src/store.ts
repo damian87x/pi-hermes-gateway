@@ -414,7 +414,7 @@ export class Store {
     this.setMeta("recovery_time_ms", String(recoveryTimeMs));
     this.db
       .prepare(
-        "UPDATE deliveries SET status = 'commit-unknown' WHERE status IN ('queued', 'dispatching')",
+        "UPDATE deliveries SET status = 'commit-unknown' WHERE status IN ('pending-approval', 'queued', 'dispatching')",
       )
       .run();
     this.db

@@ -58,6 +58,72 @@ test("already-sent delivery is not resurrected as queued", () => {
   cleanup(dir);
 });
 
+test("restore quarantine: pending-approval approved and sent post-backup is not replayed by a second approve", () => {
+  const { gw, clock, dir, adapter } = openTestGw();
+  const enq = handle(
+    gw,
+    "delivery.enqueue",
+    { route: ROUTE, text: "approve-once", notAfter: clock.nowMs() + 60_000, requireApproval: true },
+    clock.nowMs(),
+  );
+  assert.equal(enq.ok, true);
+  const id = (enq.body as { deliveryId: string }).deliveryId;
+  assert.equal(gw.store.getDelivery(id)?.status, "pending-approval");
+  const backupTime = clock.nowMs();
+  gw.store.db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+  const backup = join(dir, "backup.sqlite");
+  copyFileSync(join(dir, "gateway.sqlite"), backup);
+  assert.equal(gw.approve(id).ok, true);
+  gw.processOutbox();
+  assert.equal(adapter.sent.length, 1);
+  assert.equal(gw.store.getDelivery(id)?.status, "accepted");
+  gw.close();
+
+  copyFileSync(backup, join(dir, "gateway.sqlite"));
+  const clock2 = new TestClock(clock.nowMs() + 5_000);
+  const adapter2 = createFakeAdapter();
+  const { gateway: gw2 } = openGateway({
+    dbPath: join(dir, "gateway.sqlite"),
+    clock: clock2,
+    routes: [ROUTE],
+    adapter: adapter2,
+  });
+  gw2.restoreQuarantine(backupTime, clock2.nowMs());
+  assert.equal(gw2.store.getDelivery(id)?.status, "commit-unknown");
+  assert.equal(gw2.approve(id).ok, false);
+  gw2.resumeDispatch();
+  gw2.processOutbox();
+  gw2.tick();
+  assert.equal(adapter2.sent.length, 0);
+  assert.equal(adapter.sent.length + adapter2.sent.length, 1);
+  assert.equal(gw2.store.getDelivery(id)?.status, "commit-unknown");
+  gw2.close();
+  cleanup(dir);
+});
+
+test("restore quarantine: never-approved pending-approval delivery is never sent", () => {
+  const { gw, clock, dir, adapter } = openTestGw();
+  const enq = handle(
+    gw,
+    "delivery.enqueue",
+    { route: ROUTE, text: "never-approved", notAfter: clock.nowMs() + 60_000, requireApproval: true },
+    clock.nowMs(),
+  );
+  assert.equal(enq.ok, true);
+  const id = (enq.body as { deliveryId: string }).deliveryId;
+  gw.processOutbox();
+  assert.equal(adapter.sent.length, 0);
+  gw.restoreQuarantine(clock.nowMs() - 1, clock.nowMs());
+  assert.equal(gw.store.getDelivery(id)?.status, "commit-unknown");
+  assert.equal(gw.approve(id).ok, false);
+  gw.resumeDispatch();
+  gw.processOutbox();
+  gw.tick();
+  assert.equal(adapter.sent.length, 0);
+  gw.close();
+  cleanup(dir);
+});
+
 test("refuse schema newer than binary", () => {
   const { gw, dir } = openTestGw();
   gw.close();
