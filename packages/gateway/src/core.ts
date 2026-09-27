@@ -110,8 +110,9 @@ export class Gateway {
   // waits on an async receipt; other kicks (even reentrant ones from adapter.send) only request a rerun.
   private outboxDraining = false;
   private outboxRerun = false;
-  // Set when recording an async receipt, or the drain resumed after it, throws (e.g. the receipt write fails).
-  // The outbox then sends nothing more in this process; reopen records the dispatching row commit-unknown.
+  // Set when a dispatch or its receipt (sync or async), or the drain resumed after an async receipt, throws
+  // (e.g. the receipt write fails). The outbox then sends nothing more in this process; reopen records the
+  // dispatching row commit-unknown.
   private outboxHalted: { error: unknown } | null = null;
 
   constructor(opts: { store: Store; clock: Clock; config: GatewayConfig; adapter: SendAdapter }) {
@@ -559,7 +560,9 @@ export class Gateway {
         (err: unknown) => this.stopOnInjectedCrash(row, err),
       );
     } catch (err) {
-      return this.stopOnInjectedCrash(row, err);
+      if (err instanceof InjectedCrash) return this.stopOnInjectedCrash(row, err);
+      this.haltOutbox(err);
+      return "stop";
     }
   }
 

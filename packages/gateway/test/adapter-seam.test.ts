@@ -758,6 +758,61 @@ test("async receipt whose accepted write fails halts the outbox: no unhandled re
   cleanup(dir);
 });
 
+test("synchronous receipt whose accepted write fails halts the outbox: response stays dispatching, no admission or resend, reopen recovers", async () => {
+  const sent: string[] = [];
+  const adapter: SendAdapter = {
+    manifest: plainManifest(),
+    send(envelope) {
+      sent.push(envelope.deliveryId);
+      return { receiptLevel: "accepted", providerMessageId: `p:${envelope.deliveryId}` };
+    },
+  };
+  const { gw, clock, dir } = openWith(adapter, ROUTE);
+  const dbPath = join(dir, "gateway.sqlite");
+  const side = new DatabaseSync(dbPath);
+  const jobBody = {
+    kind: "static-text",
+    text: "daily",
+    route: ROUTE,
+    schedule: { type: "daily", localTime: "10:05", timeZone: "UTC" },
+  };
+  const jobId = (handle(gw, "job.create", jobBody, clock.nowMs()) as { body: { jobId: string } }).body.jobId;
+  let firstResponse: ReturnType<typeof enqueueResult> | undefined;
+  const unhandled = await collectUnhandledRejections(async () => {
+    side.exec(BLOCK_ACCEPTED_TRIGGER);
+    firstResponse = enqueueResult(gw, clock, "first", "req-sync-halt-first");
+    assert.ok(gw.outboxHalt, "failed synchronous receipt write must leave an observable halt");
+    side.exec("DROP TRIGGER block_accepted");
+    clock.add(5 * 60_000 + 30_000);
+    assert.deepEqual(enqueueResult(gw, clock, "fresh", "req-sync-halt-fresh"), OUTBOX_HALTED_RESPONSE("req-sync-halt-fresh"));
+    gw.processOutbox();
+    gw.tick();
+    await flushAsync();
+  });
+  side.close();
+  assert.deepEqual(unhandled, []);
+  assert.equal(firstResponse?.ok, true);
+  const first = (firstResponse as { body: { deliveryId: string; status: string } }).body;
+  assert.equal(first.status, "dispatching", "the response must not claim accepted when the receipt was not recorded");
+  assert.deepEqual(sent, [first.deliveryId]);
+  assert.equal(gw.store.getDelivery(first.deliveryId)?.status, "dispatching");
+  assert.deepEqual(gw.store.listOccurrences(jobId), [], "halted tick admits no occurrence");
+  assert.deepEqual(enqueueResult(gw, clock, "first", "req-sync-halt-first"), firstResponse);
+  assert.ok(gw.store.listAudit().some((a) => a.kind === "outbox.halted"));
+  assert.equal(JSON.stringify(gw.store.listAudit()).includes("injected accepted write failure"), false);
+  gw.close();
+
+  const reopened = openGateway({ dbPath, clock, routes: [ROUTE], adapter }).gateway;
+  assert.equal(reopened.outboxHalt, null);
+  assert.equal(reopened.store.getDelivery(first.deliveryId)?.status, "commit-unknown");
+  reopened.processOutbox();
+  assert.deepEqual(sent, [first.deliveryId], "the uncertain row is never replayed");
+  assert.deepEqual(enqueueResult(reopened, clock, "first", "req-sync-halt-first"), firstResponse);
+  assert.deepEqual(sent, [first.deliveryId]);
+  reopened.close();
+  cleanup(dir);
+});
+
 test("halt notifier that throws is contained: no unhandled rejection, halt still set, audit still recorded, no resend", async () => {
   const { adapter, pending } = reentrantDeferredAdapter(() => {});
   const { gw, clock, dir } = openWith(adapter, ROUTE);

@@ -195,7 +195,7 @@ test("stop during a deferred async send: no closed-store write, restart records 
 });
 
 const OUTBOX_HALT_DIAGNOSTIC =
-  "gateway outbox halted: a delivery receipt could not be recorded; no further sends until restart, which marks that delivery commit-unknown\n";
+  "gateway outbox halted: a delivery receipt could not be recorded; no further sends until restart; remaining dispatching deliveries become commit-unknown on restart\n";
 
 test("async accepted receipt that cannot be written halts the daemon outbox with one stderr diagnostic even if its audit fails; restart recovers commit-unknown and sends the queued row once", async () => {
   const dir = tmpDir();
@@ -278,6 +278,74 @@ test("async accepted receipt that cannot be written halts the daemon outbox with
   });
   assert.deepEqual(unhandled, []);
   assert.deepEqual(asyncSent, [first]);
+  cleanup(dir);
+});
+
+test("synchronous accepted receipt that cannot be written halts the daemon outbox with one stderr diagnostic; restart recovers commit-unknown without replay", async () => {
+  const dir = tmpDir();
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
+  const clock = new TestClock(Date.UTC(2026, 0, 1, 10, 0, 0));
+  const syncSent: string[] = [];
+  const syncAdapter: SendAdapter = {
+    manifest: createFakeAdapter().manifest,
+    send(envelope) {
+      syncSent.push(envelope.deliveryId);
+      return { receiptLevel: "accepted", providerMessageId: `p:${envelope.deliveryId}` };
+    },
+  };
+  let first = "";
+  const unhandled = await collectUnhandledRejections(async () => {
+    const d1 = startDaemon({ profileDir: dir, routes: [ROUTE], clock, adapter: syncAdapter, bindSocket: false });
+    const side = new DatabaseSync(join(dir, "gateway.sqlite"));
+    try {
+      side.exec(
+        "CREATE TRIGGER block_accepted BEFORE UPDATE OF status ON deliveries WHEN NEW.status = 'accepted' " +
+          "BEGIN SELECT RAISE(ABORT, 'injected accepted write failure'); END",
+      );
+      const stderrWrites: string[] = [];
+      const realStderrWrite = process.stderr.write;
+      process.stderr.write = ((chunk: string | Uint8Array) => {
+        stderrWrites.push(String(chunk));
+        return true;
+      }) as typeof process.stderr.write;
+      try {
+        const res = handle(d1.gateway, "delivery.enqueue", { route: ROUTE, text: "first", notAfter: clock.nowMs() + 60_000 }, clock.nowMs());
+        assert.equal(res.ok, true);
+        const body = (res as { body: { deliveryId: string; status: string } }).body;
+        first = body.deliveryId;
+        assert.equal(body.status, "dispatching");
+        assert.ok(d1.gateway.outboxHalt);
+        side.exec("DROP TRIGGER block_accepted");
+        d1.gateway.tick();
+        const fresh = handle(d1.gateway, "delivery.enqueue", { route: ROUTE, text: "fresh", notAfter: clock.nowMs() + 60_000 }, clock.nowMs());
+        assert.equal(fresh.ok, false);
+        assert.equal((fresh as { error: { code: string } }).error.code, "outbox_halted");
+        await flushAsync();
+      } finally {
+        process.stderr.write = realStderrWrite;
+      }
+      assert.deepEqual(stderrWrites, [OUTBOX_HALT_DIAGNOSTIC]);
+      assert.ok(d1.gateway.store.listAudit().some((a) => a.kind === "outbox.halted"));
+      assert.deepEqual(syncSent, [first]);
+      assert.equal(d1.gateway.store.getDelivery(first)?.status, "dispatching");
+    } finally {
+      side.close();
+      d1.stop();
+    }
+
+    const d2 = startDaemon({ profileDir: dir, routes: [ROUTE], clock, adapter: syncAdapter, bindSocket: false });
+    try {
+      assert.equal(d2.gateway.outboxHalt, null);
+      assert.equal(d2.gateway.store.getDelivery(first)?.status, "commit-unknown");
+      assert.ok(d2.gateway.store.listAudit().some((a) => a.kind === "crash.recover"));
+      d2.gateway.tick();
+    } finally {
+      d2.stop();
+    }
+  });
+  assert.deepEqual(unhandled, []);
+  assert.deepEqual(syncSent, [first]);
   cleanup(dir);
 });
 
