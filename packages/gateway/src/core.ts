@@ -317,10 +317,21 @@ export class Gateway {
     // Fuse debit, delivery row and audit commit together: a debit without its row would rate-limit the
     // same requestId's retry. The send runs only after commit, never inside the transaction.
     const admitted = this.store.transaction((): GatewayResponse | { queuedDeliveryId: string } => {
+      // Reread under the writer lock: another Store may have committed this requestId's response or
+      // delivery since handleRequest's reads, and must not be answered with a second debit or rejection.
+      const committed = this.store.getRequest(req.requestId);
+      if (committed) return JSON.parse(committed) as GatewayResponse;
+      const existing = this.store.getDeliveryByRequestId(req.requestId);
+      if (existing) return this.okBody(req, { deliveryId: existing.delivery_id, status: existing.status });
+      // A response settled here commits with its row or rejection, so a racing Store's recheck returns it.
+      const settle = (response: GatewayResponse): GatewayResponse => {
+        this.store.putRequest(req.requestId, JSON.stringify(response), this.clock.nowMs());
+        return response;
+      };
       const fuse = this.consumeFuses(route.value);
       if (!fuse.ok) {
         this.audit("delivery.enqueue.rejected", { reason: fuse.error.code, route: route.value });
-        return { ok: false, requestId: req.requestId, error: fuse.error };
+        return settle({ ok: false, requestId: req.requestId, error: fuse.error });
       }
       const now = this.clock.nowMs();
       if (now >= body.notAfter) {
@@ -339,7 +350,7 @@ export class Gateway {
           dispatch_intent: 0,
         });
         this.audit("delivery.expired", { deliveryId });
-        return this.okBody(req, { deliveryId, status: "expired" });
+        return settle(this.okBody(req, { deliveryId, status: "expired" }));
       }
       const pending = body.requireApproval === true;
       const deliveryId = newId("dlv");
@@ -357,14 +368,17 @@ export class Gateway {
         dispatch_intent: 0,
       });
       this.audit("delivery.enqueue", { deliveryId, requestId: req.requestId, requireApproval: pending });
-      if (pending) return this.okBody(req, { deliveryId, status: "pending-approval" });
+      if (pending) return settle(this.okBody(req, { deliveryId, status: "pending-approval" }));
       return { queuedDeliveryId: deliveryId };
     });
     if (!("queuedDeliveryId" in admitted)) return admitted;
     const deliveryId = admitted.queuedDeliveryId;
     this.processOutbox();
     const row = this.store.getDelivery(deliveryId);
-    return this.okBody(req, { deliveryId, status: row?.status ?? "queued" });
+    const response = this.okBody(req, { deliveryId, status: row?.status ?? "queued" });
+    // Another Store that met this row in flight may have recorded an earlier status for it.
+    this.store.putDeliveryRequest(req.requestId, deliveryId, JSON.stringify(response), this.clock.nowMs());
+    return response;
   }
 
   approve(id: string): ApproveResult {

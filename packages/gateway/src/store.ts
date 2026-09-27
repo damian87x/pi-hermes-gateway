@@ -397,6 +397,17 @@ export class Store {
     );
   }
 
+  // Replaces an existing entry only when it answers with the same delivery, never another response.
+  putDeliveryRequest(requestId: string, deliveryId: string, responseJson: string, atMs: number): void {
+    this.db
+      .prepare(
+        "INSERT INTO request_log(request_id, response_json, at_ms) VALUES(?,?,?) ON CONFLICT(request_id) DO UPDATE " +
+          "SET response_json = excluded.response_json, at_ms = excluded.at_ms " +
+          "WHERE json_extract(request_log.response_json, '$.body.deliveryId') = ?",
+      )
+      .run(requestId, responseJson, atMs, deliveryId);
+  }
+
   getAccountFuse(accountId: string): { tokens: number; updated_at_ms: number } | undefined {
     const row = this.db.prepare("SELECT tokens, updated_at_ms FROM fuse_account WHERE account_id = ?").get(accountId);
     if (!row) return undefined;
