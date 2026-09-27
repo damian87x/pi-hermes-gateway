@@ -13,7 +13,7 @@ Logged defaults. Each entry records the policy the code implements; change the c
 
 - A job delivery refused before send (`text_too_long` or `rate_limited`) is marked `failed`, its occurrence `skipped`, and a `delivery.send.rejected` audit is written, all in one transaction. The row is never retried or sent.
 - The text-length check runs before the fuses, so a refused oversized job spends no token or daily-cap slot.
-- If the refusal transaction fails, the row stays `queued` with its occurrence `claimed`, the outbox halts, and the next open re-evaluates it.
+- If the refusal transaction fails, the whole pre-send claim rolls back: the row stays `queued` with its occurrence `pending`, the outbox halts, and the next open re-evaluates it.
 
 ## Job pause and cancel against queued deliveries
 
