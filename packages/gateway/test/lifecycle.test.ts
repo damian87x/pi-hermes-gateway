@@ -349,6 +349,59 @@ test("synchronous accepted receipt that cannot be written halts the daemon outbo
   cleanup(dir);
 });
 
+test("daemon whose startup tick cannot write a job delivery keeps no orphan occurrence; restart delivers it once", () => {
+  const dir = tmpDir();
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
+  const at = "2026-01-01T10:05:00.000Z";
+  const clock = new TestClock(Date.UTC(2026, 0, 1, 10, 0, 0));
+  const adapter = createFakeAdapter();
+  const d1 = startDaemon({ profileDir: dir, routes: [ROUTE], clock, adapter, bindSocket: false });
+  const created = handle(
+    d1.gateway,
+    "job.create",
+    { kind: "static-text", text: "once-atomic", route: ROUTE, schedule: { type: "once", atUtc: at } },
+    clock.nowMs(),
+  );
+  assert.equal(created.ok, true);
+  const jobId = (created as { body: { jobId: string } }).body.jobId;
+  d1.stop();
+
+  clock.set(Date.parse(at));
+  const side = new DatabaseSync(join(dir, "gateway.sqlite"));
+  try {
+    side.exec(
+      "CREATE TRIGGER block_job_delivery BEFORE INSERT ON deliveries WHEN NEW.source = 'job' " +
+        "BEGIN SELECT RAISE(ABORT, 'injected delivery insert failure'); END",
+    );
+    assert.throws(
+      () => startDaemon({ profileDir: dir, routes: [ROUTE], clock, adapter, bindSocket: false }),
+      /injected delivery insert failure/,
+    );
+    assert.deepEqual(side.prepare("SELECT * FROM occurrences WHERE job_id = ?").all(jobId), []);
+    assert.deepEqual(side.prepare("SELECT * FROM deliveries").all(), []);
+    side.exec("DROP TRIGGER block_job_delivery");
+  } finally {
+    side.close();
+  }
+
+  const d2 = startDaemon({ profileDir: dir, routes: [ROUTE], clock, adapter, bindSocket: false });
+  assert.equal(adapter.sent.length, 1);
+  assert.equal(adapter.sent[0]?.text, "once-atomic");
+  assert.deepEqual(
+    d2.gateway.store.listOccurrences(jobId).map((o) => o.status),
+    ["completed"],
+  );
+  d2.stop();
+
+  clock.add(60_000);
+  const d3 = startDaemon({ profileDir: dir, routes: [ROUTE], clock, adapter, bindSocket: false });
+  d3.gateway.tick();
+  assert.equal(adapter.sent.length, 1, "restart never resends the admitted occurrence");
+  d3.stop();
+  cleanup(dir);
+});
+
 test("stop does not wait on a hung async send", async () => {
   const dir = tmpDir();
   mkdirSync(dir, { recursive: true, mode: 0o700 });

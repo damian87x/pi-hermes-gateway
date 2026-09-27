@@ -1004,3 +1004,236 @@ test("halted outbox rejects fresh enqueue and job.create without writes, tick ad
   reopened.close();
   cleanup(dir);
 });
+
+const T0 = Date.UTC(2026, 0, 1, 10, 0, 0);
+const DAILY_1005 = { type: "daily", localTime: "10:05", timeZone: "UTC" };
+const ONCE_1005 = { type: "once", atUtc: "2026-01-01T10:05:00.000Z" };
+
+function syncAcceptingAdapter(sent: string[]): SendAdapter {
+  return {
+    manifest: plainManifest(),
+    send(envelope) {
+      sent.push(envelope.deliveryId);
+      return { receiptLevel: "accepted", providerMessageId: `p:${envelope.deliveryId}` };
+    },
+  };
+}
+
+function createJob(gw: Gateway, clock: TestClock, text: string, schedule: unknown): string {
+  const res = handle(gw, "job.create", { kind: "static-text", text, route: ROUTE, schedule }, clock.nowMs());
+  if (!res.ok) throw new Error(res.error.message);
+  return (res.body as { jobId: string }).jobId;
+}
+
+for (const fault of [
+  {
+    name: "delivery insert",
+    trigger: "BEFORE INSERT ON deliveries WHEN NEW.source = 'job'",
+    notAfterBoundMs: undefined,
+    admittedStatus: "completed",
+  },
+  {
+    name: "admission audit",
+    trigger: "BEFORE INSERT ON audit WHEN NEW.kind = 'occurrence.admitted'",
+    notAfterBoundMs: undefined,
+    admittedStatus: "completed",
+  },
+  {
+    name: "expired audit",
+    trigger: "BEFORE INSERT ON audit WHEN NEW.kind = 'occurrence.expired'",
+    notAfterBoundMs: 1,
+    admittedStatus: "expired",
+  },
+]) {
+  test(`job occurrence whose ${fault.name} write fails rolls back whole; the next tick and a restart admit it exactly once`, async () => {
+    const sent: string[] = [];
+    const adapter = syncAcceptingAdapter(sent);
+    const dir = tmpDir();
+    const dbPath = join(dir, "gateway.sqlite");
+    const clock = new TestClock(T0);
+    const open = () =>
+      openGateway({ dbPath, clock, routes: [ROUTE], adapter, notAfterBoundMs: fault.notAfterBoundMs }).gateway;
+    const gw = open();
+    const daily = createJob(gw, clock, "daily", DAILY_1005);
+    const once = createJob(gw, clock, "once", ONCE_1005);
+    const side = new DatabaseSync(dbPath);
+    side.exec(`CREATE TRIGGER block_admission ${fault.trigger} BEGIN SELECT RAISE(ABORT, 'injected admission write failure'); END`);
+    clock.add(5 * 60_000 + 10);
+    assert.throws(() => gw.tick(), /injected admission write failure/);
+    for (const jobId of [daily, once]) {
+      assert.deepEqual(gw.store.listOccurrences(jobId), [], "no orphan occurrence may survive a failed admission");
+      assert.equal(gw.store.getJob(jobId)?.watermark_ms, T0, "watermark stays put so the instant is retried");
+    }
+    assert.deepEqual(gw.store.listDeliveries(), []);
+    const kinds = gw.store.listAudit().map((a) => a.kind);
+    assert.equal(kinds.includes("occurrence.admitted"), false);
+    assert.equal(kinds.includes("occurrence.expired"), false);
+    side.exec("DROP TRIGGER block_admission");
+    side.close();
+
+    gw.tick();
+    gw.tick();
+    const expectedSends = fault.admittedStatus === "completed" ? 2 : 0;
+    for (const jobId of [daily, once]) {
+      const occurrences = gw.store.listOccurrences(jobId);
+      assert.equal(occurrences.length, 1);
+      assert.equal(occurrences[0]!.status, fault.admittedStatus);
+    }
+    assert.equal(sent.length, expectedSends);
+    assert.equal(new Set(sent).size, sent.length);
+    gw.close();
+
+    const reopened = open();
+    reopened.tick();
+    clock.add(60_000);
+    reopened.tick();
+    assert.equal(sent.length, expectedSends, "restart never re-admits or resends an admitted occurrence");
+    for (const jobId of [daily, once]) assert.equal(reopened.store.listOccurrences(jobId).length, 1);
+    await flushAsync();
+    reopened.close();
+    cleanup(dir);
+  });
+}
+
+test("job occurrence whose invalid-route skip audit fails rolls back the skipped occurrence; the next tick records it once", () => {
+  const sent: string[] = [];
+  const adapter = syncAcceptingAdapter(sent);
+  const dir = tmpDir();
+  const dbPath = join(dir, "gateway.sqlite");
+  const clock = new TestClock(T0);
+  const first = openGateway({ dbPath, clock, routes: [ROUTE], adapter }).gateway;
+  const jobId = createJob(first, clock, "daily", DAILY_1005);
+  first.close();
+  const gw = openGateway({ dbPath, clock, routes: [{ ...ROUTE, chatId: "other" }], adapter }).gateway;
+  const side = new DatabaseSync(dbPath);
+  side.exec(
+    "CREATE TRIGGER block_rejected BEFORE INSERT ON audit WHEN NEW.kind = 'delivery.send.rejected' " +
+      "BEGIN SELECT RAISE(ABORT, 'injected rejection audit failure'); END",
+  );
+  clock.add(5 * 60_000);
+  assert.throws(() => gw.tick(), /injected rejection audit failure/);
+  assert.deepEqual(gw.store.listOccurrences(jobId), []);
+  assert.equal(gw.store.listAudit().some((a) => a.kind === "occurrence.skipped"), false);
+  side.exec("DROP TRIGGER block_rejected");
+  side.close();
+  gw.tick();
+  gw.tick();
+  assert.deepEqual(
+    gw.store.listOccurrences(jobId).map((o) => o.status),
+    ["skipped"],
+  );
+  assert.equal(gw.store.listAudit().filter((a) => a.kind === "delivery.send.rejected").length, 1);
+  assert.deepEqual(sent, []);
+  gw.close();
+  cleanup(dir);
+});
+
+for (const fault of [
+  {
+    name: "sync accepted receipt whose occurrence completion fails",
+    receipt: "accepted" as const,
+    async: false,
+    trigger: "BEFORE UPDATE OF status ON occurrences WHEN NEW.status = 'completed'",
+  },
+  {
+    name: "async accepted receipt whose accepted audit fails",
+    receipt: "accepted" as const,
+    async: true,
+    trigger: "BEFORE INSERT ON audit WHEN NEW.kind = 'delivery.accepted'",
+  },
+  {
+    name: "async commit-unknown receipt whose occurrence write fails",
+    receipt: "commit-unknown" as const,
+    async: true,
+    trigger: "BEFORE UPDATE OF status ON occurrences WHEN NEW.status = 'commit-unknown'",
+  },
+  {
+    name: "sync commit-unknown receipt whose audit fails",
+    receipt: "commit-unknown" as const,
+    async: false,
+    trigger: "BEFORE INSERT ON audit WHEN NEW.kind = 'delivery.commit-unknown'",
+  },
+]) {
+  test(`${fault.name} rolls back to dispatching and claimed, halts, and restart records commit-unknown without replay`, async () => {
+    const sent: string[] = [];
+    const receipt = () =>
+      fault.receipt === "accepted"
+        ? ({ receiptLevel: "accepted", providerMessageId: "p:job" } as const)
+        : ({ receiptLevel: "commit-unknown", reason: "timeout" } as const);
+    const adapter: SendAdapter = {
+      manifest: plainManifest(),
+      send(envelope) {
+        sent.push(envelope.deliveryId);
+        return fault.async ? Promise.resolve(receipt()) : receipt();
+      },
+    };
+    const dir = tmpDir();
+    const dbPath = join(dir, "gateway.sqlite");
+    const clock = new TestClock(T0);
+    const gw = openGateway({ dbPath, clock, routes: [ROUTE], adapter }).gateway;
+    const jobId = createJob(gw, clock, "daily", DAILY_1005);
+    const side = new DatabaseSync(dbPath);
+    side.exec(`CREATE TRIGGER block_receipt ${fault.trigger} BEGIN SELECT RAISE(ABORT, 'injected receipt write failure'); END`);
+    clock.add(5 * 60_000);
+    const unhandled = await collectUnhandledRejections(async () => {
+      gw.tick();
+      await flushAsync();
+    });
+    assert.deepEqual(unhandled, []);
+    assert.equal(sent.length, 1);
+    assert.ok(gw.outboxHalt, "a receipt that cannot be committed halts the outbox");
+    const occurrence = gw.store.listOccurrences(jobId)[0]!;
+    const delivery = gw.store.listDeliveries()[0]!;
+    assert.equal(delivery.status, "dispatching", "the receipt's delivery write rolls back with it");
+    assert.equal(occurrence.status, "claimed", "the receipt's occurrence write rolls back with it");
+    const kinds = gw.store.listAudit().map((a) => a.kind);
+    assert.equal(kinds.includes("delivery.accepted"), false);
+    assert.equal(kinds.includes("delivery.commit-unknown"), false);
+    assert.ok(kinds.includes("outbox.halted"));
+    side.exec("DROP TRIGGER block_receipt");
+    side.close();
+    gw.close();
+
+    const reopened = openGateway({ dbPath, clock, routes: [ROUTE], adapter }).gateway;
+    assert.equal(reopened.store.getDelivery(delivery.delivery_id)?.status, "commit-unknown");
+    assert.equal(reopened.store.getOccurrence(occurrence.occurrence_id)?.status, "commit-unknown");
+    reopened.tick();
+    clock.add(60_000);
+    reopened.tick();
+    await flushAsync();
+    assert.deepEqual(sent, [delivery.delivery_id], "the uncertain occurrence is never replayed");
+    assert.equal(reopened.store.listOccurrences(jobId).length, 1);
+    reopened.close();
+    cleanup(dir);
+  });
+}
+
+test("normal job receipts commit delivery, occurrence and audit together for daily and once jobs", () => {
+  const sent: string[] = [];
+  const { gw, clock, dir } = openWith(syncAcceptingAdapter(sent), ROUTE);
+  const daily = createJob(gw, clock, "daily", DAILY_1005);
+  const once = createJob(gw, clock, "once", ONCE_1005);
+  clock.add(5 * 60_000);
+  gw.tick();
+  gw.tick();
+  assert.equal(sent.length, 2);
+  for (const jobId of [daily, once]) {
+    assert.deepEqual(
+      gw.store.listOccurrences(jobId).map((o) => o.status),
+      ["completed"],
+    );
+  }
+  assert.deepEqual(
+    gw.store.listDeliveries().map((d) => d.status),
+    ["accepted", "accepted"],
+  );
+  assert.equal(gw.store.listAudit().filter((a) => a.kind === "occurrence.admitted").length, 2);
+  assert.equal(gw.store.listAudit().filter((a) => a.kind === "delivery.accepted").length, 2);
+  clock.add(24 * 60 * 60_000);
+  gw.tick();
+  assert.equal(sent.length, 3, "the daily job fires again the next day; the once job does not");
+  assert.equal(gw.store.listOccurrences(daily).length, 2);
+  assert.equal(gw.store.listOccurrences(once).length, 1);
+  gw.close();
+  cleanup(dir);
+});

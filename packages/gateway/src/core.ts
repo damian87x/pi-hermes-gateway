@@ -440,7 +440,13 @@ export class Gateway {
     this.audit("delivery.send.rejected", { reason: "invalid_route", ...extra });
   }
 
+  // The occurrence, its delivery and audit commit together: findOccurrence treats any occurrence row as
+  // admitted, so a partial write would block every later tick from repairing it.
   private admitJobOccurrence(jobId: string, scheduledInstantMs: number, text: string, route: DeliveryRoute): void {
+    this.store.transaction(() => this.insertJobOccurrence(jobId, scheduledInstantMs, text, route));
+  }
+
+  private insertJobOccurrence(jobId: string, scheduledInstantMs: number, text: string, route: DeliveryRoute): void {
     if (this.store.findOccurrence(jobId, scheduledInstantMs)) return;
     if (!this.routeAllowed(route).ok) {
       this.recordSkipped(jobId, scheduledInstantMs, "invalid_route");
@@ -642,6 +648,12 @@ export class Gateway {
   private recordReceipt(row: DeliveryRow, receipt: SendReceipt | undefined): void {
     if (this.closed) return;
     if (this.crashNext === "before-receipt") throw new InjectedCrash("before-receipt");
+    // Delivery, occurrence and audit commit together; on failure the row stays dispatching for the halt
+    // and reopen records commit-unknown.
+    this.store.transaction(() => this.writeReceipt(row, receipt));
+  }
+
+  private writeReceipt(row: DeliveryRow, receipt: SendReceipt | undefined): void {
     if (receipt?.receiptLevel !== "accepted") {
       this.store.setDeliveryStatus(row.delivery_id, "commit-unknown");
       if (row.occurrence_id) this.store.setOccurrenceStatus(row.occurrence_id, "commit-unknown");
