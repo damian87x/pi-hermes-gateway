@@ -732,9 +732,12 @@ export class Gateway {
   recoverStuckDispatching(): void {
     for (const row of this.store.listDeliveries()) {
       if (row.status !== "dispatching") continue;
-      this.store.setDeliveryStatus(row.delivery_id, "commit-unknown");
-      if (row.occurrence_id) this.store.setOccurrenceStatus(row.occurrence_id, "commit-unknown");
-      this.audit("crash.recover", { deliveryId: row.delivery_id, previousStatus: row.status });
+      // All-or-nothing per row: a failed write leaves it dispatching so the next open repairs it.
+      this.store.transaction(() => {
+        this.store.setDeliveryStatus(row.delivery_id, "commit-unknown");
+        if (row.occurrence_id) this.store.setOccurrenceStatus(row.occurrence_id, "commit-unknown");
+        this.audit("crash.recover", { deliveryId: row.delivery_id, previousStatus: row.status });
+      });
     }
   }
 }
@@ -752,21 +755,26 @@ export function openGateway(opts: {
   adapter?: SendAdapter;
 }): { gateway: Gateway; backedUpTo: string | null } {
   const store = new Store(opts.dbPath);
-  const { backedUpTo } = store.migrate();
-  const gateway = new Gateway({
-    store,
-    clock: opts.clock,
-    adapter: opts.adapter ?? createFakeAdapter(),
-    config: {
-      routes: opts.routes,
-      catchUpPolicy: opts.catchUpPolicy ?? DEFAULT_CONFIG.catchUpPolicy,
-      notAfterBoundMs: opts.notAfterBoundMs ?? DEFAULT_CONFIG.notAfterBoundMs,
-      tickGraceMs: opts.tickGraceMs ?? DEFAULT_CONFIG.tickGraceMs,
-      tokenBucketCapacity: opts.tokenBucketCapacity ?? DEFAULT_CONFIG.tokenBucketCapacity,
-      tokenBucketRefillPerMs: opts.tokenBucketRefillPerMs ?? DEFAULT_CONFIG.tokenBucketRefillPerMs,
-      dailyCapPerRoute: opts.dailyCapPerRoute ?? DEFAULT_CONFIG.dailyCapPerRoute,
-    },
-  });
-  gateway.recoverStuckDispatching();
-  return { gateway, backedUpTo };
+  try {
+    const { backedUpTo } = store.migrate();
+    const gateway = new Gateway({
+      store,
+      clock: opts.clock,
+      adapter: opts.adapter ?? createFakeAdapter(),
+      config: {
+        routes: opts.routes,
+        catchUpPolicy: opts.catchUpPolicy ?? DEFAULT_CONFIG.catchUpPolicy,
+        notAfterBoundMs: opts.notAfterBoundMs ?? DEFAULT_CONFIG.notAfterBoundMs,
+        tickGraceMs: opts.tickGraceMs ?? DEFAULT_CONFIG.tickGraceMs,
+        tokenBucketCapacity: opts.tokenBucketCapacity ?? DEFAULT_CONFIG.tokenBucketCapacity,
+        tokenBucketRefillPerMs: opts.tokenBucketRefillPerMs ?? DEFAULT_CONFIG.tokenBucketRefillPerMs,
+        dailyCapPerRoute: opts.dailyCapPerRoute ?? DEFAULT_CONFIG.dailyCapPerRoute,
+      },
+    });
+    gateway.recoverStuckDispatching();
+    return { gateway, backedUpTo };
+  } catch (err) {
+    store.close();
+    throw err;
+  }
 }

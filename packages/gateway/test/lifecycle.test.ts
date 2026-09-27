@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, readlinkSync, symlinkSync, writeFileSync } from "node:fs";
 import { userInfo } from "node:os";
 import { join, relative } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -429,6 +429,104 @@ test("stop does not wait on a hung async send", async () => {
     d2.stop();
   }
   cleanup(dir);
+});
+
+function openDbFds(dbPath: string): number {
+  return readdirSync("/proc/self/fd").filter((fd) => {
+    try {
+      return readlinkSync(`/proc/self/fd/${fd}`) === dbPath;
+    } catch {
+      return false;
+    }
+  }).length;
+}
+
+function startupRecoveryFailsThenRecoversOnce(trigger: string, dropTrigger: string, failure: RegExp): void {
+  const dir = tmpDir();
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
+  const dbPath = join(dir, "gateway.sqlite");
+  const at = "2026-01-01T10:05:00.000Z";
+  const clock = new TestClock(Date.UTC(2026, 0, 1, 10, 0, 0));
+  const sent: string[] = [];
+  const adapter: SendAdapter = {
+    manifest: createFakeAdapter().manifest,
+    send(envelope) {
+      sent.push(envelope.deliveryId);
+      return new Promise(() => {});
+    },
+  };
+  const d1 = startDaemon({ profileDir: dir, routes: [ROUTE], clock, adapter, bindSocket: false });
+  const created = handle(
+    d1.gateway,
+    "job.create",
+    { kind: "static-text", text: "once-recover", route: ROUTE, schedule: { type: "once", atUtc: at } },
+    clock.nowMs(),
+  );
+  const jobId = (created as { body: { jobId: string } }).body.jobId;
+  clock.set(Date.parse(at));
+  d1.gateway.tick();
+  const [occurrence] = d1.gateway.store.listOccurrences(jobId);
+  assert.equal(occurrence?.status, "claimed");
+  const [delivery] = d1.gateway.store.listDeliveries();
+  assert.equal(delivery?.status, "dispatching");
+  assert.deepEqual(sent, [delivery!.delivery_id]);
+  d1.stop();
+
+  const setup = new DatabaseSync(dbPath);
+  setup.exec(trigger);
+  setup.close();
+  assert.throws(() => startDaemon({ profileDir: dir, routes: [ROUTE], clock, adapter, bindSocket: false }), failure);
+  assert.equal(openDbFds(dbPath), 0, "failed startup must close its store");
+  const side = new DatabaseSync(dbPath);
+  try {
+    const row = (sql: string) => side.prepare(sql).get(delivery!.delivery_id) as { status: string } | undefined;
+    assert.equal(row("SELECT status FROM deliveries WHERE delivery_id = ?")?.status, "dispatching");
+    assert.equal(
+      row("SELECT o.status FROM occurrences o JOIN deliveries d ON d.occurrence_id = o.occurrence_id WHERE d.delivery_id = ?")?.status,
+      "claimed",
+    );
+    assert.equal(side.prepare("SELECT COUNT(*) AS n FROM audit WHERE kind = 'crash.recover'").get()?.n, 0);
+    side.exec(dropTrigger);
+  } finally {
+    side.close();
+  }
+
+  const d2 = startDaemon({ profileDir: dir, routes: [ROUTE], clock, adapter, bindSocket: false });
+  assert.equal(d2.gateway.store.getDelivery(delivery!.delivery_id)?.status, "commit-unknown");
+  assert.deepEqual(
+    d2.gateway.store.listOccurrences(jobId).map((o) => o.status),
+    ["commit-unknown"],
+  );
+  d2.gateway.processOutbox();
+  d2.gateway.tick();
+  d2.stop();
+
+  const d3 = startDaemon({ profileDir: dir, routes: [ROUTE], clock, adapter, bindSocket: false });
+  const recovered = d3.gateway.store.listAudit().filter((a) => a.kind === "crash.recover");
+  assert.equal(recovered.length, 1);
+  assert.equal((JSON.parse(recovered[0]!.payload_json) as { deliveryId: string }).deliveryId, delivery!.delivery_id);
+  d3.stop();
+  assert.deepEqual(sent, [delivery!.delivery_id], "no restart replays the uncertain send");
+  cleanup(dir);
+}
+
+test("startup recovery whose occurrence write fails rolls back whole; restart records commit-unknown once without replay", () => {
+  startupRecoveryFailsThenRecoversOnce(
+    "CREATE TRIGGER block_occ_recover BEFORE UPDATE OF status ON occurrences WHEN NEW.status = 'commit-unknown' " +
+      "BEGIN SELECT RAISE(ABORT, 'injected occurrence recover failure'); END",
+    "DROP TRIGGER block_occ_recover",
+    /injected occurrence recover failure/,
+  );
+});
+
+test("startup recovery whose audit write fails rolls back whole; restart records commit-unknown once without replay", () => {
+  startupRecoveryFailsThenRecoversOnce(
+    "CREATE TRIGGER block_recover_audit BEFORE INSERT ON audit WHEN NEW.kind = 'crash.recover' " +
+      "BEGIN SELECT RAISE(ABORT, 'injected recover audit failure'); END",
+    "DROP TRIGGER block_recover_audit",
+    /injected recover audit failure/,
+  );
 });
 
 test("doctor CLI prints report and does not start a daemon", async () => {
