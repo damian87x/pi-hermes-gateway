@@ -692,6 +692,70 @@ test("halt notifier that throws is contained: no unhandled rejection, halt still
   cleanup(dir);
 });
 
+async function haltWithNotifier(notifier: (release: Promise<void>) => void, failureText: string): Promise<void> {
+  const { adapter, pending } = reentrantDeferredAdapter(() => {});
+  const { gw, clock, dir } = openWith(adapter, ROUTE);
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => (release = resolve));
+  let notified = 0;
+  gw.onOutboxHalt = () => {
+    notified += 1;
+    return notifier(released);
+  };
+  const side = new DatabaseSync(join(dir, "gateway.sqlite"));
+  let first = "";
+  const unhandled = await collectUnhandledRejections(async () => {
+    first = enqueue(gw, clock, ROUTE, "first").deliveryId;
+    enqueue(gw, clock, ROUTE, "second");
+    side.exec(BLOCK_ACCEPTED_TRIGGER);
+    pending[0]!.receipt.resolve({ receiptLevel: "accepted", providerMessageId: `p:${first}` });
+    await flushAsync();
+    assert.ok(gw.outboxHalt);
+    assert.ok(
+      gw.store.listAudit().some((a) => a.kind === "outbox.halted"),
+      "the audit must not wait for the notifier to settle",
+    );
+    release();
+    await flushAsync();
+    side.exec("DROP TRIGGER block_accepted");
+    gw.processOutbox();
+    gw.tick();
+    await flushAsync();
+  });
+  side.close();
+  assert.deepEqual(unhandled, []);
+  assert.equal(notified, 1);
+  assert.match((gw.outboxHalt?.error as Error).message, /injected accepted write failure/);
+  assert.equal(pending.length, 1, "halted outbox sends nothing after a failed notifier");
+  assert.equal(gw.store.getDelivery(first)?.status, "dispatching");
+  const audit = JSON.stringify(gw.store.listAudit());
+  assert.equal(audit.includes(failureText), false);
+  assert.equal(audit.includes("injected accepted write failure"), false);
+  gw.close();
+  cleanup(dir);
+}
+
+test("async halt notifier whose promise rejects is contained: no unhandled rejection, audit not delayed, no resend", async () => {
+  await haltWithNotifier(async (released) => {
+    await released;
+    throw new Error("injected async notifier failure");
+  }, "injected async notifier failure");
+});
+
+test("halt notifier returning a thenable whose then throws is contained: no unhandled rejection, no resend", async () => {
+  let thenCalls = 0;
+  await haltWithNotifier(
+    () => ({
+      then() {
+        thenCalls += 1;
+        throw new Error("injected thenable notifier failure");
+      },
+    }),
+    "injected thenable notifier failure",
+  );
+  assert.equal(thenCalls, 1, "the thenable is observed, so its failure is contained rather than ignored");
+});
+
 test("adapter rejection whose commit-unknown write fails halts the outbox and is never retried", async () => {
   let calls = 0;
   const adapter: SendAdapter = {

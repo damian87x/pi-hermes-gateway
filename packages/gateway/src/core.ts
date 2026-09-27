@@ -534,7 +534,9 @@ export class Gateway {
     this.outboxDraining = false;
     if (this.closed) return;
     try {
-      this.onOutboxHalt?.();
+      // A notifier typed () => void may still be async; observe its rejection without awaiting it.
+      const notice: unknown = this.onOutboxHalt?.();
+      if (isPromiseLike(notice)) void Promise.resolve(notice).catch(() => {});
     } catch {
       /* the notice is best-effort; the in-memory halt and the audit below do not depend on it */
     }
