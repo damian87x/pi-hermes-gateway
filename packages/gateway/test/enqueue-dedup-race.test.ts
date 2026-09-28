@@ -19,6 +19,12 @@ const REQUEST_ID = "same-enqueue";
 const ROUTE_KEY = "profile-a/fake/acct-1/chat-1/";
 const DAY = "2026-01-01";
 const BODY = { route: ROUTE, text: "raced", notAfter: START_MS + 60_000 };
+const JOB_BODY = {
+  kind: "static-text",
+  text: "raced",
+  route: ROUTE,
+  schedule: { type: "daily", localTime: "10:05", timeZone: "UTC" },
+};
 
 type Fuses = { capacity?: number; refillPerMs?: number };
 
@@ -417,5 +423,61 @@ test("an enqueue whose post-send request_log write fails keeps its one send; the
   assert.deepEqual(sent, [deliveryId]);
   assert.equal(gw.store.getRouteDay(ROUTE_KEY, DAY), 1);
   gw.close();
+  cleanup(dir);
+});
+
+test("a same-requestId retry whose top-level dedup read misses answers the settled row from the enqueue admission recheck", async (t) => {
+  const dir = tmpDir();
+  const dbPath = join(dir, "gateway.sqlite");
+  const clock = new TestClock(START_MS);
+  const sent: string[] = [];
+  const receipt = deferred<SendReceipt>();
+  const owner = open(dbPath, clock, countingAdapter(sent, undefined, () => receipt.promise));
+  const first = enqueue(owner);
+  const deliveryId = requestDelivery(owner)[0]?.delivery_id ?? "";
+  assert.deepEqual(first, ok(deliveryId, "dispatching"), "the send is still in flight");
+  receipt.resolve({ receiptLevel: "accepted" });
+  await flushAsync();
+  assert.equal(
+    (JSON.parse(owner.store.getRequest(REQUEST_ID) ?? "{}") as { body?: { status?: string } }).body?.status,
+    "dispatching",
+    "the recorded snapshot is still the pre-receipt one, so only the recheck can answer live",
+  );
+
+  const racer = openOtherWriter(dbPath, clock, countingAdapter(sent));
+  staleDedupReads(t, racer.store);
+  const raced = enqueue(racer);
+  t.mock.restoreAll();
+  assert.deepEqual(raced, ok(deliveryId, "accepted"), "the admission recheck replays the live row");
+  assertOneAdmission(owner, "accepted", "delivery.enqueue");
+  assert.deepEqual(sent, [deliveryId], "the raced retry does not send again");
+  owner.close();
+  racer.close();
+  cleanup(dir);
+});
+
+test("a job.create replaying a recorded enqueue response answers the live row and admits no job", async (t) => {
+  const dir = tmpDir();
+  const dbPath = join(dir, "gateway.sqlite");
+  const clock = new TestClock(START_MS);
+  const sent: string[] = [];
+  const receipt = deferred<SendReceipt>();
+  const owner = open(dbPath, clock, countingAdapter(sent, undefined, () => receipt.promise));
+  const first = enqueue(owner);
+  const deliveryId = requestDelivery(owner)[0]?.delivery_id ?? "";
+  receipt.resolve({ receiptLevel: "accepted" });
+  await flushAsync();
+  assert.deepEqual(first, ok(deliveryId, "dispatching"));
+
+  const racer = openOtherWriter(dbPath, clock, countingAdapter(sent));
+  staleDedupReads(t, racer.store);
+  const replayed = handle(racer, "job.create", JOB_BODY, racer.clock.nowMs(), REQUEST_ID);
+  t.mock.restoreAll();
+  assert.deepEqual(replayed, ok(deliveryId, "accepted"), "the job recheck replays the live delivery row");
+  assert.equal(racer.store.listJobs().length, 0, "the replay admits no job");
+  assertOneAdmission(owner, "accepted", "delivery.enqueue");
+  assert.deepEqual(sent, [deliveryId]);
+  owner.close();
+  racer.close();
   cleanup(dir);
 });
