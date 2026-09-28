@@ -140,10 +140,10 @@ function receiptFromResult(result: TelegramHttpResult): TelegramSendReceipt {
   const message = (json as { result?: { message_id?: unknown } }).result;
   const id = message?.message_id;
   const providerMessageId =
-    typeof id === "number" && Number.isFinite(id)
+    typeof id === "number" && Number.isInteger(id) && id > 0
       ? String(id)
-      : typeof id === "string" && id.trim().length > 0
-        ? id
+      : typeof id === "string" && id.trim().length > 0 && id.trim() !== "0"
+        ? id.trim()
         : undefined;
   if (providerMessageId === undefined) {
     return { receiptLevel: "commit-unknown", reason: "telegram-send-unconfirmed" };
