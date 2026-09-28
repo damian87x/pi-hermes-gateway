@@ -468,6 +468,11 @@ test("a job.create replaying a recorded enqueue response answers the live row an
   receipt.resolve({ receiptLevel: "accepted" });
   await flushAsync();
   assert.deepEqual(first, ok(deliveryId, "dispatching"));
+  assert.equal(
+    (JSON.parse(owner.store.getRequest(REQUEST_ID) ?? "{}") as { body?: { status?: string } }).body?.status,
+    "dispatching",
+    "the recorded snapshot is still the pre-receipt one, so only the recheck can answer live",
+  );
 
   const racer = openOtherWriter(dbPath, clock, countingAdapter(sent));
   staleDedupReads(t, racer.store);
