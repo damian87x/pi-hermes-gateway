@@ -1,0 +1,6 @@
+mode=mid-send first-exit=137 sinkLines=0
+{"deliveries":[["dispatching",1]],"audit":["delivery.enqueue.attempt","delivery.enqueue","delivery.send.attempt"]}
+mode=mid-send after-restart sinkLines=0
+mode=before-receipt first-exit=137 sinkLines=1
+{"deliveries":[["dispatching",1]],"audit":["delivery.enqueue.attempt","delivery.enqueue","delivery.send.attempt"]}
+mode=before-receipt after-restart sinkLines=1

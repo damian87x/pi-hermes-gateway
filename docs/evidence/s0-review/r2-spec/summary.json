@@ -1,0 +1,206 @@
+{
+  "stage": "spec",
+  "verdict": "PASS",
+  "candidateSha": "82d0de5dae6229ff0983267e4b26bdafe99a4178",
+  "baseSha": "4035d5b60c4ed611f9a81b2f9ca850682b62fb7b",
+  "diffSha256": "9d68ca943f130b237eab6a1b71edfbffa0c1f63619258e985e88ff0c6ab461af",
+  "sourceIdentityVerified": "Independently recomputed: git rev-parse HEAD = 82d0de5, git diff 4035d5b..82d0de5 | sha256sum = 9d68ca94... matching the pinned expectation exactly. Raw: docs/evidence/s0-review/r2-spec/source-identity.txt",
+  "acCoverageTable": "docs/evidence/s0-review/r2-spec/ac-coverage.md",
+  "acVerdicts": {
+    "AC1": "PASS",
+    "AC2": "PASS",
+    "AC3": "PASS",
+    "AC4": "PASS",
+    "AC5": "PASS",
+    "AC6": "PASS",
+    "AC7": "PASS with low finding S6"
+  },
+  "gates": [
+    {
+      "id": "SPEC-AC3-LIMITS",
+      "command": "node docs/evidence/s0-review/r2-spec/probe-ac3-limits.mjs",
+      "exitCode": 0,
+      "counts": {
+        "boundaryAssertionsRun": 46,
+        "documentedLimitsMatched": 10,
+        "documentedLimitsMismatched": 0,
+        "expiresAtBoundary": "(now, now+60000] exact",
+        "notAfterBoundary": "(now, now+86400000] exact",
+        "frameMax": 65536,
+        "payloadMaxUtf8Bytes": 32768,
+        "textMaxUtf16Units": 4096,
+        "invalidClockCasesRejected": 12,
+        "nonexistentDatesRejected": 7,
+        "validUtcFormsPreserved": 5,
+        "errorCodesEmitted": 9,
+        "errorCodesOutsideDocumentedSet": 0
+      },
+      "coverage": "AC3 concrete limits, stable errors, F1/F2 regression",
+      "rawPath": "docs/evidence/s0-review/r2-spec/probe-ac3-limits.txt"
+    },
+    {
+      "id": "SPEC-AC2-SIDEEFFECTS-F3F6",
+      "command": "node docs/evidence/s0-review/r2-spec/probe-ac2-f3f6.mjs",
+      "exitCode": 0,
+      "counts": {
+        "newGlobalsOnImport": 0,
+        "objectPrototypeOwnKeyDelta": 0,
+        "exportedClassOrSymbolValues": 0,
+        "packageSelfPollutes": false,
+        "namespaceRebindingBlocked": true,
+        "carriedFindingsReproduced": 4
+      },
+      "coverage": "AC2 no automatic side effect / no class-Symbol identity; F3 F4 F5 F6 adjudication",
+      "rawPath": "docs/evidence/s0-review/r2-spec/probe-ac2-f3f6.txt"
+    },
+    {
+      "id": "SPEC-AC4-PACK-CONSUMER",
+      "command": "npm pack -w pi-hermes-gateway-protocol && npm install --ignore-scripts <tgz> in disposable /tmp consumer && node t.mjs",
+      "exitCode": 0,
+      "counts": {
+        "tarballFiles": 34,
+        "srcOrTestOrTsconfigInTarball": 0,
+        "packagesInstalledInConsumer": 1,
+        "piResolvableInConsumer": false,
+        "declarationsPresent": true,
+        "importProtocolVersion": 1,
+        "importAdapterApiVersion": 1
+      },
+      "coverage": "AC2 explicit exports/files + AC4 external packed import without ambient Pi",
+      "rawPath": "docs/evidence/s0-review/r2-spec/ac4-pack-consumer.txt"
+    },
+    {
+      "id": "SPEC-AC4-TESTS",
+      "command": "npm test",
+      "exitCode": 0,
+      "counts": {
+        "tests": 39,
+        "pass": 39,
+        "fail": 0,
+        "skipped": 0,
+        "todo": 0,
+        "cancelled": 0,
+        "namedNegativeCapabilityTests": 6
+      },
+      "coverage": "AC4 positive/negative incl. duplicate+invalid capabilities and unsupported API versions; no skipped claims",
+      "rawPath": "docs/evidence/s0-review/r2-spec/ac4-npm-test.txt"
+    },
+    {
+      "id": "SPEC-AC5-AC1-AC3-CLAIMS",
+      "command": "node -v; npm -v; tsc -v; pi --version; node -e import('node:sqlite'); manifest inspection; grep for TODO/scheduling/transport in src",
+      "exitCode": 0,
+      "counts": {
+        "documentedToolchainClaimsChecked": 8,
+        "toolchainClaimsMismatched": 0,
+        "todoOrUnimplementedValidators": 0,
+        "schedulingTransportPersistenceImports": 0,
+        "manifestsPrivateTrue": 2,
+        "manifestsWithLicenseField": 0,
+        "manifestsWithPiKeyOrPeerDeps": 0
+      },
+      "coverage": "AC5 recorded versions actually checked; AC1 privacy/naming; AC3 no TODO validators and no out-of-lane implementation",
+      "rawPath": "docs/evidence/s0-review/r2-spec/ac5-ac1-ac3-checks.txt"
+    },
+    {
+      "id": "SPEC-AC7-REPORTING-CLEANLINESS",
+      "command": "python3 worker-summary field audit; referenced-path existence check; git status --porcelain; git diff 82d0de5 --stat",
+      "exitCode": 0,
+      "counts": {
+        "workerSummariesAudited": 2,
+        "gateRowsWithCommandExitCounts": 12,
+        "referencedEvidencePathsResolved": 27,
+        "referencedEvidencePathsMissing": 0,
+        "trackedFilesModified": 0,
+        "untrackedPaths": "hook-created .omc/ plus r2-code-safety and r2-spec evidence dirs only",
+        "candidateShaRecordedInWorkerSummary": false,
+        "diffDigestRecordedInWorkerSummary": false
+      },
+      "coverage": "AC7 worker reporting completeness and final tracked cleanliness",
+      "rawPath": "docs/evidence/s0-review/r2-spec/ac7-cleanliness.txt"
+    }
+  ],
+  "referencedPriorStageEvidence": {
+    "provenance": "docs/evidence/s0-review/r2-code-safety/summary.json — independent native Opus code-safety stage, verdict PASS, candidateSha 82d0de5dae6229ff0983267e4b26bdafe99a4178, diffSha256 9d68ca943f130b237eab6a1b71edfbffa0c1f63619258e985e88ff0c6ab461af (identical candidate and digest to this stage).",
+    "usedFor": [
+      "G1 containment counts (packages 2, privateTrue 2, lifecycleScripts 0, piManifests 0, peerDependencies 0)",
+      "G5 dual-module-root singleton independence (2 module roots, distinct module instances, structurally equal results)",
+      "G6 required docs present 7, licenseFiles 0"
+    ],
+    "disclaimer": "Referenced as independently verified same-candidate evidence. I did NOT re-execute G1, G5 or G6 in this stage and do not claim fresh execution of them. Every other claim in this summary comes from a probe I executed myself in this stage."
+  },
+  "findings": [
+    {
+      "severity": "low",
+      "file": "packages/protocol/src/check.ts",
+      "line": 8,
+      "problem": "CARRIED F3. isPlainObject accepts any non-null non-array object and all validators read fields with dot access, so prototype-inherited properties satisfy required fields. Reproduced in this stage: with Object.prototype carrying profileId/adapterId/accountId/chatId, validateDeliveryRoute({}) returns ok:true with a fully attacker-controlled route; validateWireRequest({}) likewise returns ok:true.",
+      "impact": "NOT an AC3 violation, and I am not waving this away on 'no transport yet' grounds. AC3 governs untrusted input arriving at the trust boundary; that input is JSON-derived, and I verified in this stage that JSON.parse('{\"__proto__\":{...}}') creates an own property and leaves Object.prototype clean. No wire-shaped input can produce an inherited field. The required precondition is trusted in-process code mutating Object.prototype, which is not protocol input. Genuine defense-in-depth gap in a component whose job is trust-boundary validation.",
+      "requiredFix": "Nonblocking hardening for a separately authorised pass, not an S0 gate: guard reads with Object.hasOwn, or make isPlainObject additionally require Object.getPrototypeOf(value) === Object.prototype || null.",
+      "acLink": "AC3 (evaluated, not violated)",
+      "classification": "nonblocking hardening"
+    },
+    {
+      "severity": "low",
+      "file": "packages/protocol/src/limits.ts",
+      "line": 4,
+      "problem": "CARRIED F4. LIMITS, METHODS, KNOWN_CAPABILITIES and RECEIPT_LEVELS use 'as const', a compile-time-only annotation, and are not frozen. Reproduced: Object.isFrozen is false for all four, and setting LIMITS.maxTextChars = 1 turned a previously valid 50-character delivery into text_too_long for every consumer sharing that module instance.",
+      "impact": "NOT an AC2 violation. AC2 forbids a runtime singleton and a class/Symbol identity requirement; the prior stage's G5 confirms compatibility is governed by wire version rather than module identity, and I verified the ESM namespace binding itself is immutable (rebinding P.LIMITS threw TypeError). No validator ever writes to these objects, so the package's own behaviour is stateless: identical input yields identical output. The README.md:5 and architecture.md:11 'stateless' claim describes package behaviour and remains accurate.",
+      "requiredFix": "Nonblocking hardening: Object.freeze the exported constant objects and arrays. No untrusted-input path reaches this in S0.",
+      "acLink": "AC2 (evaluated, not violated)",
+      "classification": "nonblocking hardening"
+    },
+    {
+      "severity": "low",
+      "file": "packages/protocol/src/wire.ts",
+      "line": 58,
+      "problem": "CARRIED F5. validateWireRequest declares a total ProtocolResult return type but can throw. Reproduced: an input object with a throwing 'body' getter escapes as a raw Error rather than a stable ProtocolResult error. The JSON.stringify path is correctly guarded by the existing try/catch at wire.ts:60-64.",
+      "impact": "NOT an AC3 violation, on the same reachability basis as F3 rather than on 'not yet exploitable': I verified in this stage that JSON-derived objects cannot carry accessor properties (JSON.parse('{\"body\":{}}') yields a data descriptor with no getter). Only in-process misuse by trusted code can trigger it. The declared type is nonetheless stronger than the runtime guarantee.",
+      "requiredFix": "Nonblocking: either wrap property access in the existing try/catch so the function is total as typed, or state in packages/protocol/README.md that validator input must be JSON-derived.",
+      "acLink": "AC3 (evaluated, not violated)",
+      "classification": "nonblocking hardening"
+    },
+    {
+      "severity": "low",
+      "file": "packages/protocol/src/jobs.ts",
+      "line": 76,
+      "problem": "CARRIED F6. validateJobCreate discards the clock with 'void nowMs', so a 'once' schedule carries no temporal bound. Reproduced: atUtc 1999-01-01T00:00:00Z and 9999-12-31T23:59:59Z are both ACCEPTED.",
+      "impact": "NOT an AC3 violation and correctly left untouched by the correction worker. A past or far-future ISO timestamp is well-formed, not malformed; whether to bound it is catch-up/anchoring policy, which plan.md:66 assigns to the scheduler and which AC3 (contract.md:38) explicitly excludes from this lane, as does fix-r1-contract.md:12. No S0 document asserts an atUtc bound, so there is no false claim: security.md:25-30 and architecture.md:41-50 scope their expiry statements to request expiresAt and delivery notAfter only. The only residual gap is that architecture.md:62-67 'Open items deferred' records notAfter anchoring but not the atUtc horizon question.",
+      "requiredFix": "Owner/product decision for S1, not an S0 technical fix. Optionally add one line to architecture.md 'Open items deferred' stating that atUtc temporal bounds are deferred to S1. Do not introduce scheduler horizon policy in this lane.",
+      "acLink": "AC3 and AC5 (evaluated, neither violated)",
+      "classification": "genuine authority/product decision (S1) plus optional documentation nit"
+    },
+    {
+      "severity": "low",
+      "file": "packages/protocol/src/jobs.ts",
+      "line": 35,
+      "problem": "The F2 calendar round-trip uses new Date(Date.UTC(year, month - 1, day)). Date.UTC applies the legacy two-digit-year mapping for year arguments 0..99, so valid ISO dates in years 0001-0099 are rejected. Reproduced: 0050-06-15T00:00:00Z and 0099-01-01T00:00:00Z return invalid_body, while 0100-01-01T00:00:00Z is accepted. Independently found by the prior code-safety stage as well; my probe confirms it.",
+      "impact": "Not an AC violation. The error is in the fail-closed direction (over-rejection), affects only timestamps roughly two millennia in the past, and every date in the practical scheduling range behaves correctly — I verified leap day 2024-02-29, month boundaries, fractional seconds and ISO end-of-day 24:00:00 are all still accepted, and 7 nonexistent or out-of-range dates are rejected. fix-r1-contract.md:12 asked that supported valid UTC forms be preserved; year 0001-0099 is outside any plausible supported range for a message scheduler.",
+      "requiredFix": "Nonblocking: if ever relevant, use date.setUTCFullYear(year) after construction, or compare against the input string. No S0 action required.",
+      "acLink": "AC3 (evaluated, not violated)",
+      "classification": "nonblocking hardening"
+    },
+    {
+      "severity": "low",
+      "file": "docs/evidence/s0/fix-r1/worker-summary.json",
+      "line": 1,
+      "problem": "S6. AC7 requires the worker to record base/candidate SHA, a diff digest, and clean status or an explicit dirt inventory. Both worker summaries (docs/evidence/s0/worker-summary.json and docs/evidence/s0/fix-r1/worker-summary.json) carry candidateSha: null, contain no diff-digest field, and contain no git-status/dirt-inventory field. The original G7 row records exitCode null with counts 'recorded in worker final response after commit', so those values live only in transient pane output.",
+      "impact": "AC7's verification purpose is nonetheless satisfied in practice, which is why this is low rather than blocking: the candidate SHA and diff digest were pinned in the review dispatch and independently recomputed to match by two separate stages (this one and r2-code-safety), and I independently confirmed the tracked tree is clean with zero modifications. The candidateSha: null is structurally unavoidable for a summary committed inside the commit it describes, and it is explicitly annotated rather than hidden (candidateShaNote). The correction round also met the narrower field set its own governing fix-r1-contract.md:22 specified (gate rows, raw evidence paths, changed paths, unresolved findings, next step).",
+      "requiredFix": "Process improvement for later milestones, not an S0 blocker: have the launcher completion receipt record post-commit HEAD, the base..candidate diff digest and final git status, so the durable evidence is self-contained rather than reconstructed by reviewers.",
+      "acLink": "AC7",
+      "classification": "nonblocking process/reporting gap"
+    }
+  ],
+  "unverified": [
+    "Any live daemon, transport, network, model, Telegram or WhatsApp behaviour. No live product exists at S0; per the contract this is OUT OF SCOPE, is explicitly NOT marked PASS, and was NOT demanded as an S0 gate. Those belong to S1/S2/S3 under later contracts.",
+    "Origin/AC conformance and observable S0 outcome - the two remaining review classes, deliberately not judged in this stage.",
+    "G1 containment, G5 dual-module-root and G6 docs/license were not re-executed by me; they are cited from the prior same-candidate independent code-safety stage with exact provenance recorded in referencedPriorStageEvidence.",
+    "Node/SQLite behaviour on Node versions other than the observed v24.20.0 with sqlite 3.53.4. architecture.md:58 correctly marks this unverified.",
+    "systemd user-unit linger, logout survival, Pi CLI isolation flags and provider credential behaviour - architecture.md:60 correctly defers these to W1/S2.",
+    "npm scope ownership, publication identity and outbound license choice - open owner decisions, correctly left unresolved (AC1, AC6).",
+    "notAfter anchoring for job-created deliveries (scheduledInstant vs catch-up enqueue time) - recorded as deferred at architecture.md:64 and security.md:30.",
+    "The provenance claim that no source was copied from Hermes, gamalan/pi-gateway or the Pi Telegram plugin was assessed from the in-repo source only; I did not fetch or inspect those upstream trees, which is outside this stage's read-only local scope.",
+    "The untracked .omc/ directory is hook-created; recorded in ac7-cleanliness.txt but not inspected or modified, per instruction."
+  ],
+  "sourceUnchanged": true,
+  "nextAction": "Spec-compliance PASS stands for candidate 82d0de5 only. All seven S0 acceptance criteria are met; F1 and F2 are confirmed fixed at the trust boundary with exact documented limits. Release this candidate to the two remaining independent review stages (origin/AC conformance, observable S0 outcome). Do not open a new correction round for F3, F4, F5 or the year-0001-0099 nit - they are nonblocking hardening requiring separate authorisation. F6 is an S1 owner/product decision, not an S0 technical fix; the only optional S0-adjacent tidy-up is one deferred-items line in architecture.md, and even that is not an AC gate. S6 is a reporting-process improvement for later milestones."
+}

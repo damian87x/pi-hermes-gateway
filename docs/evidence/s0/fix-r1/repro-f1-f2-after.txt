@@ -1,0 +1,32 @@
+=== F1 wire nowMs ===
+{"nowMs":"undefined","ok":false,"code":"malformed"}
+{"nowMs":"NaN","ok":false,"code":"malformed"}
+{"nowMs":"null","ok":false,"code":"malformed"}
+{"nowMs":"1","ok":false,"code":"malformed"}
+{"nowMs":"1.5","ok":false,"code":"malformed"}
+{"nowMs":"Infinity","ok":false,"code":"malformed"}
+{"nowMs":"-Infinity","ok":false,"code":"malformed"}
+{"nowMs":"[object Object]","ok":false,"code":"malformed"}
+{"nowMs":"","ok":false,"code":"malformed"}
+=== F1 delivery nowMs ===
+{"nowMs":"undefined","ok":false,"code":"malformed"}
+{"nowMs":"NaN","ok":false,"code":"malformed"}
+{"nowMs":"null","ok":false,"code":"malformed"}
+{"nowMs":"1","ok":false,"code":"malformed"}
+{"nowMs":"1.5","ok":false,"code":"malformed"}
+{"nowMs":"Infinity","ok":false,"code":"malformed"}
+{"nowMs":"-Infinity","ok":false,"code":"malformed"}
+{"nowMs":"[object Object]","ok":false,"code":"malformed"}
+{"nowMs":"","ok":false,"code":"malformed"}
+=== F2 dates ===
+{"d":"2026-02-30T00:00:00Z","ok":false,"code":"invalid_body"}
+{"d":"2026-04-31T00:00:00Z","ok":false,"code":"invalid_body"}
+{"d":"2026-02-29T00:00:00Z","ok":false,"code":"invalid_body"}
+{"d":"2024-02-29T00:00:00Z","ok":true,"code":null}
+{"d":"2026-02-28T00:00:00Z","ok":true,"code":null}
+{"d":"2026-04-30T00:00:00Z","ok":true,"code":null}
+{"d":"2026-09-21T00:00:00Z","ok":true,"code":null}
+{"d":"2026-09-21T00:00:00.000Z","ok":true,"code":null}
+{"d":"2026-09-21T00:00:00.123Z","ok":true,"code":null}
+{"d":"2026-09-21T24:00:00Z","ok":true,"code":null}
+{"d":"2026-09-21T24:00:00.000Z","ok":true,"code":null}

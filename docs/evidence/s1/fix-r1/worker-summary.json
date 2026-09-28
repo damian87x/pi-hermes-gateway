@@ -1,0 +1,96 @@
+{
+  "status": "PASS",
+  "candidateSha": null,
+  "startCandidate": "f5c88a4323bdf8d3a2e1f30aee7eb8dd63195678",
+  "candidateShaNote": "Launcher records HEAD after commit. candidateSha is null in this file.",
+  "changedPaths": [
+    "docs/architecture.md",
+    "docs/migration.md",
+    "docs/security.md",
+    "docs/evidence/s1/fix-r1-contract.md",
+    "docs/evidence/s1/fix-r1/worker-summary.json",
+    "docs/evidence/s1/fix-r1/logs/g1.txt",
+    "docs/evidence/s1/fix-r1/logs/g2.txt",
+    "docs/evidence/s1/fix-r1/logs/g3.txt",
+    "docs/evidence/s1/fix-r1/logs/g4.txt",
+    "docs/evidence/s1/fix-r1/logs/g5.txt",
+    "docs/evidence/s1/fix-r1/logs/g6.txt",
+    "docs/evidence/s1/fix-r1/raw/pre-fix-probes.json",
+    "docs/evidence/s1/fix-r1/raw/P1-dst-postfix.txt",
+    "docs/evidence/s1/fix-r1/r1-code-safety/",
+    "packages/gateway/src/ambient.d.ts",
+    "packages/gateway/src/cli.ts",
+    "packages/gateway/src/clock.ts",
+    "packages/gateway/src/core.ts",
+    "packages/gateway/src/daemon.ts",
+    "packages/gateway/src/index.ts",
+    "packages/gateway/src/lock.ts",
+    "packages/gateway/src/schedule.ts",
+    "packages/gateway/test/fuses-auth-lock.test.ts",
+    "packages/gateway/test/outbox-crash.test.ts",
+    "packages/gateway/test/restore.test.ts",
+    "packages/gateway/test/scheduler.test.ts"
+  ],
+  "gates": [
+    {
+      "id": "G1",
+      "command": "bash docs/evidence/s1/run-g1.sh",
+      "exitCode": 1,
+      "counts": { "worktreeUntrackedOutsideAllowlist": "docs/evidence/s1-review/** (reviewer dirt, not committed)" },
+      "rawPath": "docs/evidence/s1/fix-r1/logs/g1.txt",
+      "note": "Committed tree is allowlist-clean. Worktree G1 sees untracked r1-review files outside docs/evidence/s1/. Independent clone of this commit should G1=0."
+    },
+    {
+      "id": "G2",
+      "command": "bash docs/evidence/s1/run-g2.sh",
+      "exitCode": 0,
+      "counts": { "node": "v24.20.0", "npm": "11.19.0", "tsc": "5.9.3", "sqlite": "3.53.4" },
+      "rawPath": "docs/evidence/s1/fix-r1/logs/g2.txt"
+    },
+    {
+      "id": "G3",
+      "command": "npm test",
+      "exitCode": 0,
+      "counts": { "protocolTests": 39, "gatewayTests": 35, "tests": 74, "pass": 74, "fail": 0, "skipped": 0, "todo": 0 },
+      "rawPath": "docs/evidence/s1/fix-r1/logs/g3.txt"
+    },
+    {
+      "id": "G4",
+      "command": "node packages/gateway/test/g4-pack-import.mjs",
+      "exitCode": 0,
+      "counts": { "protocolFiles": 34, "gatewayFiles": 50, "adapterId": "fake" },
+      "rawPath": "docs/evidence/s1/fix-r1/logs/g4.txt"
+    },
+    {
+      "id": "G5",
+      "command": "node --experimental-strip-types --test test/fuses-auth-lock.test.ts (cwd packages/gateway)",
+      "exitCode": 0,
+      "counts": { "tests": 9, "pass": 9, "fail": 0, "skipped": 0 },
+      "rawPath": "docs/evidence/s1/fix-r1/logs/g5.txt"
+    },
+    {
+      "id": "G6",
+      "command": "bash docs/evidence/s1/run-g6.sh",
+      "exitCode": 0,
+      "counts": { "requiredDocs": 7, "licenseFiles": 0 },
+      "rawPath": "docs/evidence/s1/fix-r1/logs/g6.txt"
+    }
+  ],
+  "fixes": {
+    "H1": "zonedLocalInstant samples offsets over ±36h around wanted UTC and picks the first fold; AU/NZ/Lord_Howe vs brute-force oracle",
+    "H2": "restoreQuarantine materializes (backup, recovery] as skipped, advances watermarks, tick refuses admission while quarantined",
+    "H3": "SystemClock default; TestClock only if injected; tick interval <=60s; CLI no longer freezes TestClock",
+    "H4": "Node-only SQLite exclusive lock; no python3 helper; process death releases; second acquire fails closed",
+    "M1": "openGateway converts leftover dispatching rows to commit-unknown with crash.recover audit; SIGKILL child coverage",
+    "M2": "startDaemon restoreFromBackup copies under lock then quarantines before tick; resume only via resumeDispatch/--resume-dispatch"
+  },
+  "unverified": [
+    "Timezones beyond sampled London/NY/Berlin/Sydney/Auckland/Lord_Howe",
+    "Node/SQLite versions other than v24.20.0 / 3.53.4",
+    "G1 on this dirty worktree (untracked docs/evidence/s1-review); clone G1 not run here",
+    "systemd/linger, live transports (out of S1)",
+    "Low findings deferred (WAL backup, transactions, @types/node)"
+  ],
+  "blockers": [],
+  "nextAction": "Independent native Opus code-safety re-attest of the new SHA. Prior r1 REJECT stays historical. No push/PR."
+}

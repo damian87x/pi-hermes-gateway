@@ -1,0 +1,45 @@
+### G4 rerun
+    "package/dist/jobs.js.map",
+    "package/dist/limits.d.ts.map",
+    "package/dist/limits.js.map",
+    "package/dist/wire.d.ts.map",
+    "package/dist/wire.js.map",
+    "package/README.md",
+    "package/dist/adapter.d.ts",
+    "package/dist/check.d.ts",
+    "package/dist/delivery.d.ts",
+    "package/dist/errors.d.ts",
+    "package/dist/index.d.ts",
+    "package/dist/jobs.d.ts",
+    "package/dist/limits.d.ts",
+    "package/dist/wire.d.ts"
+  ],
+  "imported": {
+    "protocolVersion": 1,
+    "adapterApiVersion": 1
+  },
+  "protocolVersion": 1,
+  "adapterApiVersion": 1
+}
+EXIT_G4=
+### G5 rerun
+{
+  "distinctModules": true,
+  "distinctFns": true,
+  "protocolVersion": 1,
+  "adapterApiVersion": 1,
+  "manifest": {
+    "adapterId": "fake-file",
+    "adapterApiVersion": 1,
+    "capabilities": [
+      "send.text"
+    ],
+    "configSchemaVersion": 1,
+    "maxTextLength": 32,
+    "receiptLevels": [
+      "accepted"
+    ]
+  }
+}
+EXIT_G5=0
+EXIT_G4_CLEAN=0

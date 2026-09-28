@@ -1,0 +1,54 @@
+{
+  "stage": "outcome",
+  "verdict": "PASS",
+  "candidateSha": "82d0de5dae6229ff0983267e4b26bdafe99a4178",
+  "baseSha": "4035d5b60c4ed611f9a81b2f9ca850682b62fb7b",
+  "diffSha256": "9d68ca943f130b237eab6a1b71edfbffa0c1f63619258e985e88ff0c6ab461af",
+  "scope": "Observable S0 product outcome only: packed-library installability and behavior. Not gateway/product completion.",
+  "gates": [
+    { "id": "O1-clean-install", "command": "rm -rf node_modules packages/protocol/{node_modules,dist} && npm ci", "exitCode": 0, "counts": { "packagesAdded": 2, "vulnerabilities": 0 }, "coverage": "AC1 workspace install from lockfile", "rawPath": "docs/evidence/s0-review/r2-outcome/raw/01-npm-ci.txt" },
+    { "id": "O2-build", "command": "npm run build", "exitCode": 0, "counts": { "emittedModules": 8 }, "coverage": "AC2 compiled ESM + .d.ts", "rawPath": "docs/evidence/s0-review/r2-outcome/raw/02-build.txt" },
+    { "id": "O3-unit-tests", "command": "npm test", "exitCode": 0, "counts": { "tests": 39, "pass": 39, "fail": 0, "skipped": 0, "todo": 0 }, "coverage": "AC3/AC4 worker suite rerun by reviewer", "rawPath": "docs/evidence/s0-review/r2-outcome/raw/03-test.txt" },
+    { "id": "O4-pack-contents", "command": "npm pack -w pi-hermes-gateway-protocol --pack-destination /tmp/s0-out/pack && tar -tzf", "exitCode": 0, "counts": { "files": 34, "distJs": 8, "declarations": 8, "srcOrTestFiles": 0, "runtimeDependencies": 0, "peerDependencies": 0, "installLifecycleScripts": 0 }, "coverage": "AC1 private:true; AC2 explicit exports/files, no Pi manifest/peer dep/secrets", "rawPath": "docs/evidence/s0-review/r2-outcome/raw/04-pack.txt" },
+    { "id": "O5-passive-static-scan", "command": "grep packed dist for require()/node: builtins/process.env/class/Symbol/instanceof", "exitCode": 0, "counts": { "requireCalls": 0, "nodeBuiltinImports": 0, "processEnvReads": 0, "classOrSymbolIdentity": 0, "relativeImportsOnly": true }, "coverage": "AC2 no transport dependency, no runtime singleton/class identity, no automatic side effect", "rawPath": "docs/evidence/s0-review/r2-outcome/raw/05-passive-scan.txt" },
+    { "id": "O6-offline-consumer-install", "command": "npm install <tgz> --offline --no-audit --no-fund in /tmp/s0-out/consumer-a and consumer-b (outside repo)", "exitCode": 0, "counts": { "consumerRoots": 2, "packagesInstalledPerRoot": 1, "transitiveDeps": 0, "piOrTransportPackages": 0 }, "coverage": "AC4 external import without ambient Pi/global modules; installs need no registry network", "rawPath": "docs/evidence/s0-review/r2-outcome/raw/06-consumer-install.txt" },
+    { "id": "O7-consumer-behavior-probe", "command": "node --import netguard.mjs probe.mjs (run from /tmp consumer, NODE_PATH/NODE_OPTIONS unset)", "exitCode": 0, "counts": { "cases": 90, "pass": 90, "fail": 0, "identityInvariants": 15, "identityFailures": 0 }, "coverage": "AC3 envelopes (version/requestId/method/body), bounded frame 65536/65537, payload 32768, expiry now/+1/+60000/+60001, caller clock NaN/Infinity/float/string, route token+256-char bounds, text 4096/4097, notAfter now/+24h/+24h+1, once-schedule calendar dates incl. 2024-02-29 accept vs 2025-02-29 / 2026-02-30 / month00 / month13 / day00 / hour25 reject, daily 00:00-23:59 vs 24:00/23:60/7:30 and IANA tz; AC4 adapter duplicate/unknown/empty capability, apiVersion 0/2/string, receipt levels; AC2 independent protocolVersion/adapterApiVersion axes; AC4 cross-root plain-object equivalence", "rawPath": "docs/evidence/s0-review/r2-outcome/raw/07-consumer-probe.txt" },
+    { "id": "O8-passive-import-and-guard-control", "command": "node --import netguard.mjs (positive control importing node:net, then package import)", "exitCode": 0, "counts": { "guardActive": true, "blockedBuiltinsOnPackageImport": 0, "newGlobalsAfterImport": 0, "exports": 15 }, "coverage": "AC2 no automatic side effect; AC4 no-network import proven with a live guard (control import of node:net was blocked, package import was not)", "rawPath": "docs/evidence/s0-review/r2-outcome/raw/08-passive-import.txt" },
+    { "id": "O9-external-type-consumption", "command": "tsc -p /tmp/s0-out/consumer-a/tsconfig.json (Node16 resolution) + negative control", "exitCode": 0, "counts": { "typeErrors": 0, "negativeControlErrors": 1 }, "coverage": "AC2 declarations are real and consumable externally (negative control TS2322 proves types are not any)", "rawPath": "docs/evidence/s0-review/r2-outcome/raw/09-mutability-and-types.txt" },
+    { "id": "O10-worker-g4-rerun", "command": "node packages/protocol/test/g4-pack-import.mjs", "exitCode": 0, "counts": { "forbiddenPackedPaths": 0, "piOrTransportPackagesInConsumer": 0 }, "coverage": "AC7 independent rerun of worker gate G4", "rawPath": "docs/evidence/s0-review/r2-outcome/raw/10-worker-gates-rerun.txt" },
+    { "id": "O11-worker-g5-rerun", "command": "node packages/protocol/test/g5-dual-import.mjs", "exitCode": 0, "counts": { "distinctModules": true, "distinctFns": true, "crossRootValueMismatches": 0 }, "coverage": "AC4 no shared singleton identity across module roots", "rawPath": "docs/evidence/s0-review/r2-outcome/raw/10-worker-gates-rerun.txt" },
+    { "id": "O12-final-state", "command": "git status --porcelain --untracked-files=no; git rev-parse HEAD; git diff base..candidate | sha256sum", "exitCode": 0, "counts": { "trackedModifications": 0, "strayTarballsInRepo": 0, "diffSha256Matches": true }, "coverage": "AC7 candidate SHA/diff digest and final cleanliness", "rawPath": "docs/evidence/s0-review/r2-outcome/raw/11-final-state.txt" }
+  ],
+  "findings": [
+    {
+      "severity": "nonblocking-hardening",
+      "file": "packages/protocol/src/limits.ts",
+      "line": 4,
+      "problem": "Exported LIMITS is declared `as const` (compile-time only) and is not Object.freeze'd, so the runtime object is mutable by any code in the same module root. Observed: after `LIMITS.maxTextChars = 999999`, validateStaticDelivery accepted a 5000-char text that it had rejected with `text_too_long` moments earlier (raw/09-mutability-and-types.txt).",
+      "impact": "In-process only, and self-inflicted: no untrusted wire input reaches LIMITS (validators only read it), defaults enforce correctly, and a second module root remained unaffected, so AC4 cross-root independence still holds. It is a defense-in-depth gap for a trust-boundary library, not a bypass reachable from a protocol message.",
+      "requiredFix": "Non-blocking for S0. Wrap the LIMITS object literal in Object.freeze() (and optionally METHODS/KNOWN_CAPABILITIES/RECEIPT_LEVELS) so documented limits cannot be weakened at runtime. Defer to S1 if the owner prefers zero further S0 churn.",
+      "acLink": "AC3 (concrete enforced limits) — hardening only; AC3 gate itself passes"
+    },
+    {
+      "severity": "observation",
+      "file": "packages/protocol/src/jobs.ts",
+      "line": 80,
+      "problem": "validateJobCreate explicitly discards the caller clock (`void nowMs`), so a once-schedule with a past atUtc (e.g. 2000-01-01T00:00:00Z) validates successfully. Observed as case sched.once.past.OBSERVED-ACCEPTED in raw/07-consumer-probe.txt.",
+      "impact": "None for S0. AC3 requires format/calendar validation and bounded expiry/notAfter (all enforced and verified); it explicitly forbids implementing scheduling in this lane. Past-vs-future schedule semantics belong to the S1 scheduler contract.",
+      "requiredFix": "No S0 action. Record as an explicit S1 scheduler requirement so a past-dated once job has defined behavior (reject vs immediate-fire vs skip) when scheduling lands.",
+      "acLink": "AC3 (scheduling deliberately out of lane)"
+    }
+  ],
+  "unverified": [
+    "Scheduled Telegram or WhatsApp delivery: unimplemented at S0, not exercised, not claimed.",
+    "Daemon/companion lifecycle, restart survival and two-loader behavior: documented in docs/architecture.md but no runtime exists at S0; not exercised.",
+    "Real model report generation and any live account, credential, pairing or business send: out of S0 scope and prohibited by the contract; not attempted.",
+    "npm publishing and namespace ownership: package is private:true and was only packed locally; no registry interaction beyond a local-tarball offline install.",
+    "Account migration and M1-M5 milestones: later contracts; not exercised.",
+    "AC5/AC6 documentation substance (architecture/security/parity/migration/provenance prose): out of this stage's remit and owned by the spec and conformance stages. This stage verified only that the docs exist and that the recorded toolchain versions (Node v24.20.0, npm 11.19.0, TypeScript 5.9.3) match what I actually observed, and that the packed manifest omits a license field consistent with AC6.",
+    "node:sqlite / SQLite runtime claims in docs/architecture.md:58: not exercised by this stage."
+  ],
+  "sourceUnchanged": true,
+  "sourceUnchangedDetail": "HEAD == pinned candidate 82d0de5; git diff base..candidate SHA256 matches the pinned expectation before and after all reviewer activity; `git status --porcelain --untracked-files=no` is empty. Untracked at exit: .omc/ (created by a session hook, not touched by me) and docs/evidence/s0-review/{r2-code-safety,r2-conformance,r2-spec,r2-outcome}/. Only r2-outcome/ was written by this stage. All reviewer scratch (pack, consumers, probes) lives in /tmp/s0-out, outside the repo; no stray *.tgz remained in the worktree.",
+  "nextAction": "Stage verdict PASS: the S0 protocol library is genuinely usable as a packed, privately distributed dependency — it installs offline into fresh consumer roots with zero transitive/Pi/transport packages, imports with no network builtin resolved and no global side effects, exposes consumable declarations, and returns correct stable results/errors across 90 independent supported/invalid envelope, delivery, clock and calendar-boundary cases plus 15 cross-root identity invariants. This is an S0 foundation gate only. The original owner goal - a running Pi messaging gateway that delivers scheduled Telegram/WhatsApp messages and survives daemon restarts - is NOT yet achieved and must not be reported as achieved. Parent should adjudicate this alongside the other three stage summaries; the two findings above are optional hardening/S1 notes, not S0 blockers."
+}

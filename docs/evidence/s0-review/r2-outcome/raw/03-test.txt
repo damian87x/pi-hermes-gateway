@@ -1,0 +1,60 @@
+
+> pi-hermes-gateway@0.0.0 test
+> npm run test -w pi-hermes-gateway-protocol
+
+
+> pi-hermes-gateway-protocol@0.0.0 test
+> npm run build && node --experimental-strip-types --test test/*.test.ts
+
+
+> pi-hermes-gateway-protocol@0.0.0 build
+> tsc -p tsconfig.json
+
+✔ accepts a declared M1 text adapter manifest (1.618383ms)
+✔ rejects unsupported adapter API versions (0.185899ms)
+✔ rejects duplicate capability definitions (0.124029ms)
+✔ rejects unknown capability definitions (0.12891ms)
+✔ rejects empty capability lists (0.13128ms)
+✔ rejects duplicate receipt levels (0.115349ms)
+✔ requires accepted receipt level (0.11229ms)
+✔ rejects maxTextLength outside protocol bounds (0.14523ms)
+✔ rejects invalid adapterId (0.14562ms)
+✔ accepts a static owner-route text delivery (1.018486ms)
+✔ accepts optional threadId (0.14707ms)
+✔ rejects missing route fields (0.1569ms)
+✔ rejects empty or oversized route fields (0.117829ms)
+✔ rejects empty text (0.125649ms)
+✔ rejects oversized text using UTF-16 code units (0.165539ms)
+✔ rejects notAfter at or before now (0.13018ms)
+✔ rejects notAfter beyond 24 hours (0.14593ms)
+✔ rejects invalid caller clock nowMs (0.187519ms)
+✔ accepts job.create static-text once-at body (1.039016ms)
+✔ accepts job.create daily local schedule with IANA zone (10.953923ms)
+✔ rejects worker job kinds in S0/M1 protocol (0.141689ms)
+✔ rejects unknown IANA time zones (0.222109ms)
+✔ rejects invalid localTime (0.139449ms)
+✔ validates job.inspect and delivery.enqueue bodies (0.261379ms)
+✔ rejects delivery.enqueue that fails static delivery rules (0.126399ms)
+✔ rejects nonexistent once-schedule calendar dates (0.232319ms)
+✔ accepts valid UTC once-schedule forms including leap day, month boundaries, fractional seconds, and end-of-day (0.224649ms)
+✔ wire validation also checks method bodies (0.414558ms)
+✔ accepts a supported wire request within limits (1.535944ms)
+✔ rejects unsupported protocol versions (0.204149ms)
+✔ rejects missing protocolVersion (0.205819ms)
+✔ rejects invalid request IDs (0.309339ms)
+✔ rejects unknown methods (0.219869ms)
+✔ rejects non-object bodies (0.220569ms)
+✔ rejects expired requests (0.18743ms)
+✔ rejects expiry beyond the bounded TTL (0.13576ms)
+✔ rejects oversized frames (0.14111ms)
+✔ rejects oversized payloads (1.795362ms)
+✔ rejects invalid caller clock nowMs (0.185129ms)
+ℹ tests 39
+ℹ suites 0
+ℹ pass 39
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 109.093206
+EXIT_TEST=0

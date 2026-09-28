@@ -1,0 +1,66 @@
+
+> pi-hermes-gateway-core@0.0.0 test
+> npm run build && node --experimental-strip-types --test test/*.test.ts
+
+
+> pi-hermes-gateway-core@0.0.0 build
+> tsc -p tsconfig.json
+
+✔ S0 validateStaticDelivery cannot express scheduledInstant-anchored notAfter for a future slot (0.856964ms)
+✔ job delivery notAfter anchors to scheduledInstant, not catch-up now (4.21099ms)
+✔ expired job occurrence is never sent late (1.598137ms)
+✔ operator enqueue keeps protocol now-relative notAfter and rejects overdue dispatch (1.768509ms)
+✔ per-account token bucket refuses extra sends with audit (6.347351ms)
+✔ per-route daily cap refuses with audit (2.709764ms)
+✔ unauthorized route error is indistinguishable and audited (2.329881ms)
+✔ no IPC method creates routes; unknown method is rejected (1.706138ms)
+✔ request dedup returns the first response without a second send (3.054375ms)
+✔ wrong profile mode fails closed (0.742904ms)
+✖ second daemon fails to lock and does not remove the first socket (2007.246905ms)
+✔ crash at claim: interrupted, not accepted, later tick does not send (4.10558ms)
+✔ crash at dispatch-intent: commit-unknown never auto-retried (1.725599ms)
+✔ crash mid-send: commit-unknown never auto-retried (1.694758ms)
+✔ crash before receipt write: commit-unknown even if adapter observed send (1.599168ms)
+✔ oversized adapter payload is rejected without send (1.731479ms)
+✔ restore quarantine: queued becomes commit-unknown and is not sent (7.536037ms)
+✔ already-sent delivery is not resurrected as queued (2.706493ms)
+✔ refuse schema newer than binary (2.475923ms)
+✔ backup is taken before migrate from v0 (1.424887ms)
+✔ once-at UTC fires on the scheduled instant (4.632533ms)
+✔ daily local IANA time fires (12.47425ms)
+✔ DST gap: skip nonexistent local time (2.362721ms)
+✔ DST fold: first occurrence only (0.196511ms)
+✔ suspend past two due slots with skip: no burst (2.561312ms)
+✔ suspend past two due slots with one-latest: single unexpired catch-up (2.823174ms)
+ℹ tests 26
+ℹ suites 0
+ℹ pass 25
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2133.383375
+
+✖ failing tests:
+
+test at test/fuses-auth-lock.test.ts:92:1
+✖ second daemon fails to lock and does not remove the first socket (2007.246905ms)
+  Error: profile lock held
+      at acquireProfileLock (file:///home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s1/packages/gateway/dist/lock.js:46:21)
+      at startDaemon (file:///home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s1/packages/gateway/dist/daemon.js:10:18)
+      at TestContext.<anonymous> (file:///home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s1/packages/gateway/test/fuses-auth-lock.test.ts:102:14)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1397:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:969:18)
+      at Test.postRun (node:internal/test_runner/test:1537:19)
+      at Test.run (node:internal/test_runner/test:1462:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    code: 'profile_locked'
+  }
+npm error Lifecycle script `test` failed with error:
+npm error code 1
+npm error path /home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s1/packages/gateway
+npm error workspace pi-hermes-gateway-core@0.0.0
+npm error location /home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s1/packages/gateway
+npm error command failed
+npm error command sh -c npm run build && node --experimental-strip-types --test test/*.test.ts

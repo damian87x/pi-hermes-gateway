@@ -1,0 +1,12 @@
+=== FINAL tracked cleanliness ===
+?? .omc/
+?? docs/evidence/s0-review/r2-code-safety/
+?? docs/evidence/s0-review/r2-conformance/
+?? docs/evidence/s0-review/r2-outcome/
+?? docs/evidence/s0-review/r2-spec/
+--- tracked-only (excluding untracked) ---
+(empty above = no tracked modifications)
+82d0de5dae6229ff0983267e4b26bdafe99a4178
+9d68ca943f130b237eab6a1b71edfbffa0c1f63619258e985e88ff0c6ab461af  -
+=== stray tgz in repo? ===
+(end)

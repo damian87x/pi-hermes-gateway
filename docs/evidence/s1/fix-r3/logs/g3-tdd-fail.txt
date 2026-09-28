@@ -1,0 +1,36 @@
+# TDD: failing regression before restoreQuarantine once-window change
+# command: npm run build --prefix packages/gateway && node --experimental-strip-types --test --test-name-pattern 'once job backup in tick lag' packages/gateway/test/restore.test.ts
+# core.ts still had: return at > backupTimeMs && at <= recoveryTimeMs ? [at] : [];
+
+✖ once job backup in tick lag is not resent after restore+resume under one-latest (7.157872ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 99.760492
+
+✖ failing tests:
+
+test at packages/gateway/test/restore.test.ts:125:1
+✖ once job backup in tick lag is not resent after restore+resume under one-latest (7.157872ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  1 !== 0
+
+      at TestContext.<anonymous> (file:///home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s1/packages/gateway/test/restore.test.ts:164:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1397:25)
+      at Test.start (node:internal/test_runner/test:1257:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+Command exited with code 1

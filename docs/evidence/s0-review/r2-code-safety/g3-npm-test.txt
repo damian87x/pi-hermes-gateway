@@ -1,0 +1,61 @@
+=== G3: npm test ===
+
+> pi-hermes-gateway@0.0.0 test
+> npm run test -w pi-hermes-gateway-protocol
+
+
+> pi-hermes-gateway-protocol@0.0.0 test
+> npm run build && node --experimental-strip-types --test test/*.test.ts
+
+
+> pi-hermes-gateway-protocol@0.0.0 build
+> tsc -p tsconfig.json
+
+✔ accepts a declared M1 text adapter manifest (1.332284ms)
+✔ rejects unsupported adapter API versions (0.182339ms)
+✔ rejects duplicate capability definitions (0.124439ms)
+✔ rejects unknown capability definitions (0.15495ms)
+✔ rejects empty capability lists (0.1275ms)
+✔ rejects duplicate receipt levels (0.120929ms)
+✔ requires accepted receipt level (0.115279ms)
+✔ rejects maxTextLength outside protocol bounds (0.13887ms)
+✔ rejects invalid adapterId (0.15109ms)
+✔ accepts a static owner-route text delivery (1.003265ms)
+✔ accepts optional threadId (0.182579ms)
+✔ rejects missing route fields (0.147619ms)
+✔ rejects empty or oversized route fields (0.12362ms)
+✔ rejects empty text (0.12649ms)
+✔ rejects oversized text using UTF-16 code units (0.113679ms)
+✔ rejects notAfter at or before now (0.12965ms)
+✔ rejects notAfter beyond 24 hours (0.115089ms)
+✔ rejects invalid caller clock nowMs (0.204159ms)
+✔ accepts job.create static-text once-at body (1.682633ms)
+✔ accepts job.create daily local schedule with IANA zone (14.19042ms)
+✔ rejects worker job kinds in S0/M1 protocol (0.14068ms)
+✔ rejects unknown IANA time zones (0.208ms)
+✔ rejects invalid localTime (0.13721ms)
+✔ validates job.inspect and delivery.enqueue bodies (0.205649ms)
+✔ rejects delivery.enqueue that fails static delivery rules (0.122989ms)
+✔ rejects nonexistent once-schedule calendar dates (0.217179ms)
+✔ accepts valid UTC once-schedule forms including leap day, month boundaries, fractional seconds, and end-of-day (0.230849ms)
+✔ wire validation also checks method bodies (0.404658ms)
+✔ accepts a supported wire request within limits (1.420564ms)
+✔ rejects unsupported protocol versions (0.185199ms)
+✔ rejects missing protocolVersion (0.18656ms)
+✔ rejects invalid request IDs (0.259539ms)
+✔ rejects unknown methods (0.162959ms)
+✔ rejects non-object bodies (0.14076ms)
+✔ rejects expired requests (0.14612ms)
+✔ rejects expiry beyond the bounded TTL (0.127359ms)
+✔ rejects oversized frames (0.145809ms)
+✔ rejects oversized payloads (1.193075ms)
+✔ rejects invalid caller clock nowMs (0.190029ms)
+ℹ tests 39
+ℹ suites 0
+ℹ pass 39
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 110.699434
+G3_EXIT=0

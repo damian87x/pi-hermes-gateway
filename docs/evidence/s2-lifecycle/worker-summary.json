@@ -1,0 +1,54 @@
+{
+  "status": "PASS",
+  "candidateSha": null,
+  "candidateShaNote": "Avoid self-reference: candidateSha is the commit that contains this file. Independent validators must use git rev-parse HEAD after checkout of feat/s1-durable-core.",
+  "baseSha": "b56b13e89debd00d31b86d3383e254985fc7e468",
+  "changedPaths": [
+    "README.md",
+    "docs/architecture.md",
+    "docs/migration.md",
+    "docs/security.md",
+    "docs/evidence/s2-lifecycle/contract.md",
+    "docs/evidence/s2-lifecycle/worker-summary.json",
+    "packages/gateway/README.md",
+    "packages/gateway/package.json",
+    "packages/gateway/src/ambient.d.ts",
+    "packages/gateway/src/cli.ts",
+    "packages/gateway/src/doctor.ts",
+    "packages/gateway/src/index.ts",
+    "packages/gateway/systemd/pi-hermes-gateway@.service",
+    "packages/gateway/test/lifecycle.test.ts"
+  ],
+  "gates": [
+    {
+      "id": "typecheck",
+      "command": "npm run typecheck",
+      "exitCode": 0
+    },
+    {
+      "id": "test",
+      "command": "npm test",
+      "exitCode": 0,
+      "counts": {
+        "protocol": { "tests": 43, "pass": 43, "fail": 0 },
+        "gateway": { "tests": 67, "pass": 67, "fail": 0 },
+        "adapterTelegram": { "tests": 10, "pass": 10, "fail": 0 },
+        "adapterWhatsapp": { "tests": 13, "pass": 13, "fail": 0 },
+        "adapterSlack": { "tests": 13, "pass": 13, "fail": 0 },
+        "piCompanion": { "tests": 3, "pass": 3, "fail": 0 },
+        "dashboard": { "tests": 13, "pass": 13, "fail": 0 },
+        "wiki": { "tests": 11, "pass": 11, "fail": 0 },
+        "total": { "tests": 173, "pass": 173, "fail": 0 }
+      }
+    }
+  ],
+  "unverified": [
+    "systemd linger and logout survival on a real user session",
+    "operator copy/enable of the shipped user unit",
+    "Node/SQLite behaviour on versions other than Node v24.20.0",
+    "npm scope ownership and publication",
+    "any live network, Telegram, WhatsApp, or Slack send"
+  ],
+  "blockers": [],
+  "nextAction": "Local commit on feat/s1-durable-core. No push/PR/merge/release. No systemctl enable or linger on."
+}

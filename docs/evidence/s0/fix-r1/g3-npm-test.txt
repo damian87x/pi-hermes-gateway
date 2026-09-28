@@ -1,0 +1,55 @@
+
+> pi-hermes-gateway-protocol@0.0.0 test
+> npm run build && node --experimental-strip-types --test test/*.test.ts
+
+
+> pi-hermes-gateway-protocol@0.0.0 build
+> tsc -p tsconfig.json
+
+✔ accepts a declared M1 text adapter manifest (1.393405ms)
+✔ rejects unsupported adapter API versions (0.170109ms)
+✔ rejects duplicate capability definitions (0.119229ms)
+✔ rejects unknown capability definitions (0.11979ms)
+✔ rejects empty capability lists (0.120329ms)
+✔ rejects duplicate receipt levels (0.122219ms)
+✔ requires accepted receipt level (0.11413ms)
+✔ rejects maxTextLength outside protocol bounds (0.125469ms)
+✔ rejects invalid adapterId (0.14058ms)
+✔ accepts a static owner-route text delivery (0.913686ms)
+✔ accepts optional threadId (0.149559ms)
+✔ rejects missing route fields (0.14008ms)
+✔ rejects empty or oversized route fields (0.11512ms)
+✔ rejects empty text (0.140599ms)
+✔ rejects oversized text using UTF-16 code units (0.11395ms)
+✔ rejects notAfter at or before now (0.118139ms)
+✔ rejects notAfter beyond 24 hours (0.1109ms)
+✔ rejects invalid caller clock nowMs (0.17982ms)
+✔ accepts job.create static-text once-at body (1.011686ms)
+✔ accepts job.create daily local schedule with IANA zone (9.919832ms)
+✔ rejects worker job kinds in S0/M1 protocol (0.147719ms)
+✔ rejects unknown IANA time zones (0.205169ms)
+✔ rejects invalid localTime (0.132199ms)
+✔ validates job.inspect and delivery.enqueue bodies (0.19755ms)
+✔ rejects delivery.enqueue that fails static delivery rules (0.11224ms)
+✔ rejects nonexistent once-schedule calendar dates (0.223669ms)
+✔ accepts valid UTC once-schedule forms including leap day, month boundaries, fractional seconds, and end-of-day (0.213629ms)
+✔ wire validation also checks method bodies (0.388918ms)
+✔ accepts a supported wire request within limits (1.073996ms)
+✔ rejects unsupported protocol versions (0.144339ms)
+✔ rejects missing protocolVersion (0.13263ms)
+✔ rejects invalid request IDs (0.198279ms)
+✔ rejects unknown methods (0.156409ms)
+✔ rejects non-object bodies (0.126589ms)
+✔ rejects expired requests (0.13602ms)
+✔ rejects expiry beyond the bounded TTL (0.122859ms)
+✔ rejects oversized frames (0.177659ms)
+✔ rejects oversized payloads (1.280575ms)
+✔ rejects invalid caller clock nowMs (0.196859ms)
+ℹ tests 39
+ℹ suites 0
+ℹ pass 39
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 103.120903

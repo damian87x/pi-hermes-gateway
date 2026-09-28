@@ -1,0 +1,127 @@
+
+> pi-hermes-gateway-protocol@0.0.0 test
+> npm run build && node --experimental-strip-types --test test/*.test.ts
+
+
+> pi-hermes-gateway-protocol@0.0.0 build
+> tsc -p tsconfig.json
+
+✔ accepts a declared M1 text adapter manifest (1.317285ms)
+✔ rejects unsupported adapter API versions (0.185919ms)
+✔ rejects duplicate capability definitions (0.12463ms)
+✔ rejects unknown capability definitions (0.117089ms)
+✔ rejects empty capability lists (0.11975ms)
+✔ rejects duplicate receipt levels (0.11335ms)
+✔ requires accepted receipt level (0.116289ms)
+✔ rejects maxTextLength outside protocol bounds (0.11967ms)
+✔ rejects invalid adapterId (0.162909ms)
+✔ accepts a static owner-route text delivery (0.894196ms)
+✔ accepts optional threadId (0.146699ms)
+✔ rejects missing route fields (0.14724ms)
+✔ rejects empty or oversized route fields (0.150339ms)
+✔ rejects empty text (0.154779ms)
+✔ rejects oversized text using UTF-16 code units (0.11489ms)
+✔ rejects notAfter at or before now (0.124329ms)
+✔ rejects notAfter beyond 24 hours (0.173339ms)
+✖ rejects invalid caller clock nowMs (0.992616ms)
+✔ accepts job.create static-text once-at body (0.992466ms)
+✔ accepts job.create daily local schedule with IANA zone (10.114182ms)
+✔ rejects worker job kinds in S0/M1 protocol (0.1384ms)
+✔ rejects unknown IANA time zones (0.22324ms)
+✔ rejects invalid localTime (0.13371ms)
+✔ validates job.inspect and delivery.enqueue bodies (0.184099ms)
+✔ rejects delivery.enqueue that fails static delivery rules (0.11831ms)
+✖ rejects nonexistent once-schedule calendar dates (0.748248ms)
+✔ accepts valid UTC once-schedule forms including leap day, month boundaries, fractional seconds, and end-of-day (0.243379ms)
+✔ wire validation also checks method bodies (0.410609ms)
+✔ accepts a supported wire request within limits (1.206795ms)
+✔ rejects unsupported protocol versions (0.150319ms)
+✔ rejects missing protocolVersion (0.13103ms)
+✔ rejects invalid request IDs (0.190919ms)
+✔ rejects unknown methods (0.141779ms)
+✔ rejects non-object bodies (0.131419ms)
+✔ rejects expired requests (0.14458ms)
+✔ rejects expiry beyond the bounded TTL (0.166249ms)
+✔ rejects oversized frames (0.149669ms)
+✔ rejects oversized payloads (1.634224ms)
+✖ rejects invalid caller clock nowMs (1.051926ms)
+ℹ tests 39
+ℹ suites 0
+ℹ pass 36
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 109.669237
+
+✖ failing tests:
+
+test at test/delivery.test.ts:104:1
+✖ rejects invalid caller clock nowMs (0.992616ms)
+  AssertionError [ERR_ASSERTION]: undefined
+  
+  true !== false
+  
+      at TestContext.<anonymous> (file:///home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s0/packages/protocol/test/delivery.test.ts:108:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1397:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:969:18)
+      at Test.postRun (node:internal/test_runner/test:1537:19)
+      at Test.run (node:internal/test_runner/test:1462:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/jobs.test.ts:101:1
+✖ rejects nonexistent once-schedule calendar dates (0.748248ms)
+  AssertionError [ERR_ASSERTION]: 2026-02-30T00:00:00Z
+  
+  true !== false
+  
+      at TestContext.<anonymous> (file:///home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s0/packages/protocol/test/jobs.test.ts:115:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1397:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:969:18)
+      at Test.postRun (node:internal/test_runner/test:1537:19)
+      at Test.run (node:internal/test_runner/test:1462:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/wire.test.ts:100:1
+✖ rejects invalid caller clock nowMs (1.051926ms)
+  AssertionError [ERR_ASSERTION]: undefined
+  
+  true !== false
+  
+      at TestContext.<anonymous> (file:///home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s0/packages/protocol/test/wire.test.ts:105:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1397:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:969:18)
+      at Test.postRun (node:internal/test_runner/test:1537:19)
+      at Test.run (node:internal/test_runner/test:1462:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+npm error Lifecycle script `test` failed with error:
+npm error code 1
+npm error path /home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s0/packages/protocol
+npm error workspace pi-hermes-gateway-protocol@0.0.0
+npm error location /home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s0/packages/protocol
+npm error command failed
+npm error command sh -c npm run build && node --experimental-strip-types --test test/*.test.ts

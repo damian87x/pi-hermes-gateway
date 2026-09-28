@@ -1,0 +1,7 @@
+cmd: git rev-parse HEAD; git diff BASE..CAND | sha256sum; git status --porcelain=v1 -uall; git diff --quiet HEAD
+ea773fc7ab0435bc2742562f069408289f1c2e48
+83341eba427341f5705ea941f85b5626217c8503
+5a4694c28226dd33e1f2f796e15c24d95ec2631455ff86c9dd29ce42371fa80f  -
+?? .omc/project-memory.json
+trackedDiffExit=0
+EXIT=0

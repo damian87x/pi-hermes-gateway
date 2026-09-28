@@ -1,0 +1,27 @@
+### delta g1
+3c3
+< ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
+---
+> ROOT="/home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s1-review"
+9c9
+< test "$(git rev-parse --abbrev-ref HEAD)" = "feat/s1-durable-core"
+---
+> test "$(git rev-parse HEAD)" = "f5c88a4323bdf8d3a2e1f30aee7eb8dd63195678"
+11c11
+<   */apps/pi-hermes-gateway-s1) ;;
+---
+>   */apps/pi-hermes-gateway-s1-review) ;;
+### delta g2
+3c3
+< ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
+---
+> ROOT="/home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s1-review"
+9c9
+< echo "pi=$(pi --version 2>/dev/null || true)"
+---
+> echo "pi_path=$(command -v pi || true) (not executed by reviewer)"
+### delta g6
+3c3
+< ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
+---
+> ROOT="/home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s1-review"

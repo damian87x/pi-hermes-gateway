@@ -1,0 +1,14 @@
+=== git rev-parse HEAD ===
+82d0de5dae6229ff0983267e4b26bdafe99a4178
+=== git status --porcelain ===
+?? .omc/
+?? docs/evidence/s0-review/r2-code-safety/
+?? docs/evidence/s0-review/r2-conformance/
+?? docs/evidence/s0-review/r2-spec/
+=== diff sha256 base..candidate ===
+9d68ca943f130b237eab6a1b71edfbffa0c1f63619258e985e88ff0c6ab461af  -
+=== tracked file count ===
+71
+=== node/npm ===
+v24.20.0
+11.19.0

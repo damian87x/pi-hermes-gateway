@@ -1,0 +1,63 @@
+✔ restore quarantine: queued becomes commit-unknown and is not sent (6.107101ms)
+✔ already-sent delivery is not resurrected as queued (1.900893ms)
+✔ refuse schema newer than binary (1.732642ms)
+✔ post-backup sent slot is not resurrected as queued under skip (15.594536ms)
+✔ post-backup sent slot is not resurrected as queued under one-latest (4.795713ms)
+✔ once job backup in tick lag is not resent after restore+resume under one-latest (3.477344ms)
+✔ tick refuses admission while quarantined until explicit resume (3.101031ms)
+✔ explicit restore copies backup and quarantines before tick (6.344563ms)
+✔ non-db backup restore leaves live DB intact (3.473114ms)
+✔ newer-schema backup restore leaves live DB intact (3.356843ms)
+✔ interrupted restore with live moved aside recovers original DB (3.415544ms)
+✖ interrupted second restore recovers the most recent live DB (4.794342ms)
+✖ absent live DB with leftover .pre-restore and no journal does not revive it (3.234032ms)
+✔ backup is taken before migrate from v0 (0.900856ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 12
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 167.034537
+
+✖ failing tests:
+
+test at packages/gateway/test/restore.test.ts:344:1
+✖ interrupted second restore recovers the most recent live DB (4.794342ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  12 !== 16
+  
+      at TestContext.<anonymous> (file:///home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s1/packages/gateway/test/restore.test.ts:372:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1397:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:969:18)
+      at Test.postRun (node:internal/test_runner/test:1537:19)
+      at Test.run (node:internal/test_runner/test:1462:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 12,
+    expected: 16,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at packages/gateway/test/restore.test.ts:382:1
+✖ absent live DB with leftover .pre-restore and no journal does not revive it (3.234032ms)
+  AssertionError [ERR_ASSERTION]: Expected "actual" to be strictly unequal to: 12
+      at TestContext.<anonymous> (file:///home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s1/packages/gateway/test/restore.test.ts:399:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1397:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:969:18)
+      at Test.postRun (node:internal/test_runner/test:1537:19)
+      at Test.run (node:internal/test_runner/test:1462:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 12,
+    expected: 12,
+    operator: 'notStrictEqual',
+    diff: 'simple'
+  }

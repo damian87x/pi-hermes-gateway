@@ -1,0 +1,449 @@
+=== F1/F2 adversarial probe against built dist (candidate 82d0de5) ===
+{
+  "F1_validateWireRequest": [
+    {
+      "nowMs": "undefined",
+      "ok": false,
+      "code": "malformed"
+    },
+    {
+      "nowMs": "NaN",
+      "ok": false,
+      "code": "malformed"
+    },
+    {
+      "nowMs": "null",
+      "ok": false,
+      "code": "malformed"
+    },
+    {
+      "nowMs": "1",
+      "ok": false,
+      "code": "malformed"
+    },
+    {
+      "nowMs": "1.5",
+      "ok": false,
+      "code": "malformed"
+    },
+    {
+      "nowMs": "Infinity",
+      "ok": false,
+      "code": "malformed"
+    },
+    {
+      "nowMs": "-Infinity",
+      "ok": false,
+      "code": "malformed"
+    },
+    {
+      "nowMs": "[object Object]",
+      "ok": false,
+      "code": "malformed"
+    },
+    {
+      "nowMs": "",
+      "ok": false,
+      "code": "malformed"
+    },
+    {
+      "nowMs": "true",
+      "ok": false,
+      "code": "malformed"
+    },
+    {
+      "nowMs": "1e-7",
+      "ok": false,
+      "code": "malformed"
+    }
+  ],
+  "F1_validateStaticDelivery": [
+    {
+      "nowMs": "undefined",
+      "ok": false,
+      "code": "malformed"
+    },
+    {
+      "nowMs": "NaN",
+      "ok": false,
+      "code": "malformed"
+    },
+    {
+      "nowMs": "null",
+      "ok": false,
+      "code": "malformed"
+    },
+    {
+      "nowMs": "1",
+      "ok": false,
+      "code": "malformed"
+    },
+    {
+      "nowMs": "1.5",
+      "ok": false,
+      "code": "malformed"
+    },
+    {
+      "nowMs": "Infinity",
+      "ok": false,
+      "code": "malformed"
+    },
+    {
+      "nowMs": "-Infinity",
+      "ok": false,
+      "code": "malformed"
+    },
+    {
+      "nowMs": "[object Object]",
+      "ok": false,
+      "code": "malformed"
+    },
+    {
+      "nowMs": "",
+      "ok": false,
+      "code": "malformed"
+    },
+    {
+      "nowMs": "true",
+      "ok": false,
+      "code": "malformed"
+    },
+    {
+      "nowMs": "1e-7",
+      "ok": false,
+      "code": "malformed"
+    }
+  ],
+  "F1_validateMethodBody_deliveryEnqueue": [
+    {
+      "nowMs": "undefined",
+      "ok": false,
+      "code": "malformed"
+    },
+    {
+      "nowMs": "NaN",
+      "ok": false,
+      "code": "malformed"
+    },
+    {
+      "nowMs": "null",
+      "ok": false,
+      "code": "malformed"
+    },
+    {
+      "nowMs": "1",
+      "ok": false,
+      "code": "malformed"
+    },
+    {
+      "nowMs": "1.5",
+      "ok": false,
+      "code": "malformed"
+    },
+    {
+      "nowMs": "Infinity",
+      "ok": false,
+      "code": "malformed"
+    },
+    {
+      "nowMs": "-Infinity",
+      "ok": false,
+      "code": "malformed"
+    },
+    {
+      "nowMs": "[object Object]",
+      "ok": false,
+      "code": "malformed"
+    },
+    {
+      "nowMs": "",
+      "ok": false,
+      "code": "malformed"
+    },
+    {
+      "nowMs": "true",
+      "ok": false,
+      "code": "malformed"
+    },
+    {
+      "nowMs": "1e-7",
+      "ok": false,
+      "code": "malformed"
+    }
+  ],
+  "F1_validateMethodBody_jobCreate": [
+    {
+      "nowMs": "undefined",
+      "ok": true,
+      "code": null
+    },
+    {
+      "nowMs": "NaN",
+      "ok": true,
+      "code": null
+    },
+    {
+      "nowMs": "null",
+      "ok": true,
+      "code": null
+    },
+    {
+      "nowMs": "1",
+      "ok": true,
+      "code": null
+    },
+    {
+      "nowMs": "1.5",
+      "ok": true,
+      "code": null
+    },
+    {
+      "nowMs": "Infinity",
+      "ok": true,
+      "code": null
+    },
+    {
+      "nowMs": "-Infinity",
+      "ok": true,
+      "code": null
+    },
+    {
+      "nowMs": "[object Object]",
+      "ok": true,
+      "code": null
+    },
+    {
+      "nowMs": "",
+      "ok": true,
+      "code": null
+    },
+    {
+      "nowMs": "true",
+      "ok": true,
+      "code": null
+    },
+    {
+      "nowMs": "1e-7",
+      "ok": true,
+      "code": null
+    }
+  ],
+  "F1_valid_clock_control": [
+    {
+      "case": "valid now, valid expiry",
+      "ok": true
+    },
+    {
+      "case": "expired",
+      "ok": false,
+      "code": "expired"
+    },
+    {
+      "case": "beyond TTL",
+      "ok": false,
+      "code": "expired"
+    },
+    {
+      "case": "delivery valid",
+      "ok": true
+    }
+  ],
+  "F2_reject": [
+    {
+      "atUtc": "2026-02-30T00:00:00Z",
+      "ok": false,
+      "code": "invalid_body",
+      "resolvesTo": null
+    },
+    {
+      "atUtc": "2026-04-31T00:00:00Z",
+      "ok": false,
+      "code": "invalid_body",
+      "resolvesTo": null
+    },
+    {
+      "atUtc": "2026-06-31T00:00:00Z",
+      "ok": false,
+      "code": "invalid_body",
+      "resolvesTo": null
+    },
+    {
+      "atUtc": "2026-09-31T00:00:00Z",
+      "ok": false,
+      "code": "invalid_body",
+      "resolvesTo": null
+    },
+    {
+      "atUtc": "2026-11-31T00:00:00Z",
+      "ok": false,
+      "code": "invalid_body",
+      "resolvesTo": null
+    },
+    {
+      "atUtc": "2026-02-29T00:00:00Z",
+      "ok": false,
+      "code": "invalid_body",
+      "resolvesTo": null
+    },
+    {
+      "atUtc": "1900-02-29T00:00:00Z",
+      "ok": false,
+      "code": "invalid_body",
+      "resolvesTo": null
+    },
+    {
+      "atUtc": "2100-02-29T00:00:00Z",
+      "ok": false,
+      "code": "invalid_body",
+      "resolvesTo": null
+    },
+    {
+      "atUtc": "2026-02-30T00:00:00.000Z",
+      "ok": false,
+      "code": "invalid_body",
+      "resolvesTo": null
+    },
+    {
+      "atUtc": "2026-04-31T23:59:59.999Z",
+      "ok": false,
+      "code": "invalid_body",
+      "resolvesTo": null
+    },
+    {
+      "atUtc": "2026-01-32T00:00:00Z",
+      "ok": false,
+      "code": "invalid_body",
+      "resolvesTo": null
+    },
+    {
+      "atUtc": "2026-00-10T00:00:00Z",
+      "ok": false,
+      "code": "invalid_body",
+      "resolvesTo": null
+    },
+    {
+      "atUtc": "2026-13-01T00:00:00Z",
+      "ok": false,
+      "code": "invalid_body",
+      "resolvesTo": null
+    },
+    {
+      "atUtc": "2026-09-20T00:00:60Z",
+      "ok": false,
+      "code": "invalid_body",
+      "resolvesTo": null
+    },
+    {
+      "atUtc": "2026-09-20T25:00:00Z",
+      "ok": false,
+      "code": "invalid_body",
+      "resolvesTo": null
+    }
+  ],
+  "F2_accept": [
+    {
+      "atUtc": "2026-09-21T00:00:00Z",
+      "ok": true,
+      "code": null
+    },
+    {
+      "atUtc": "2026-09-21T00:00:00.000Z",
+      "ok": true,
+      "code": null
+    },
+    {
+      "atUtc": "2026-09-21T00:00:00.123Z",
+      "ok": true,
+      "code": null
+    },
+    {
+      "atUtc": "2024-02-29T00:00:00Z",
+      "ok": true,
+      "code": null
+    },
+    {
+      "atUtc": "2000-02-29T00:00:00Z",
+      "ok": true,
+      "code": null
+    },
+    {
+      "atUtc": "2026-02-28T23:59:59Z",
+      "ok": true,
+      "code": null
+    },
+    {
+      "atUtc": "2026-01-31T00:00:00Z",
+      "ok": true,
+      "code": null
+    },
+    {
+      "atUtc": "2026-03-31T00:00:00Z",
+      "ok": true,
+      "code": null
+    },
+    {
+      "atUtc": "2026-04-30T00:00:00Z",
+      "ok": true,
+      "code": null
+    },
+    {
+      "atUtc": "2026-12-31T23:59:59.999Z",
+      "ok": true,
+      "code": null
+    },
+    {
+      "atUtc": "2026-09-21T24:00:00Z",
+      "ok": true,
+      "code": null
+    },
+    {
+      "atUtc": "2024-02-29T24:00:00Z",
+      "ok": true,
+      "code": null
+    },
+    {
+      "atUtc": "2026-09-21T24:00:00.000Z",
+      "ok": true,
+      "code": null
+    }
+  ],
+  "F2_edge": [
+    {
+      "atUtc": "0000-01-01T00:00:00Z",
+      "ok": false,
+      "code": "invalid_body",
+      "dateParseFinite": true
+    },
+    {
+      "atUtc": "0050-06-15T00:00:00Z",
+      "ok": false,
+      "code": "invalid_body",
+      "dateParseFinite": true
+    },
+    {
+      "atUtc": "0099-12-31T00:00:00Z",
+      "ok": false,
+      "code": "invalid_body",
+      "dateParseFinite": true
+    },
+    {
+      "atUtc": "0100-01-01T00:00:00Z",
+      "ok": true,
+      "code": null,
+      "dateParseFinite": true
+    },
+    {
+      "atUtc": "1999-01-01T00:00:00Z",
+      "ok": true,
+      "code": null,
+      "dateParseFinite": true
+    },
+    {
+      "atUtc": "9999-01-01T00:00:00Z",
+      "ok": true,
+      "code": null,
+      "dateParseFinite": true
+    }
+  ]
+}
+PROBE_EXIT=0

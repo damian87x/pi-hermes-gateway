@@ -1,0 +1,19 @@
+✔ per-account token bucket refuses extra sends with audit (4.737985ms)
+✔ per-route daily cap refuses with audit (1.840268ms)
+✔ unauthorized route error is indistinguishable and audited (1.638486ms)
+✔ no IPC method creates routes; unknown method is rejected (1.132261ms)
+✔ request dedup returns the first response without a second send (2.08595ms)
+✔ wrong profile mode fails closed (0.574106ms)
+✔ second daemon fails to lock and does not remove the first socket (2.789387ms)
+✔ profile lock is node-only; holder death releases; no split-brain while held (25.725333ms)
+✔ default daemon clock advances and ticks within 60s (222.673573ms)
+✔ job on revoked route: reopen tick does not send and audits refusal (2.553084ms)
+✔ queued enqueue on revoked route: reopen tick does not send and audits refusal (2.09101ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 356.022203

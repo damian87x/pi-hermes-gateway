@@ -1,0 +1,117 @@
+
+> pi-hermes-gateway-core@0.0.0 test
+> npm run build && node --experimental-strip-types --test test/*.test.ts --test-name-pattern revoked route
+
+
+> pi-hermes-gateway-core@0.0.0 build
+> tsc -p tsconfig.json
+
+✔ S0 validateStaticDelivery cannot express scheduledInstant-anchored notAfter for a future slot (1.013415ms)
+✔ job delivery notAfter anchors to scheduledInstant, not catch-up now (4.848634ms)
+✔ expired job occurrence is never sent late (1.797248ms)
+✔ operator enqueue keeps protocol now-relative notAfter and rejects overdue dispatch (2.089692ms)
+✔ per-account token bucket refuses extra sends with audit (5.421273ms)
+✔ per-route daily cap refuses with audit (2.612ms)
+✔ unauthorized route error is indistinguishable and audited (1.876988ms)
+✔ no IPC method creates routes; unknown method is rejected (1.190548ms)
+✔ request dedup returns the first response without a second send (2.191454ms)
+✔ wrong profile mode fails closed (0.598689ms)
+✔ second daemon fails to lock and does not remove the first socket (2.955426ms)
+✔ profile lock is node-only; holder death releases; no split-brain while held (25.957998ms)
+✔ default daemon clock advances and ticks within 60s (222.037854ms)
+✖ job on revoked route: reopen tick does not send and audits refusal (3.151138ms)
+✖ queued enqueue on revoked route: reopen tick does not send and audits refusal (2.065551ms)
+✔ crash at claim: interrupted, not accepted, later tick does not send (5.19415ms)
+✔ crash at dispatch-intent: commit-unknown never auto-retried (1.854068ms)
+✔ crash mid-send: commit-unknown never auto-retried (1.864558ms)
+✔ crash before receipt write: commit-unknown even if adapter observed send (1.768507ms)
+✔ oversized adapter payload is rejected without send (1.580874ms)
+✔ open converts leftover dispatching rows to commit-unknown with audit (2.258025ms)
+✔ SIGKILL child leaving dispatching is recovered on open (26.346313ms)
+✔ retry same requestId with delivery but no request_log returns existing status without fuses (1.650595ms)
+✔ IPC handleRequest exception returns error frame and keeps listening (3.564525ms)
+✔ client write-and-destroy does not kill IPC daemon; next request is answered (251.287833ms)
+✔ SIGKILL mid-send then same requestId retry returns commit-unknown without extra send (56.300283ms)
+✔ restore quarantine: queued becomes commit-unknown and is not sent (5.90749ms)
+✔ already-sent delivery is not resurrected as queued (2.073802ms)
+✔ refuse schema newer than binary (1.806188ms)
+✔ post-backup sent slot is not resurrected as queued under skip (16.695006ms)
+✔ post-backup sent slot is not resurrected as queued under one-latest (5.692837ms)
+✔ once job backup in tick lag is not resent after restore+resume under one-latest (3.194889ms)
+✔ tick refuses admission while quarantined until explicit resume (2.337145ms)
+✔ explicit restore copies backup and quarantines before tick (6.988128ms)
+✔ non-db backup restore leaves live DB intact (3.941461ms)
+✔ newer-schema backup restore leaves live DB intact (3.881079ms)
+✔ interrupted restore with live moved aside recovers original DB (3.908699ms)
+✔ interrupted second restore recovers the most recent live DB (4.934526ms)
+✔ absent live DB with leftover .pre-restore and no journal does not revive it (4.147734ms)
+✔ kill after restore swap then resume sends 0 extra under one-latest (7.578486ms)
+✔ kill after restore swap then resume sends 0 extra under skip within grace (7.375453ms)
+✔ backup is taken before migrate from v0 (0.934024ms)
+✔ once-at UTC fires on the scheduled instant (4.995077ms)
+✔ daily local IANA time fires (14.533143ms)
+✔ DST gap: skip nonexistent local time (4.454509ms)
+✔ DST fold: first occurrence only (0.469108ms)
+✔ DST AU/NZ first fold, gaps, and adjacent valid local times vs brute-force oracle (142.8552ms)
+✔ suspend past two due slots with skip: no burst (3.390452ms)
+✔ suspend past two due slots with one-latest: single unexpired catch-up (3.530644ms)
+✔ interval-sized gap plus millisecond lateness still sends under skip (3.634675ms)
+ℹ tests 50
+ℹ suites 0
+ℹ pass 48
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3463.712506
+
+✖ failing tests:
+
+test at test/fuses-auth-lock.test.ts:198:1
+✖ job on revoked route: reopen tick does not send and audits refusal (3.151138ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  1 !== 0
+  
+      at TestContext.<anonymous> (file:///home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s1/packages/gateway/test/fuses-auth-lock.test.ts:219:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1397:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:969:18)
+      at Test.postRun (node:internal/test_runner/test:1537:19)
+      at Test.run (node:internal/test_runner/test:1462:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/fuses-auth-lock.test.ts:228:1
+✖ queued enqueue on revoked route: reopen tick does not send and audits refusal (2.065551ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  1 !== 0
+  
+      at TestContext.<anonymous> (file:///home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s1/packages/gateway/test/fuses-auth-lock.test.ts:245:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1397:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:969:18)
+      at Test.postRun (node:internal/test_runner/test:1537:19)
+      at Test.run (node:internal/test_runner/test:1462:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+npm error Lifecycle script `test` failed with error:
+npm error code 1
+npm error path /home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s1/packages/gateway
+npm error workspace pi-hermes-gateway-core@0.0.0
+npm error location /home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s1/packages/gateway
+npm error command failed
+npm error command sh -c npm run build && node --experimental-strip-types --test test/*.test.ts --test-name-pattern 'revoked route'

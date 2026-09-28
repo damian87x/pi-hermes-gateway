@@ -1,0 +1,37 @@
+{
+  "name": "pi-hermes-gateway-companion",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "description": "Pi companion socket client for gateway status and owner-route tools. Provisional local name; not an npm-scope claim.",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./dist/extension.js"]
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./extension": {
+      "types": "./dist/extension.d.ts",
+      "import": "./dist/extension.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --experimental-strip-types --test test/*.test.ts && node test/g4-pack-import.mjs"
+  },
+  "engines": {
+    "node": ">=24.20.0"
+  },
+  "dependencies": {
+    "pi-hermes-gateway-protocol": "0.0.0"
+  }
+}

@@ -1,0 +1,22 @@
+# ADAPTED COPY of tracked docs/evidence/s0/run-g1.sh (tracked file NOT modified)
+# diff vs tracked:
+3c3
+< ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
+---
+> ROOT="/home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s0-review"
+10c10
+< test "$(git rev-parse --abbrev-ref HEAD)" = "feat/s0-foundation"
+---
+> test "$(git rev-parse HEAD)" = "0da0a1d2e2d71b482df98d186e743a2e3a9e9603"
+12c12
+<   */apps/pi-hermes-gateway-s0) ;;
+---
+>   */apps/pi-hermes-gateway-s0-review) ;;
+# --- execution ---
+ROOT=/home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s0-review
+HEAD=0da0a1d2e2d71b482df98d186e743a2e3a9e9603
+BASE=4035d5b60c4ed611f9a81b2f9ca850682b62fb7b
+BRANCH=HEAD
+private/lifecycle/pi checks ok ['package.json', 'packages/protocol/package.json']
+G1_OK
+G1_EXIT=0

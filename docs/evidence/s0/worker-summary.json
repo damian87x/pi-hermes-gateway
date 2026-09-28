@@ -1,0 +1,117 @@
+{
+  "status": "PASS",
+  "candidateSha": null,
+  "candidateShaNote": "Avoid self-reference: candidateSha is the commit that contains this file. Independent validators must use git rev-parse HEAD after checkout of feat/s0-foundation; the worker final response prints that receipt.",
+  "baseSha": "4035d5b60c4ed611f9a81b2f9ca850682b62fb7b",
+  "changedPaths": [
+    ".gitignore",
+    "README.md",
+    "package.json",
+    "package-lock.json",
+    "tsconfig.json",
+    "docs/architecture.md",
+    "docs/security.md",
+    "docs/parity.md",
+    "docs/migration.md",
+    "docs/provenance.md",
+    "docs/planning/brief.md",
+    "docs/planning/plan.md",
+    "docs/planning/critic-r2.md",
+    "docs/planning/pi-packages-reference.md",
+    "docs/evidence/s0/contract.md",
+    "docs/evidence/s0/gates.md",
+    "docs/evidence/s0/run-g1.sh",
+    "docs/evidence/s0/run-g2.sh",
+    "docs/evidence/s0/run-g6.sh",
+    "docs/evidence/s0/worker-summary.json",
+    "docs/evidence/s0/logs/g1.txt",
+    "docs/evidence/s0/logs/g2.txt",
+    "docs/evidence/s0/logs/g3.txt",
+    "docs/evidence/s0/logs/g3-tdd-fail.txt",
+    "docs/evidence/s0/logs/g4.txt",
+    "docs/evidence/s0/logs/g5.txt",
+    "docs/evidence/s0/logs/g6.txt",
+    "packages/protocol/package.json",
+    "packages/protocol/tsconfig.json",
+    "packages/protocol/README.md",
+    "packages/protocol/src/index.ts",
+    "packages/protocol/src/limits.ts",
+    "packages/protocol/src/errors.ts",
+    "packages/protocol/src/check.ts",
+    "packages/protocol/src/wire.ts",
+    "packages/protocol/src/adapter.ts",
+    "packages/protocol/src/jobs.ts",
+    "packages/protocol/src/delivery.ts",
+    "packages/protocol/test/helpers.ts",
+    "packages/protocol/test/wire.test.ts",
+    "packages/protocol/test/delivery.test.ts",
+    "packages/protocol/test/adapter.test.ts",
+    "packages/protocol/test/jobs.test.ts",
+    "packages/protocol/test/g4-pack-import.mjs",
+    "packages/protocol/test/g5-dual-import.mjs"
+  ],
+  "gates": [
+    {
+      "id": "G1",
+      "command": "bash docs/evidence/s0/run-g1.sh",
+      "exitCode": 0,
+      "counts": { "packages": 2, "privateTrue": 2, "lifecycleScripts": 0 },
+      "rawPath": "docs/evidence/s0/logs/g1.txt"
+    },
+    {
+      "id": "G2",
+      "command": "bash docs/evidence/s0/run-g2.sh",
+      "exitCode": 0,
+      "counts": { "node": "v24.20.0", "npm": "11.19.0", "tsc": "5.9.3", "sqlite": "3.53.4" },
+      "rawPath": "docs/evidence/s0/logs/g2.txt"
+    },
+    {
+      "id": "G3",
+      "command": "npm test",
+      "exitCode": 0,
+      "counts": { "tests": 35, "pass": 35, "fail": 0, "skipped": 0, "todo": 0 },
+      "rawPath": "docs/evidence/s0/logs/g3.txt"
+    },
+    {
+      "id": "G4",
+      "command": "npm run build -w pi-hermes-gateway-protocol && node packages/protocol/test/g4-pack-import.mjs",
+      "exitCode": 0,
+      "counts": { "tarballFiles": 34, "importProtocolVersion": 1 },
+      "rawPath": "docs/evidence/s0/logs/g4.txt"
+    },
+    {
+      "id": "G5",
+      "command": "npm run build -w pi-hermes-gateway-protocol && node packages/protocol/test/g5-dual-import.mjs",
+      "exitCode": 0,
+      "counts": { "distinctModules": true, "distinctFns": true },
+      "rawPath": "docs/evidence/s0/logs/g5.txt"
+    },
+    {
+      "id": "G6",
+      "command": "bash docs/evidence/s0/run-g6.sh",
+      "exitCode": 0,
+      "counts": { "requiredDocs": 7, "licenseFiles": 0 },
+      "rawPath": "docs/evidence/s0/logs/g6.txt"
+    },
+    {
+      "id": "G7",
+      "command": "git rev-parse HEAD && git status --short && git diff --stat origin/main && git diff origin/main | sha256sum",
+      "exitCode": null,
+      "counts": "recorded in worker final response after the candidate commit; not inlined here",
+      "rawPath": null
+    }
+  ],
+  "unverified": [
+    "Node/SQLite behaviour on versions other than Node v24.20.0 / sqlite 3.53.4",
+    "systemd linger and logout survival",
+    "Pi CLI --no-* isolation flags and provider credentials under a user unit",
+    "npm scope ownership and publication",
+    "outbound license choice",
+    "notAfter anchoring for job-created deliveries",
+    "audit-row survival across database restore",
+    "recurring job.create confirm UX",
+    "any live network, model, Telegram, WhatsApp, or worker operation"
+  ],
+  "blockers": [],
+  "nextAction": "Independent native Claude CLI Opus reruns gates; four fresh reviews follow. No push/PR/merge/release."
+}

@@ -1,0 +1,4 @@
+requiredDocs 7
+licenseFiles 0
+G6_OK
+G6_EXIT:0

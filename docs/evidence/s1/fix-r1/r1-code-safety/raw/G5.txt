@@ -1,0 +1,16 @@
+✔ per-account token bucket refuses extra sends with audit (4.399501ms)
+✔ per-route daily cap refuses with audit (1.747818ms)
+✔ unauthorized route error is indistinguishable and audited (1.592198ms)
+✔ no IPC method creates routes; unknown method is rejected (1.153855ms)
+✔ request dedup returns the first response without a second send (2.02884ms)
+✔ wrong profile mode fails closed (0.521032ms)
+✔ second daemon fails to lock and does not remove the first socket (2035.488519ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2142.721257
+EXIT=0

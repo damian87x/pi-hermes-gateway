@@ -1,0 +1,20 @@
+cmd: node /tmp/r3cs/p1-dst.mjs packages/gateway/dist
+{
+ "zones": 17,
+ "transitions": 29,
+ "localMinutesChecked": 126720,
+ "mismatchCount": 0,
+ "mismatches": [],
+ "dailySeqChecked": 119,
+ "dailyMismatchCount": 0,
+ "dailyMismatch": []
+}
+Australia/Sydney 2026-4-5 2:30 -> 2026-04-04T15:30:00.000Z
+Australia/Sydney 2026-4-5 1:30 -> 2026-04-04T14:30:00.000Z
+Australia/Sydney 2026-4-4 1:30 -> 2026-04-03T14:30:00.000Z
+Australia/Sydney 2026-10-4 2:30 -> null
+Pacific/Auckland 2026-4-5 2:30 -> 2026-04-04T13:30:00.000Z
+Pacific/Auckland 2026-9-27 2:30 -> null
+Australia/Lord_Howe 2026-4-5 1:45 -> 2026-04-04T14:45:00.000Z
+Pacific/Chatham 2026-4-5 3:30 -> 2026-04-04T13:45:00.000Z
+EXIT=0

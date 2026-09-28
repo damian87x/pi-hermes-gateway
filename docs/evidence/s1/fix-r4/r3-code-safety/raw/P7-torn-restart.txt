@@ -1,0 +1,76 @@
+cmd: node /tmp/r3cs/p7-torn-restart.mjs dist
+[
+ {
+  "killAfterMs": 5,
+  "dbBytesAfterKill": 77824,
+  "plainStart": "started",
+  "quarantine": "0",
+  "sent": []
+ },
+ {
+  "killAfterMs": 15,
+  "dbBytesAfterKill": 77824,
+  "plainStart": "started",
+  "quarantine": "0",
+  "sent": []
+ },
+ {
+  "killAfterMs": 25,
+  "dbBytesAfterKill": 77824,
+  "plainStart": "started",
+  "quarantine": "0",
+  "sent": []
+ },
+ {
+  "killAfterMs": 35,
+  "dbBytesAfterKill": 12521472,
+  "plainStart": "refused: database disk image is malformed"
+ },
+ {
+  "killAfterMs": 45,
+  "dbBytesAfterKill": 41517056,
+  "plainStart": "refused: database disk image is malformed"
+ },
+ {
+  "killAfterMs": 55,
+  "dbBytesAfterKill": 47976448,
+  "plainStart": "refused: database disk image is malformed"
+ },
+ {
+  "killAfterMs": 65,
+  "dbBytesAfterKill": 78516224,
+  "plainStart": "refused: database disk image is malformed"
+ },
+ {
+  "killAfterMs": 75,
+  "dbBytesAfterKill": 116436992,
+  "plainStart": "refused: database disk image is malformed"
+ },
+ {
+  "killAfterMs": 85,
+  "dbBytesAfterKill": 139681792,
+  "plainStart": "refused: database disk image is malformed"
+ },
+ {
+  "killAfterMs": 95,
+  "dbBytesAfterKill": 157573120,
+  "plainStart": "started",
+  "quarantine": "1",
+  "sent": []
+ },
+ {
+  "killAfterMs": 105,
+  "dbBytesAfterKill": 157573120,
+  "plainStart": "started",
+  "quarantine": "1",
+  "sent": []
+ },
+ {
+  "killAfterMs": 115,
+  "dbBytesAfterKill": 157573120,
+  "plainStart": "started",
+  "quarantine": "1",
+  "sent": []
+ }
+]
+EXIT=0

@@ -1,0 +1,8 @@
+82d0de5dae6229ff0983267e4b26bdafe99a4178
+82d0de5 fix: reject invalid clocks and nonexistent UTC dates
+0da0a1d feat: S0 protocol workspace foundation
+4035d5b Initial commit
+?? .omc/
+?? docs/evidence/s0-review/r2-code-safety/
+?? docs/evidence/s0-review/r2-spec/
+9d68ca943f130b237eab6a1b71edfbffa0c1f63619258e985e88ff0c6ab461af  -

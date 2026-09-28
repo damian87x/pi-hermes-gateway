@@ -1,0 +1,8 @@
+present docs/architecture.md
+present docs/security.md
+present docs/parity.md
+present docs/migration.md
+present docs/provenance.md
+present README.md
+present packages/protocol/README.md
+G6_OK

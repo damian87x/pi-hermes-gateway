@@ -1,0 +1,32 @@
+{
+  "stage": "S0 evidence-only audit",
+  "exitCode": 0,
+  "finishedAt": "2026-09-20T18:27:17.146977+00:00",
+  "cwd": "/home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s0",
+  "requestedModel": "opus",
+  "observedModelUsage": {
+    "claude-opus-5": {
+      "inputTokens": 50,
+      "outputTokens": 35094,
+      "cacheReadInputTokens": 1245736,
+      "cacheCreationInputTokens": 77812,
+      "webSearchRequests": 0,
+      "costUSD": 2.2785880000000005,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "thinkingTokens": 6084,
+      "canonicalModel": "claude-opus-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "sessionId": "c98989ab-8336-4a59-96fc-95ff1d6c46f4",
+  "subtype": "success",
+  "isError": false,
+  "parseError": null,
+  "summary": "**VERDICT: PASS** \u2014 evidence-only closeout audit of the frozen S0 candidate.\n\n- **Identity (recomputed, not reused):** HEAD `82d0de5dae6229ff0983267e4b26bdafe99a4178`, base `4035d5b60c4ed611f9a81b2f9ca850682b62fb7b`, diff SHA256 `9d68ca943f130b237eab6a1b71edfbffa0c1f63619258e985e88ff0c6ab461af` \u2014 all match the pin. `git diff HEAD` and `--cached` = 0 lines, so **sourceUnchanged: true**; 71 non-hook untracked files, 0 outside the declared evidence roots, 0 zero-byte; `.omc/` untouched.\n- **Reviewer agreement:** 56/56 cross-checks green \u2014 one candidateSha/baseSha/diffSha256, four PASS, four session IDs matching `ladder-r2.json` and each stage's own `native-result.json`, all `claude-opus-5`, exitCode 0, no receiptProblems. All 39 `rawPath` refs resolve project-relative to nonempty files.\n- **AC7 closure \u2014 genuinely closed, one residual:** `g7-receipt.md` exists (2400B, satisfies the formerly dangling `gates.md:13` pointer) and carries both literal digests; I recomputed each from git \u2014 corrected `9d68ca94\u2026` and initial `e148a206\u2026` both match, with initial vs corrected candidates explicitly distinguished. All 14 durable sources it names resolve. **Residual (LOW):** the digest lives only in the untracked supplement \u2014 absent from the tree tracked at `82d0de5`. That's inherent to freezing the candidate, not an oversight; durable closure needs an evidence-only commit, which is the parent's call.\n- **Discrepancy ruling \u2014 reporting/count-basis error, NOT a source or environment mismatch:** conformance's `packedFiles: 32` is contradicted by the very raw log that entry cites (`files: 34`, 34 paths). That listing is set-identical to code-safety's, spec's (`count=34`) and outcome's (34 tar entries); 32 is exactly the dist-only subset (34 minus `package/package.json` and `package/README.md`). Substantive AC2/AC4 assertions are unaffected. I left the original report verbatim and annotated it here.\n- **Prior claims labelled as such:** 39/39/0/0 across three independent raw logs, consistent with `fix-r1-worker.json`. I ran no build, test or gate.\n- **No blocker.** Not verified by design: receipt originals under `.pi/tasks/\u2026` and the sibling review worktree are outside this project and were not read; provenance instead rests on independent digest recomputation, real-commit resolution, and strictly increasing timestamps.\n\nSummary: `docs/evidence/s0-review/r2-evidence-audit/summary.json`",
+  "summaryTruncated": false,
+  "gateSummary": "/home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s0/docs/evidence/s0-review/r2-evidence-audit/summary.json",
+  "raw": "/home/damian-linux/workspace/billioner-coder/.pi/tasks/pi-hermes-gateway-conductor/s0/evidence-audit-r2/raw.json",
+  "stderr": "/home/damian-linux/workspace/billioner-coder/.pi/tasks/pi-hermes-gateway-conductor/s0/evidence-audit-r2/stderr.log"
+}

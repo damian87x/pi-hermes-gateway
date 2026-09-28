@@ -1,0 +1,12 @@
+cmd: node /tmp/r3cs/p4-lock.mjs dist
+{
+ "firstStartedWithoutPython": true,
+ "secondInstance": {
+  "exitCode": 1,
+  "stderr": "profile lock held",
+  "firstSocketStillPresent": true
+ },
+ "afterLockFileUnlink": "acquired while first daemon alive (split-brain)",
+ "afterHolderSigkill": "acquired"
+}
+EXIT=0

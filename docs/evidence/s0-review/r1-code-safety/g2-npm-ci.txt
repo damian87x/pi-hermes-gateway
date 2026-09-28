@@ -1,0 +1,5 @@
+
+added 2 packages, and audited 4 packages in 506ms
+
+found 0 vulnerabilities
+EXIT=0

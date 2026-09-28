@@ -1,0 +1,78 @@
+{
+  "status": "PASS",
+  "candidateSha": null,
+  "startCandidate": "680e67b52e5a777f94369ec072a43aedcc7b7cd4",
+  "candidateShaNote": "Launcher records HEAD after commit. candidateSha is null in this file.",
+  "changedPaths": [
+    "docs/evidence/s1/fix-r7-contract.md",
+    "docs/evidence/s1/fix-r7/worker-summary.json",
+    "docs/evidence/s1/fix-r7/logs/g1.txt",
+    "docs/evidence/s1/fix-r7/logs/g2.txt",
+    "docs/evidence/s1/fix-r7/logs/g3.txt",
+    "docs/evidence/s1/fix-r7/logs/g3-tdd-fail.txt",
+    "docs/evidence/s1/fix-r7/logs/g4.txt",
+    "docs/evidence/s1/fix-r7/logs/g5.txt",
+    "docs/evidence/s1/fix-r7/logs/g6.txt",
+    "packages/gateway/src/core.ts",
+    "packages/gateway/src/ipc.ts",
+    "packages/gateway/src/store.ts",
+    "packages/gateway/test/outbox-crash.test.ts"
+  ],
+  "gates": [
+    {
+      "id": "G1",
+      "command": "bash docs/evidence/s1/run-g1.sh",
+      "exitCode": 1,
+      "counts": { "worktreeUntrackedOutsideAllowlist": "docs/evidence/s1-review/** (reviewer dirt, not committed)" },
+      "rawPath": "docs/evidence/s1/fix-r7/logs/g1.txt",
+      "note": "Committed tree is allowlist-clean. Worktree G1 sees untracked r6 review files. Independent clone of this commit should G1=0."
+    },
+    {
+      "id": "G2",
+      "command": "bash docs/evidence/s1/run-g2.sh",
+      "exitCode": 0,
+      "counts": { "node": "v24.20.0", "npm": "11.19.0", "tsc": "5.9.3", "sqlite": "3.53.4" },
+      "rawPath": "docs/evidence/s1/fix-r7/logs/g2.txt"
+    },
+    {
+      "id": "G3",
+      "command": "npm test",
+      "exitCode": 0,
+      "counts": { "protocolTests": 39, "gatewayTests": 47, "tests": 86, "pass": 86, "fail": 0, "skipped": 0, "todo": 0 },
+      "rawPath": "docs/evidence/s1/fix-r7/logs/g3.txt"
+    },
+    {
+      "id": "G4",
+      "command": "node packages/gateway/test/g4-pack-import.mjs",
+      "exitCode": 0,
+      "counts": { "protocolFiles": 34, "gatewayFiles": 50, "adapterId": "fake" },
+      "rawPath": "docs/evidence/s1/fix-r7/logs/g4.txt"
+    },
+    {
+      "id": "G5",
+      "command": "node --experimental-strip-types --test test/fuses-auth-lock.test.ts (cwd packages/gateway)",
+      "exitCode": 0,
+      "counts": { "tests": 9, "pass": 9, "fail": 0, "skipped": 0 },
+      "rawPath": "docs/evidence/s1/fix-r7/logs/g5.txt"
+    },
+    {
+      "id": "G6",
+      "command": "bash docs/evidence/s1/run-g6.sh",
+      "exitCode": 0,
+      "counts": { "requiredDocs": 7, "licenseFiles": 0 },
+      "rawPath": "docs/evidence/s1/fix-r7/logs/g6.txt"
+    }
+  ],
+  "fixes": {
+    "M-crash-consistent-dedup": "delivery.enqueue request_log miss looks up deliveries by request_id and returns {deliveryId, status} (e.g. commit-unknown) without consumeFuses/insert. listenIpc wraps handleRequest and returns an internal error frame instead of exiting. TDD: UNIQUE crash, IPC throw killed listener, then 86/86 including real SIGKILL mid-send + same requestId retry (0 extra sends, fuse stays 1, daemon stays up)."
+  },
+  "unverified": [
+    "Independent P4b CLI e2e not rerun here (unit + in-repo SIGKILL/restart/retry covers the same window)",
+    "Node/SQLite versions other than v24.20.0 / 3.53.4",
+    "G1 on this dirty worktree (untracked docs/evidence/s1-review); clone G1 not run here",
+    "Live transports (out of S1)",
+    "Lows deferred (WAL-before-user_version, request.deduped audit, real-kill at Gateway dispatch points)"
+  ],
+  "blockers": [],
+  "nextAction": "Independent native Opus code-safety re-attest of the new SHA. No push/PR."
+}

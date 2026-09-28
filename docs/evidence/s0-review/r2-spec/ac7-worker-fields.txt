@@ -1,0 +1,29 @@
+=== fix-r1 candidateShaNote / blockers / unverified ===
+candidateShaNote = "Do not self-reference. Launcher records actual HEAD after this commit. Start candidate was 0da0a1d2e2d71b482df98d186e743a2e3a9e9603."
+
+startCandidate = "0da0a1d2e2d71b482df98d186e743a2e3a9e9603"
+
+blockers = []
+
+regressions = {"F1": {"entryPoints": 2, "invalidClockCasesPerEntry": 7, "tests": 2, "result": "reject malformed"}, "F2": {"nonexistentDatesRejected": 6, "validUtcFormsKept": 10, "tests": 2, "result": "invalid_body vs preserved UTC/fractional/end-of-day"}}
+
+unverified = ["Independent native Opus re-attestation of this correction candidate (prior r1 PASS applies only to 0da0a1d).", "F3\u2013F6 remain deferred findings (prototype/hasOwn, freeze constants, throwing getters, atUtc temporal horizon).", "No live transport, network, model, Telegram or WhatsApp operation.", "G1/G6/G7 not re-run in this narrow correction; G4/G5 import gates were re-run."]
+
+=== ORIGINAL s0/worker-summary.json AC7 fields ===
+keys: ['baseSha', 'blockers', 'candidateSha', 'candidateShaNote', 'changedPaths', 'gates', 'nextAction', 'status', 'unverified']
+baseSha = "4035d5b60c4ed611f9a81b2f9ca850682b62fb7b"
+candidateSha = null
+status = "PASS"
+nextAction = "Independent native Claude CLI Opus reruns gates; four fresh reviews follow. No push/PR/merge/release."
+gates: 7
+   {"id": "G1", "command": "bash docs/evidence/s0/run-g1.sh", "exitCode": 0, "counts": {"packages": 2, "privateTrue": 2, "lifecycleScripts": 0}, "rawPath": "docs/evidence/s0/logs/g1.txt"}
+   {"id": "G2", "command": "bash docs/evidence/s0/run-g2.sh", "exitCode": 0, "counts": {"node": "v24.20.0", "npm": "11.19.0", "tsc": "5.9.3", "sqlite": "3.53.4"}, "rawPath": "docs/evidence/s0/logs/g2.txt
+   {"id": "G3", "command": "npm test", "exitCode": 0, "counts": {"tests": 35, "pass": 35, "fail": 0, "skipped": 0, "todo": 0}, "rawPath": "docs/evidence/s0/logs/g3.txt"}
+   {"id": "G4", "command": "npm run build -w pi-hermes-gateway-protocol && node packages/protocol/test/g4-pack-import.mjs", "exitCode": 0, "counts": {"tarballFiles": 34, "importProtocolVersion": 1}, "raw
+   {"id": "G5", "command": "npm run build -w pi-hermes-gateway-protocol && node packages/protocol/test/g5-dual-import.mjs", "exitCode": 0, "counts": {"distinctModules": true, "distinctFns": true}, "rawPa
+   {"id": "G6", "command": "bash docs/evidence/s0/run-g6.sh", "exitCode": 0, "counts": {"requiredDocs": 7, "licenseFiles": 0}, "rawPath": "docs/evidence/s0/logs/g6.txt"}
+   {"id": "G7", "command": "git rev-parse HEAD && git status --short && git diff --stat origin/main && git diff origin/main | sha256sum", "exitCode": null, "counts": "recorded in worker final response af
+
+=== does any tracked doc claim a diff digest for 82d0de5? ===
+(eval):12: no matches found: --include=*.json
+(none in worker/contract docs)

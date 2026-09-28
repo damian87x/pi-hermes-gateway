@@ -1,0 +1,37 @@
+{
+  "name": "pi-hermes-gateway-core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "description": "Durable gateway core with fake adapter only. Provisional local name; not an npm-scope claim.",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./fake-adapter": {
+      "types": "./dist/fake-adapter.d.ts",
+      "import": "./dist/fake-adapter.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "systemd"
+  ],
+  "bin": {
+    "pi-hermes-gateway-core": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --experimental-strip-types --test --test-skip-pattern \"s6 packed tarballs\" test/*.test.ts && node --experimental-strip-types --test test/pack-install.test.ts"
+  },
+  "engines": {
+    "node": ">=24.20.0"
+  },
+  "dependencies": {
+    "pi-hermes-gateway-protocol": "0.0.0"
+  }
+}

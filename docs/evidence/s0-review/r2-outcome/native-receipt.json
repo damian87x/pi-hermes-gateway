@@ -1,0 +1,32 @@
+{
+  "stage": "outcome",
+  "exitCode": 0,
+  "finishedAt": "2026-09-20T18:17:39.852222+00:00",
+  "requestedModel": "opus",
+  "observedModelUsage": {
+    "claude-opus-5": {
+      "inputTokens": 42,
+      "outputTokens": 32753,
+      "cacheReadInputTokens": 946192,
+      "cacheCreationInputTokens": 73635,
+      "webSearchRequests": 0,
+      "costUSD": 2.028481,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "thinkingTokens": 9703,
+      "canonicalModel": "claude-opus-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "sessionId": "f9a2a215-1f9b-40df-b5f6-0fee3e10955c",
+  "candidateSha": "82d0de5dae6229ff0983267e4b26bdafe99a4178",
+  "verdict": "PASS",
+  "passedToNextStage": true,
+  "receiptProblems": [],
+  "summary": "**STAGE 4 (outcome): PASS** \u2014 12 gates, all exit 0. `docs/evidence/s0-review/r2-outcome/summary.json` + 11 raw logs.\n\n**Identity:** HEAD = pinned candidate, diff SHA256 matches exactly, `git status --untracked-files=no` empty before and after. All scratch in `/tmp/s0-out`; no stray `.tgz`.\n\n**What I actually exercised** (not worker scripts): packed the tarball (34 files, dist+README only, zero deps, `private:true`), installed it **offline into two consumer roots outside the repo**, and ran 90 cases + 15 cross-root invariants \u2014 90/90, 0 identity failures. Covered supported/invalid envelopes, frame 65536/65537, payload 32768, expiry now/+1/+60000/+60001, clock NaN/Infinity/float/string, notAfter now/+24h/+24h+1, text 4096/4097, and calendar boundaries (2024-02-29 accepted; 2025-02-29, 2026-02-30, month00/13, day00, hour25 rejected). Passive import proven with a **live guard** \u2014 the control import of `node:net` was blocked, the package import was not; zero new globals. External `tsc` consumes the `.d.ts` clean, negative control errors TS2322. Worker G4/G5 rerun: exit 0.\n\n**Findings (neither blocks S0):** `limits.ts:4` \u2014 `LIMITS` isn't frozen; I mutated `maxTextChars` and a 5000-char text flipped from `text_too_long` to accepted. In-process only, unreachable from wire input, other root unaffected \u2192 hardening (`Object.freeze`). `jobs.ts:80` \u2014 `void nowMs` means past-dated once schedules validate; correct for S0 since AC3 forbids scheduling here, but S1 must define the semantics.\n\n**Scope honesty:** this proves the library foundation is usable, nothing more. Scheduled Telegram/WhatsApp delivery, daemon restart survival, real model reports, publishing and account migration are unimplemented and unverified. **The owner's original goal is not yet achieved** \u2014 S0 passing is a foundation gate, not a working gateway.",
+  "summaryTruncated": false,
+  "gateSummary": "/home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s0-review-r2/docs/evidence/s0-review/r2-outcome/summary.json",
+  "nativeRaw": "/home/damian-linux/workspace/billioner-coder/.pi/tasks/pi-hermes-gateway-conductor/s0-review-r2/outcome/raw.json",
+  "stderr": "/home/damian-linux/workspace/billioner-coder/.pi/tasks/pi-hermes-gateway-conductor/s0-review-r2/outcome/stderr.log"
+}

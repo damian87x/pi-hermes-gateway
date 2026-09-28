@@ -1,0 +1,19 @@
+=== AC5: toolchain claims in architecture.md vs observed runtime ===
+node: v24.20.0
+npm: 11.19.0
+project tsc: Version 5.9.3
+global tsc: Version 7.0.2
+pi --version: 0.85.1
+node:sqlite DatabaseSync import: ok, DatabaseSync=function
+process.versions.sqlite: 3.53.4
+@types/node installed: none
+
+=== AC1: private/license/pi-manifest/peerDeps in manifests ===
+package.json private=true license=(absent) pi=absent peerDeps=absent deps={} keywords=[]
+packages/protocol/package.json private=true license=(absent) pi=absent peerDeps=absent deps={} keywords=[]
+
+=== AC3: no TODO/FIXME/unimplemented validators in src ===
+(none found)
+
+=== AC3: no scheduling/transport/persistence in src ===
+(none found)

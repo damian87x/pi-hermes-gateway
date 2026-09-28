@@ -1,0 +1,5 @@
+# pi-hermes-gateway-core
+
+Provisional local workspace package. Unpublished. The name does not claim an npm scope.
+
+S1 durable gateway core: SQLite jobs/occurrences/outbox/audit, clock-injected scheduler, structural send adapter (fake default). Telegram may be loaded via explicit module path. `requireApproval` jobs/deliveries stay `pending-approval` until `pi-hermes-gateway-core --profile DIR approve <id>`. Tick/dispatch do not send pending-approval rows. `pi-hermes-gateway-core --profile DIR [--node PATH] doctor` checks an absolute Node path, this CLI's realpath (must not be under `~/.pi/agent/npm`), `node:sqlite`, and profile lock/socket dirs (resolved, so `./p` is not a false escape). Linger username comes from `os.userInfo()`. `logoutSurvivalClaim` is true only with linger **and** user-unit evidence; otherwise linger is a precondition only. Doctor never enables linger or the unit. `systemd/pi-hermes-gateway@.service` is a user-unit template only (StartLimitBurst; operator-managed prefix; no enable). Packed core tarball installs without adapters or Pi. No live transports in-tree, no Pi manifest, no credentials.

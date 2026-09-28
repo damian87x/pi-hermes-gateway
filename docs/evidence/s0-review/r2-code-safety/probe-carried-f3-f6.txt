@@ -1,0 +1,38 @@
+== ROOT CAUSE of year 0000-0099 rejection (jobs.ts:35 Date.UTC legacy 2-digit year mapping) ==
+  Date.UTC(0,0,1).getUTCFullYear() = 1900 | input year 0 => roundtrip match: false
+  Date.UTC(50,0,1).getUTCFullYear() = 1950 | input year 50 => roundtrip match: false
+  Date.UTC(99,0,1).getUTCFullYear() = 1999 | input year 99 => roundtrip match: false
+  Date.UTC(100,0,1).getUTCFullYear() = 100 | input year 100 => roundtrip match: true
+  Date.UTC(1999,0,1).getUTCFullYear() = 1999 | input year 1999 => roundtrip match: true
+  Date.parse('0050-06-15T00:00:00Z') -> 0050-06-15T00:00:00.000Z
+
+== F6 (carried): atUtc has no temporal bound ==
+   1999-01-01T00:00:00Z ok= true
+   9999-01-01T00:00:00Z ok= true
+
+== F4 (carried): LIMITS not frozen ==
+  isFrozen(LIMITS) = false | isFrozen(METHODS) = false | isFrozen(KNOWN_CAPABILITIES) = false | isFrozen(RECEIPT_LEVELS) = false
+
+== F5 (carried): throwing getter escapes validateWireRequest ==
+  THROWS raw: boom
+
+== F3 (carried): prototype pollution synthesises valid objects ==
+file:///home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s0-review-r2/packages/protocol/dist/delivery.js:29
+        route.threadId = threadId.value;
+                       ^
+
+TypeError: Cannot assign to read only property 'threadId' of object '#<Object>'
+    at Module.validateDeliveryRoute (file:///home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s0-review-r2/packages/protocol/dist/delivery.js:29:24)
+    at file:///tmp/r2-carried.mjs:26:14
+
+Node.js v24.20.0
+EXIT=1
+== F3 (carried): prototype pollution, writable props ==
+  validateDeliveryRoute({}) ok = true {"profileId":"evil","adapterId":"evil","accountId":"evil","chatId":"evil","threadId":"evil"}
+
+== NEW: F1 fix vs prototype-inherited nowMs (opts has no own nowMs) ==
+  validateWireRequest(opts without own nowMs) -> ACCEPTED via INHERITED clock
+  validateStaticDelivery(opts without own nowMs) -> ACCEPTED via INHERITED clock
+
+== Baseline comparison: same probes on BASE-commit behaviour are in R1 evidence (0da0a1d) ==
+EXIT=0

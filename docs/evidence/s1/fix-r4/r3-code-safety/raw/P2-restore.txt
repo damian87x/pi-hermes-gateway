@@ -1,0 +1,104 @@
+cmd: node /tmp/r3cs/p2-restore.mjs packages/gateway/dist
+[
+ {
+  "name": "once-tick-lag one-latest explicit",
+  "ok": true,
+  "sent1": 1,
+  "quarantine": "1",
+  "sentQ": 0,
+  "sentAfterResume": 0,
+  "occ": [
+   "skipped"
+  ],
+  "deliveries": []
+ },
+ {
+  "name": "once-tick-lag one-latest mtime",
+  "ok": true,
+  "sent1": 1,
+  "quarantine": "1",
+  "sentQ": 0,
+  "sentAfterResume": 0,
+  "occ": [
+   "skipped"
+  ],
+  "deliveries": []
+ },
+ {
+  "name": "once-tick-lag skip explicit",
+  "ok": true,
+  "sent1": 1,
+  "quarantine": "1",
+  "sentQ": 0,
+  "sentAfterResume": 0,
+  "occ": [
+   "skipped"
+  ],
+  "deliveries": []
+ },
+ {
+  "name": "once-tick-lag skip mtime",
+  "ok": true,
+  "sent1": 1,
+  "quarantine": "1",
+  "sentQ": 0,
+  "sentAfterResume": 0,
+  "occ": [
+   "skipped"
+  ],
+  "deliveries": []
+ },
+ {
+  "name": "daily-tick-lag one-latest",
+  "ok": true,
+  "sent1": 1,
+  "watermarkIsRecovery": true,
+  "sentAfterResume": 0,
+  "occRowsForS": 0,
+  "skippedAuditForS": 0,
+  "nextDaySends": 1
+ },
+ {
+  "name": "daily-tick-lag skip",
+  "ok": true,
+  "sent1": 1,
+  "watermarkIsRecovery": true,
+  "sentAfterResume": 0,
+  "occRowsForS": 0,
+  "skippedAuditForS": 0,
+  "nextDaySends": 1
+ },
+ {
+  "name": "queued-in-backup",
+  "ok": true,
+  "sent1": 2,
+  "statusesAfterRestore": [
+   "commit-unknown",
+   "commit-unknown"
+  ],
+  "sentAfterResume": 0
+ },
+ {
+  "name": "quarantine-operator-only",
+  "ok": true,
+  "restartQuarantine": "1",
+  "jobResumeOk": true,
+  "dispatchResumeMethod": "unknown_method",
+  "enqueueDuringQuarantine": "queued",
+  "sentWhileQuarantined": 0,
+  "restorePlusResume": "restore and resume-dispatch cannot be combined",
+  "sentOnOperatorResume": [
+   "during-quarantine",
+   "x"
+  ]
+ },
+ {
+  "name": "interrupted-restore-window (consequence demo)",
+  "ok": false,
+  "sentBeforeDisaster": 1,
+  "resentAfterPlainStart": [
+   "noon"
+  ]
+ }
+]
+EXIT=0

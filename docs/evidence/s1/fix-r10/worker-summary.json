@@ -1,0 +1,76 @@
+{
+  "status": "PASS",
+  "candidateSha": null,
+  "startCandidate": "064dae727ed76ad0306f2acfe881ce8c51dafd68",
+  "candidateShaNote": "Launcher records HEAD after commit. candidateSha is null in this file.",
+  "changedPaths": [
+    "docs/evidence/s1/fix-r10-contract.md",
+    "docs/evidence/s1/fix-r10/worker-summary.json",
+    "docs/evidence/s1/fix-r10/logs/g1.txt",
+    "docs/evidence/s1/fix-r10/logs/g2.txt",
+    "docs/evidence/s1/fix-r10/logs/g3.txt",
+    "docs/evidence/s1/fix-r10/logs/g3-tdd-fail.txt",
+    "docs/evidence/s1/fix-r10/logs/g4.txt",
+    "docs/evidence/s1/fix-r10/logs/g5.txt",
+    "docs/evidence/s1/fix-r10/logs/g6.txt",
+    "packages/gateway/src/core.ts",
+    "packages/gateway/test/scheduler.test.ts"
+  ],
+  "gates": [
+    {
+      "id": "G1",
+      "command": "bash docs/evidence/s1/run-g1.sh",
+      "exitCode": 1,
+      "counts": { "worktreeUntrackedOutsideAllowlist": "docs/evidence/s1-review/** (reviewer dirt, not committed)" },
+      "rawPath": "docs/evidence/s1/fix-r10/logs/g1.txt",
+      "note": "Committed tree is allowlist-clean. Worktree G1 sees untracked review files. Independent clone of this commit should G1=0."
+    },
+    {
+      "id": "G2",
+      "command": "bash docs/evidence/s1/run-g2.sh",
+      "exitCode": 0,
+      "counts": { "node": "v24.20.0", "npm": "11.19.0", "tsc": "5.9.3", "sqlite": "3.53.4" },
+      "rawPath": "docs/evidence/s1/fix-r10/logs/g2.txt"
+    },
+    {
+      "id": "G3",
+      "command": "npm test",
+      "exitCode": 0,
+      "counts": { "protocolTests": 39, "gatewayTests": 51, "tests": 90, "pass": 90, "fail": 0, "skipped": 0, "todo": 0 },
+      "rawPath": "docs/evidence/s1/fix-r10/logs/g3.txt"
+    },
+    {
+      "id": "G4",
+      "command": "node packages/gateway/test/g4-pack-import.mjs",
+      "exitCode": 0,
+      "counts": { "protocolFiles": 34, "gatewayFiles": 50, "adapterId": "fake" },
+      "rawPath": "docs/evidence/s1/fix-r10/logs/g4.txt"
+    },
+    {
+      "id": "G5",
+      "command": "node --experimental-strip-types --test test/fuses-auth-lock.test.ts (cwd packages/gateway)",
+      "exitCode": 0,
+      "counts": { "tests": 11, "pass": 11, "fail": 0, "skipped": 0 },
+      "rawPath": "docs/evidence/s1/fix-r10/logs/g5.txt"
+    },
+    {
+      "id": "G6",
+      "command": "bash docs/evidence/s1/run-g6.sh",
+      "exitCode": 0,
+      "counts": { "requiredDocs": 7, "licenseFiles": 0 },
+      "rawPath": "docs/evidence/s1/fix-r10/logs/g6.txt"
+    }
+  ],
+  "fixes": {
+    "M-one-latest-on-time-skips-missed": "Under one-latest, if any on-time instant exists in the tick, all missed instants are recorded skipped (not admitted). DST-shortened Europe/Berlin 2026-03-28/29 wake +30s after slot 2: 1 send not 2. TDD first (g3-tdd-fail 2!==1). Lows deferred."
+  },
+  "unverified": [
+    "Node/SQLite versions other than v24.20.0 / 3.53.4",
+    "G1 on this dirty worktree (untracked docs/evidence/s1-review); clone G1 not run here",
+    "Live transports (out of S1)",
+    "Lord_Howe 23.5h DST-shortened variant (same code path)",
+    "Lows deferred (quarantine enqueue, request replay audit, pause watermark)"
+  ],
+  "blockers": [],
+  "nextAction": "Independent native Opus code-safety re-attest of the new SHA. No push/PR."
+}

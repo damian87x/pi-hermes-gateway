@@ -1,0 +1,52 @@
+=== node packages/protocol/test/g4-pack-import.mjs ===
+
+added 1 package, and audited 2 packages in 508ms
+
+found 0 vulnerabilities
+{
+  "tarball": "pi-hermes-gateway-protocol-0.0.0.tgz",
+  "files": 34,
+  "listing": [
+    "package/dist/adapter.js",
+    "package/dist/check.js",
+    "package/dist/delivery.js",
+    "package/dist/errors.js",
+    "package/dist/index.js",
+    "package/dist/jobs.js",
+    "package/dist/limits.js",
+    "package/dist/wire.js",
+    "package/package.json",
+    "package/dist/adapter.d.ts.map",
+    "package/dist/adapter.js.map",
+    "package/dist/check.d.ts.map",
+    "package/dist/check.js.map",
+    "package/dist/delivery.d.ts.map",
+    "package/dist/delivery.js.map",
+    "package/dist/errors.d.ts.map",
+    "package/dist/errors.js.map",
+    "package/dist/index.d.ts.map",
+    "package/dist/index.js.map",
+    "package/dist/jobs.d.ts.map",
+    "package/dist/jobs.js.map",
+    "package/dist/limits.d.ts.map",
+    "package/dist/limits.js.map",
+    "package/dist/wire.d.ts.map",
+    "package/dist/wire.js.map",
+    "package/README.md",
+    "package/dist/adapter.d.ts",
+    "package/dist/check.d.ts",
+    "package/dist/delivery.d.ts",
+    "package/dist/errors.d.ts",
+    "package/dist/index.d.ts",
+    "package/dist/jobs.d.ts",
+    "package/dist/limits.d.ts",
+    "package/dist/wire.d.ts"
+  ],
+  "imported": {
+    "protocolVersion": 1,
+    "adapterApiVersion": 1
+  },
+  "protocolVersion": 1,
+  "adapterApiVersion": 1
+}
+G4_EXIT=0

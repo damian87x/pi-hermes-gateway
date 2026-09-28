@@ -1,0 +1,13 @@
+### netguard positive control
+CONTROL_RESULT=GUARD_ACTIVE: NETGUARD: blocked builtin 'node:net' requested by file:///tmp/s0-out/consumer-a/
+### import side effects + export surface (guarded)
+newGlobals= []
+exportCount= 15 ["ADAPTER_API_VERSION","KNOWN_CAPABILITIES","LIMITS","METHODS","PROTOCOL_VERSION","RECEIPT_LEVELS","fail","isAdapterApiCompatible","ok","utf8ByteLength","validateAdapterManifest","validateDeliveryRoute","validateMethodBody","validateStaticDelivery","validateWireRequest"]
+frozenLimitsMutationIsolated= MUTABLE
+### dependency tree of consumer
+s0-outcome-consumer@1.0.0 /tmp/s0-out/consumer-a
+└── pi-hermes-gateway-protocol@0.0.0
+
+### files created in consumer node_modules by import (expect none)
+/tmp/s0-out/consumer-a/node_modules/.package-lock.json
+(end)

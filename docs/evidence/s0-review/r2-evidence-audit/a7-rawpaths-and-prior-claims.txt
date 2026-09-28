@@ -1,0 +1,59 @@
+=== A7 rawPath resolution + prior-claim key consistency ===
+(PRIOR INDEPENDENT RESULTS - artifact/provenance check only; NO tests were re-run by this auditor)
+
+  code-safety  rawPath refs=9   unresolved-or-empty=0 
+  spec         rawPath refs=6   unresolved-or-empty=0 
+  conformance  rawPath refs=12  unresolved-or-empty=0 
+  outcome      rawPath refs=12  unresolved-or-empty=0 
+  TOTAL rawPath refs=39  unresolved-or-empty=0
+
+--- key consistency of prior claims across independent stages ---
+test counts (39/39/0) as recorded in raw logs:
+
+Node/npm/tsc versions observed per stage:
+      1 0.85.1
+      3 11.19.0
+      1 3.53.4
+      2 5.9.3
+      3 v24.20.0
+
+toolchain raw (outcome):
+v24.20.0
+11.19.0
+cwd=/home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s0-review-r2
+
+--- test tallies as recorded in each stage's raw log (PRIOR results, not re-run) ---
+  [docs/evidence/s0-review/r2-code-safety/g3-npm-test.txt]
+  [docs/evidence/s0-review/r2-conformance/g2-typecheck-test.txt]
+  [docs/evidence/s0-review/r2-outcome/raw/03-test.txt]
+
+--- reviewer execution worktree (explains why evidence was copied into this worktree) ---
+cwd=/home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s0-review-r2
+    code-safety -> /home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s0-review-r2/docs/evidence/s0-review/r2-code-safety/summary.json
+    spec -> /home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s0-review-r2/docs/evidence/s0-review/r2-spec/summary.json
+    conformance -> /home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s0-review-r2/docs/evidence/s0-review/r2-conformance/summary.json
+    outcome -> /home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s0-review-r2/docs/evidence/s0-review/r2-outcome/summary.json
+
+--- CORRECTED: test tallies recorded in each stage raw log (PRIOR results, not re-run here) ---
+  [docs/evidence/s0-review/r2-code-safety/g3-npm-test.txt]
+    ℹ tests 39
+    ℹ pass 39
+    ℹ fail 0
+    ℹ cancelled 0
+    ℹ skipped 0
+    ℹ todo 0
+  [docs/evidence/s0-review/r2-conformance/g2-typecheck-test.txt]
+    ℹ tests 39
+    ℹ pass 39
+    ℹ fail 0
+    ℹ cancelled 0
+    ℹ skipped 0
+    ℹ todo 0
+  [docs/evidence/s0-review/r2-outcome/raw/03-test.txt]
+    ℹ tests 39
+    ℹ pass 39
+    ℹ fail 0
+    ℹ cancelled 0
+    ℹ skipped 0
+    ℹ todo 0
+  => 39/39/0/0 agrees across the independent stages; matches fix-r1-worker.json 'G3 39/39/0'.

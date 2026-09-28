@@ -1,0 +1,42 @@
+{
+  "status": "PASS",
+  "candidateSha": null,
+  "candidateShaNote": "Avoid self-reference: candidateSha is the commit that contains this file. Independent validators must use git rev-parse HEAD after checkout of feat/s1-durable-core.",
+  "baseSha": "8d6a631bdc90e50f9ae10ec6d79c97bac63a6f8a",
+  "changedPaths": [
+    "docs/evidence/channels/contract.md",
+    "docs/evidence/channels/worker-summary.json",
+    "packages/adapter-telegram/README.md",
+    "packages/adapter-telegram/src/ambient.d.ts",
+    "packages/adapter-telegram/src/index.ts",
+    "packages/adapter-telegram/test/default-http.test.ts",
+    "packages/gateway/src/adapter-loader.ts"
+  ],
+  "gates": [
+    {
+      "id": "typecheck",
+      "command": "npm run typecheck",
+      "exitCode": 0
+    },
+    {
+      "id": "test",
+      "command": "npm test",
+      "exitCode": 0,
+      "counts": {
+        "protocol": { "tests": 39, "pass": 39, "fail": 0 },
+        "gateway": { "tests": 57, "pass": 57, "fail": 0 },
+        "adapterTelegram": { "tests": 10, "pass": 10, "fail": 0 },
+        "piCompanion": { "tests": 3, "pass": 3, "fail": 0 },
+        "prior": 105,
+        "added": 4
+      }
+    }
+  ],
+  "unverified": [
+    "live Telegram Bot API / api.telegram.org",
+    "CLI daemon send against a real bot token",
+    "npm scope ownership and publication"
+  ],
+  "blockers": [],
+  "nextAction": "Local commit on feat/s1-durable-core. No push/PR/merge/release. No live bot/token."
+}

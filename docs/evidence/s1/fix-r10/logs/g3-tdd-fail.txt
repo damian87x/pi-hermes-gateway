@@ -1,0 +1,97 @@
+
+> pi-hermes-gateway-core@0.0.0 test
+> npm run build && node --experimental-strip-types --test test/*.test.ts --test-name-pattern DST-shortened day
+
+
+> pi-hermes-gateway-core@0.0.0 build
+> tsc -p tsconfig.json
+
+✔ S0 validateStaticDelivery cannot express scheduledInstant-anchored notAfter for a future slot (0.864008ms)
+✔ job delivery notAfter anchors to scheduledInstant, not catch-up now (4.418452ms)
+✔ expired job occurrence is never sent late (1.709216ms)
+✔ operator enqueue keeps protocol now-relative notAfter and rejects overdue dispatch (1.879518ms)
+✔ per-account token bucket refuses extra sends with audit (5.072388ms)
+✔ per-route daily cap refuses with audit (2.1065ms)
+✔ unauthorized route error is indistinguishable and audited (1.910478ms)
+✔ no IPC method creates routes; unknown method is rejected (1.307723ms)
+✔ request dedup returns the first response without a second send (2.428173ms)
+✔ wrong profile mode fails closed (0.651926ms)
+✔ second daemon fails to lock and does not remove the first socket (3.11015ms)
+✔ profile lock is node-only; holder death releases; no split-brain while held (25.512753ms)
+✔ default daemon clock advances and ticks within 60s (223.535863ms)
+✔ job on revoked route: reopen tick does not send and audits refusal (2.767966ms)
+✔ queued enqueue on revoked route: reopen tick does not send and audits refusal (2.256191ms)
+✔ crash at claim: interrupted, not accepted, later tick does not send (4.769865ms)
+✔ crash at dispatch-intent: commit-unknown never auto-retried (1.871628ms)
+✔ crash mid-send: commit-unknown never auto-retried (2.016499ms)
+✔ crash before receipt write: commit-unknown even if adapter observed send (1.752537ms)
+✔ oversized adapter payload is rejected without send (1.646636ms)
+✔ open converts leftover dispatching rows to commit-unknown with audit (2.451703ms)
+✔ SIGKILL child leaving dispatching is recovered on open (28.698282ms)
+✔ retry same requestId with delivery but no request_log returns existing status without fuses (1.566115ms)
+✔ IPC handleRequest exception returns error frame and keeps listening (3.754475ms)
+✔ client write-and-destroy does not kill IPC daemon; next request is answered (250.452688ms)
+✔ SIGKILL mid-send then same requestId retry returns commit-unknown without extra send (56.916621ms)
+✔ restore quarantine: queued becomes commit-unknown and is not sent (5.945966ms)
+✔ already-sent delivery is not resurrected as queued (2.19799ms)
+✔ refuse schema newer than binary (1.823147ms)
+✔ post-backup sent slot is not resurrected as queued under skip (17.109012ms)
+✔ post-backup sent slot is not resurrected as queued under one-latest (5.486992ms)
+✔ once job backup in tick lag is not resent after restore+resume under one-latest (3.323652ms)
+✔ tick refuses admission while quarantined until explicit resume (2.426643ms)
+✔ explicit restore copies backup and quarantines before tick (7.623232ms)
+✔ non-db backup restore leaves live DB intact (3.696265ms)
+✔ newer-schema backup restore leaves live DB intact (3.634915ms)
+✔ interrupted restore with live moved aside recovers original DB (3.706836ms)
+✔ interrupted second restore recovers the most recent live DB (4.734125ms)
+✔ absent live DB with leftover .pre-restore and no journal does not revive it (4.2235ms)
+✔ kill after restore swap then resume sends 0 extra under one-latest (7.643383ms)
+✔ kill after restore swap then resume sends 0 extra under skip within grace (7.254019ms)
+✔ backup is taken before migrate from v0 (0.939039ms)
+✔ once-at UTC fires on the scheduled instant (5.549172ms)
+✔ daily local IANA time fires (14.76983ms)
+✔ DST gap: skip nonexistent local time (4.306941ms)
+✔ DST fold: first occurrence only (0.476584ms)
+✔ DST AU/NZ first fold, gaps, and adjacent valid local times vs brute-force oracle (149.326358ms)
+✔ suspend past two due slots with skip: no burst (3.556784ms)
+✖ DST-shortened day: one-latest wake within grace sends 1 not 2 (4.867226ms)
+✔ suspend past two due slots with one-latest: single unexpired catch-up (3.367332ms)
+✔ interval-sized gap plus millisecond lateness still sends under skip (3.652995ms)
+ℹ tests 51
+ℹ suites 0
+ℹ pass 50
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3461.873298
+
+✖ failing tests:
+
+test at test/scheduler.test.ts:166:1
+✖ DST-shortened day: one-latest wake within grace sends 1 not 2 (4.867226ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  2 !== 1
+  
+      at TestContext.<anonymous> (file:///home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s1/packages/gateway/test/scheduler.test.ts:186:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1397:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:969:18)
+      at Test.postRun (node:internal/test_runner/test:1537:19)
+      at Test.run (node:internal/test_runner/test:1462:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 2,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+npm error Lifecycle script `test` failed with error:
+npm error code 1
+npm error path /home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s1/packages/gateway
+npm error workspace pi-hermes-gateway-core@0.0.0
+npm error location /home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s1/packages/gateway
+npm error command failed
+npm error command sh -c npm run build && node --experimental-strip-types --test test/*.test.ts --test-name-pattern 'DST-shortened day'

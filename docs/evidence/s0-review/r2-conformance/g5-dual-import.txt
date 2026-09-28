@@ -1,0 +1,20 @@
+=== node packages/protocol/test/g5-dual-import.mjs ===
+{
+  "distinctModules": true,
+  "distinctFns": true,
+  "protocolVersion": 1,
+  "adapterApiVersion": 1,
+  "manifest": {
+    "adapterId": "fake-file",
+    "adapterApiVersion": 1,
+    "capabilities": [
+      "send.text"
+    ],
+    "configSchemaVersion": 1,
+    "maxTextLength": 32,
+    "receiptLevels": [
+      "accepted"
+    ]
+  }
+}
+G5_EXIT=0

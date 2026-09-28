@@ -1,0 +1,32 @@
+{
+  "stage": "conformance",
+  "exitCode": 0,
+  "finishedAt": "2026-09-20T18:11:17.667158+00:00",
+  "requestedModel": "opus",
+  "observedModelUsage": {
+    "claude-opus-5": {
+      "inputTokens": 36,
+      "outputTokens": 27320,
+      "cacheReadInputTokens": 912200,
+      "cacheCreationInputTokens": 78211,
+      "webSearchRequests": 0,
+      "costUSD": 1.92139,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "thinkingTokens": 10391,
+      "canonicalModel": "claude-opus-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "sessionId": "b832030c-900f-40d9-88ba-681f23f57e84",
+  "candidateSha": "82d0de5dae6229ff0983267e4b26bdafe99a4178",
+  "verdict": "PASS",
+  "passedToNextStage": true,
+  "receiptProblems": [],
+  "summary": "**STAGE 3 \u2014 ORIGIN/AC CONFORMANCE: PASS** \u2705\n\nIdentity verified independently: HEAD `82d0de5`, diff SHA256 `9d68ca94\u2026` matches the pin, 0 tracked files modified, candidate on no remote branch (`origin/main` == base). Untracked: hook-created `.omc/` plus sibling evidence dirs \u2014 untouched.\n\n| AC | Result | Key observable |\n|---|---|---|\n| AC1 | \ud83d\udfe2 PASS | Both manifests `private:true`; unscoped provisional names; `packages/` holds only `protocol` |\n| AC2 | \ud83d\udfe2 PASS | dist ESM+`.d.ts`, explicit exports/files; 0 deps/peerDeps/`pi` key; G5 proves structural (non-identity) equivalence across module roots; version axes enforced separately at `wire.ts:41` vs `adapter.ts:44` |\n| AC3 | \ud83d\udfe2 PASS | I reproduced every limit myself: text 4096/4097, notAfter +0/+86400000/+86400001, expiresAt +0/+60000/+60001, frame 65536/65537/\u22121/1.5, payload 32768/32769. Zero TODO markers |\n| AC4 | \ud83d\udfe2 PASS | 39/39 pass; duplicate capability + unsupported API version covered; packed external import into temp consumer exit 0 with no Pi/transport packages; no live network/model/message op |\n| AC5 | \ud83d\udfe2 PASS | 7 docs, all required boundaries present; all 8 version claims re-verified exactly (node 24.20.0, tsc 5.9.3, pi 0.85.1, sqlite 3.53.4); npm scope left open |\n| AC6 | \ud83d\udfe2 PASS | No `license` field, no LICENSE files, attribution separated from reuse permission |\n| AC7 | \ud83d\udfe1 PARTIAL | Commit/cleanliness/SHAs/gate table/no-push all good; two record gaps below |\n\nFindings: \ud83d\udfe1 MEDIUM \u2014 no diff digest **value** in tracked evidence (`worker-summary.json:98` stores only the command); \ud83d\udfe2 LOW \u2014 `gates.md:13` points at `g7-receipt.md`, which doesn't exist; \ud83d\udfe2 LOW nonblocking \u2014 `jobs.ts:76` `void nowMs` lets past/far-future job schedules through (outside AC3's enumerated scope, deferred to S1 by design).\n\nBoth AC7 gaps are evidence-only fixes touching no product code. Summary at `docs/evidence/s0-review/r2-conformance/summary.json`, 12 gate logs alongside it.",
+  "summaryTruncated": false,
+  "gateSummary": "/home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s0-review-r2/docs/evidence/s0-review/r2-conformance/summary.json",
+  "nativeRaw": "/home/damian-linux/workspace/billioner-coder/.pi/tasks/pi-hermes-gateway-conductor/s0-review-r2/conformance/raw.json",
+  "stderr": "/home/damian-linux/workspace/billioner-coder/.pi/tasks/pi-hermes-gateway-conductor/s0-review-r2/conformance/stderr.log"
+}

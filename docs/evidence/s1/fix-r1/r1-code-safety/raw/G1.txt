@@ -1,0 +1,8 @@
+ROOT=/tmp/s1r1-clone
+HEAD=f5c88a4323bdf8d3a2e1f30aee7eb8dd63195678
+BASE=83341eba427341f5705ea941f85b5626217c8503
+BRANCH=HEAD
+private/lifecycle/pi checks ok ['package.json', 'packages/protocol/package.json', 'packages/gateway/package.json'] privateTrue 3
+changed_or_untracked 44
+G1_OK
+EXIT=0

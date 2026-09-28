@@ -1,0 +1,45 @@
+{
+ "DEFAULT_TICK_INTERVAL_MS": 60000,
+ "tickGraceMs": 65000,
+ "catchUpPolicy": "skip",
+ "lateness_0ms": {
+  "sent": 1,
+  "occ": [
+   "completed"
+  ]
+ },
+ "lateness_1ms": {
+  "sent": 1,
+  "occ": [
+   "completed"
+  ]
+ },
+ "lateness_2ms": {
+  "sent": 1,
+  "occ": [
+   "completed"
+  ]
+ },
+ "lateness_5ms": {
+  "sent": 1,
+  "occ": [
+   "completed"
+  ]
+ },
+ "realSetInterval250Gaps": [
+  250,
+  250,
+  252,
+  250,
+  250,
+  251,
+  250,
+  250,
+  251,
+  250,
+  250,
+  250
+ ],
+ "maxLatenessMs": 2,
+ "ticksLate": 3
+}

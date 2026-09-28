@@ -1,0 +1,9 @@
+cmd: bash docs/evidence/s1/run-g1.sh (clone /tmp/r3cs-clone/apps/pi-hermes-gateway-s1, branch feat/s1-durable-core @ ea773fc; delta: base SHA fully-qualified only)
+ROOT=/tmp/r3cs-clone/apps/pi-hermes-gateway-s1
+HEAD=ea773fc7ab0435bc2742562f069408289f1c2e48
+BASE=83341eba427341f5705ea941f85b5626217c8503
+BRANCH=feat/s1-durable-core
+private/lifecycle/pi checks ok ['package.json', 'packages/protocol/package.json', 'packages/gateway/package.json'] privateTrue 3
+changed_or_untracked 94
+G1_OK
+EXIT=0

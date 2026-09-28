@@ -1,0 +1,5 @@
+cmd: bash docs/evidence/s1/run-g6.sh
+requiredDocs 7
+licenseFiles 0
+G6_OK
+EXIT=0

@@ -1,0 +1,96 @@
+{
+  "stage": "evidence-only closeout audit",
+  "verdict": "PASS",
+  "candidateSha": "82d0de5dae6229ff0983267e4b26bdafe99a4178",
+  "baseSha": "4035d5b60c4ed611f9a81b2f9ca850682b62fb7b",
+  "diffSha256": "9d68ca943f130b237eab6a1b71edfbffa0c1f63619258e985e88ff0c6ab461af",
+  "sourceUnchanged": true,
+  "scope": "Metadata/evidence integrity only. No product code reviewed for correctness, no build, no test, no gate suite re-run, no architecture research, no four-stage ladder re-execution. Prior gate outcomes are cited as PRIOR INDEPENDENT RESULTS, never as fresh verification by this auditor.",
+  "evidenceSupplementPaths": [
+    "docs/evidence/s0/conductor-closeout.md",
+    "docs/evidence/s0/g7-receipt.md",
+    "docs/evidence/s0/receipts/",
+    "docs/evidence/s0-review/r2-code-safety/",
+    "docs/evidence/s0-review/r2-spec/",
+    "docs/evidence/s0-review/r2-conformance/",
+    "docs/evidence/s0-review/r2-outcome/",
+    "docs/evidence/s0-review/r2-evidence-audit/ (this audit, written by me)"
+  ],
+  "checks": [
+    {
+      "id": "A1-product-identity",
+      "commandOrInspection": "git rev-parse HEAD; git diff <base>..<candidate> | sha256sum; same for initial 0da0a1d",
+      "result": "PASS",
+      "counts": {"headMatchesPin": 1, "correctedDiffDigestMatches": 1, "initialDiffDigestMatches": 1, "mismatches": 0},
+      "rawPath": "docs/evidence/s0-review/r2-evidence-audit/a1-a3-identity-containment.txt"
+    },
+    {
+      "id": "A2-tracked-source-unchanged",
+      "commandOrInspection": "git diff HEAD; git diff --cached; git ls-tree -r --name-only HEAD",
+      "result": "PASS",
+      "counts": {"unstagedDiffLines": 0, "stagedDiffLines": 0, "trackedFilesAtHead": 71, "modifiedTrackedFiles": 0},
+      "rawPath": "docs/evidence/s0-review/r2-evidence-audit/a1-a3-identity-containment.txt"
+    },
+    {
+      "id": "A3-supplement-containment",
+      "commandOrInspection": "git status --porcelain -uall excluding hook-created .omc/; classify every non-hook untracked file against declared supplement roots; stat size",
+      "result": "PASS",
+      "counts": {"nonHookUntrackedFiles": 71, "outsideDeclaredSupplementRoots": 0, "zeroByteFiles": 0, "omcHookDirsTouchedByMe": 0},
+      "rawPath": "docs/evidence/s0-review/r2-evidence-audit/a1-a3-identity-containment.txt"
+    },
+    {
+      "id": "A4-reviewer-identity-and-verdict-agreement",
+      "commandOrInspection": "Cross-match native-receipt.json / native-result.json / summary.json / receipts/ladder-r2.json across all four stages on candidateSha, baseSha, diffSha256, verdict, sessionId, model, exitCode",
+      "result": "PASS",
+      "counts": {"stages": 4, "checksPerStage": 14, "totalChecks": 56, "failed": 0, "distinctCandidateShas": 1, "distinctDiffDigests": 1, "verdictsPASS": 4, "distinctModels": 1, "sessionIdMismatches": 0},
+      "rawPath": "docs/evidence/s0-review/r2-evidence-audit/a4-reviewer-agreement.txt"
+    },
+    {
+      "id": "A5-g4-packed-file-count-discrepancy",
+      "commandOrInspection": "Inspect ONLY the G4/pack raw log portions of all four stages; compare declared counts against the tarball listings actually recorded",
+      "result": "RESOLVED - reporting/count-basis error, not a source or environment mismatch",
+      "counts": {"conformanceSummaryPackedFiles": 32, "conformanceOwnCitedRawLogFiles": 34, "codeSafetyRawLogFiles": 34, "specRawLogFiles": 34, "outcomeRawTarEntries": 34, "listingsIdenticalAcrossStages": 1, "distOnlySubset": 32, "nonDistEntries": 2, "substantiveAssertionsAffected": 0},
+      "rawPath": "docs/evidence/s0-review/r2-evidence-audit/a5-g4-count-discrepancy.txt"
+    },
+    {
+      "id": "A6-ac7-record-gap-closure",
+      "commandOrInspection": "Verify literal post-commit digests in g7-receipt.md against recomputed git values; verify tracked gates.md:13 G7 pointer target exists; resolve every durable source named by g7-receipt.md",
+      "result": "PASS with residual",
+      "counts": {"literalDigestsDeclared": 2, "literalDigestsMatchingGit": 2, "initialVsCorrectedDistinguished": 1, "gatesMdG7PointerTargetExists": 1, "declaredDurableSourcesResolving": 14, "declaredDurableSourcesBroken": 0, "digestPresentInTrackedTreeAtCandidate": 0},
+      "rawPath": "docs/evidence/s0-review/r2-evidence-audit/a6-ac7-closure.txt"
+    },
+    {
+      "id": "A7-rawpath-resolution",
+      "commandOrInspection": "Resolve every rawPath field in the four stage summary.json files project-relative; assert existence and nonzero size",
+      "result": "PASS",
+      "counts": {"rawPathRefs": 39, "unresolved": 0, "empty": 0, "codeSafety": 9, "spec": 6, "conformance": 12, "outcome": 12},
+      "rawPath": "docs/evidence/s0-review/r2-evidence-audit/a7-rawpaths-and-prior-claims.txt"
+    },
+    {
+      "id": "A8-prior-claim-artifact-consistency",
+      "commandOrInspection": "PRIOR INDEPENDENT RESULTS ONLY - confirm artifacts backing prior test claims exist and agree on key values across independently run stages. No test executed by this auditor.",
+      "result": "PASS (prior independent results, not fresh tests)",
+      "counts": {"stagesReportingTestTally": 3, "testsEach": 39, "passEach": 39, "failEach": 0, "skippedEach": 0, "todoEach": 0, "tallyDisagreements": 0, "nodeVersionDisagreements": 0},
+      "rawPath": "docs/evidence/s0-review/r2-evidence-audit/a7-rawpaths-and-prior-claims.txt"
+    }
+  ],
+  "findings": [
+    {"id": "AUD-1", "severity": "INFO", "statement": "Product identity is authentic and frozen. HEAD is exactly 82d0de5dae6229ff0983267e4b26bdafe99a4178, base resolves to 4035d5b60c4ed611f9a81b2f9ca850682b62fb7b, and the base..candidate diff digest recomputes to 9d68ca943f130b237eab6a1b71edfbffa0c1f63619258e985e88ff0c6ab461af, matching the pin. Zero tracked modifications (git diff HEAD and git diff --cached both 0 lines)."},
+    {"id": "AUD-2", "severity": "INFO", "statement": "Supplement containment is clean. All 71 non-hook untracked files fall inside the declared evidence roots; none is zero-byte; nothing sits outside docs/evidence/. The hook-created .omc/ directory was left untouched and unread."},
+    {"id": "AUD-3", "severity": "INFO", "statement": "AC7 GAP 1 (MEDIUM, missing literal post-commit digest) is CLOSED at record level. g7-receipt.md now carries both literal digests and I independently recomputed both from git: corrected 82d0de5 -> 9d68ca94..., initial 0da0a1d -> e148a206.... The two candidates are explicitly distinguished in a table rather than conflated, and the initial digest is a real verifiable value - a fabricated receipt could not have produced it."},
+    {"id": "AUD-4", "severity": "LOW", "statement": "AC7 GAP 1 RESIDUAL: the literal digest exists only in the UNTRACKED supplement. git grep at 82d0de5 confirms the value appears in no file tracked at the candidate. This is inherent rather than an oversight - the candidate is frozen, so any tracked digest record necessarily lands in a later commit. The conductor correctly declined to advance the product SHA to absorb evidence. Closure becomes durable only when the supplement is committed; that is a parent/owner decision, outside my authority."},
+    {"id": "AUD-5", "severity": "INFO", "statement": "AC7 GAP 2 (LOW, dangling pointer) is CLOSED. The tracked gates.md:13 G7 row points at docs/evidence/s0/g7-receipt.md, which now exists (2400 bytes). All 14 durable project-relative sources named by g7-receipt.md resolve to nonempty files; zero broken pointers."},
+    {"id": "AUD-6", "severity": "INFO", "statement": "All four reviewer records agree on every identity axis: one candidateSha, one baseSha, one diffSha256, four PASS verdicts, four distinct session IDs each matching ladder-r2.json and the stage's own native-result.json, all claude-opus-5 (requested opus, observed opus), all exitCode 0, all receiptProblems empty. 56/56 cross-checks passed with zero failures."},
+    {"id": "AUD-7", "severity": "INFO", "statement": "DISCREPANCY RULING - r2-conformance G4 packedFiles=32 is a REPORTING/COUNT-BASIS ERROR, not a source or environment mismatch. Decisive evidence: the conformance summary entry cites its own raw log docs/evidence/s0-review/r2-conformance/g4-pack-import.txt, and that log records files: 34 with a 34-path listing. That listing is identical (sorted set equality) to code-safety's, to spec's ac4-pack-consumer.txt (count=34), and to outcome's raw/04-pack.txt (34 tar entries). 32 is exactly the dist-only subset: 34 minus package/package.json and package/README.md. The same tarball name pi-hermes-gateway-protocol-0.0.0.tgz appears throughout. No file differs between stages and no toolchain divergence is implied (Node v24.20.0 / npm 11.19.0 consistent). The substantive AC2/AC4 assertions - zero src/test/tsconfig leakage, zero Pi/transport packages, import exit 0 - hold identically in every raw log, so the conclusion is unaffected. Per instruction the original reviewer report was NOT rewritten; this is an audit-side annotation only."},
+    {"id": "AUD-8", "severity": "INFO", "statement": "Launcher receipt provenance is genuine. initial-worker.json and fix-r1-worker.json carry real process metadata (exitCode 0, UTC finishedAt, cwd, branch, observedModels xai/grok-4.6, worker summary and raw/stderr pointers) and their diffSha256 values recompute exactly from git against real commits. finishedAt timestamps increase strictly and plausibly: worker 17:34 -> correction 17:51 -> code-safety 17:59 -> spec 18:06 -> conformance 18:11 -> outcome 18:17 UTC. Corroborating detail: each stage's own status snapshot lists exactly the sibling evidence directories that existed at its runtime (conformance saw three, outcome saw four), a sequential-execution signature consistent with, and hard to back-fill into, independent runs."},
+    {"id": "AUD-9", "severity": "INFO", "statement": "Prior gate outcomes are recorded consistently across independently executed stages: 39 tests / 39 pass / 0 fail / 0 skipped / 0 todo in three separate raw logs, matching fix-r1-worker.json G3 39/39/0. LABELLED AS PRIOR INDEPENDENT RESULTS - I executed no build, test or gate. No generic TTL reuse was accepted: every identity value above was recomputed from git in this session rather than inherited from a prior receipt."},
+    {"id": "AUD-10", "severity": "INFO", "statement": "The reviews ran in a sibling worktree (cwd=/home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s0-review-r2, matching ladder-r2.json gateSummary absolute paths), which is why the evidence here is a copy. The copies are self-consistent and their internal project-relative pointers all resolve in this worktree."}
+  ],
+  "unresolved": [
+    "Durable tracked closure of AC7 GAP 1 requires committing the supplement; the literal digest is absent from the tree tracked at 82d0de5 and cannot be added without creating a commit that is not the frozen candidate. Parent/owner decision, not taken here.",
+    "Launcher receipt ORIGINALS under /home/damian-linux/workspace/billioner-coder/.pi/tasks/... and the reviewer worktree apps/pi-hermes-gateway-s0-review-r2 lie outside this project directory and were deliberately NOT read per scope, so byte-fidelity of the copies against their originals is unverified by me. Provenance was instead established internally via independent digest recomputation, real-commit resolution and timestamp ordering.",
+    "r2-conformance/summary.json still literally contains packedFiles: 32. Left verbatim on instruction not to rewrite the original reviewer report; the corrected interpretation is recorded here in AUD-7 and a5-g4-count-discrepancy.txt.",
+    "Nonblocking carry-forward product findings recorded by the reviewers (inherited-property/accessor handling, unfrozen LIMITS export, ISO years 0000-0099 over-rejected, jobs.ts past-dated schedule semantics) are out of scope for this evidence audit and remain open for S1."
+  ],
+  "nextAction": "Accept the evidence supplement as an accurate, internally consistent record of the frozen candidate 82d0de5. Both AC7 record gaps are closed in the working-tree record; to make closure durable, commit the supplement as an explicitly evidence-only commit (never as a new product candidate) and re-point gates.md if desired. Optionally correct packedFiles 32 -> 34 in r2-conformance/summary.json as an annotated erratum rather than a silent edit. No product change, re-review or new correction round is warranted by this audit."
+}

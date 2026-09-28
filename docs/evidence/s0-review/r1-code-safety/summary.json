@@ -1,0 +1,208 @@
+{
+  "stage": "code-safety-and-independent-gates",
+  "verdict": "PASS",
+  "candidateSha": "0da0a1d2e2d71b482df98d186e743a2e3a9e9603",
+  "baseSha": "4035d5b60c4ed611f9a81b2f9ca850682b62fb7b",
+  "diffSha256": "e148a206ce5b0e7b3fbf3cc6b44d40a11b3e94c2530bdc700dbfac2f8606a080",
+  "identityVerification": {
+    "method": "independently recomputed in this detached review worktree before and after gate execution",
+    "candidateShaMatches": true,
+    "baseShaMatches": true,
+    "diffSha256Matches": true,
+    "note": "git diff 4035d5b..0da0a1d | sha256sum reproduced the launcher-supplied digest exactly, both pre- and post-test-run"
+  },
+  "gates": [
+    {
+      "id": "G1",
+      "command": "bash <tmp>/run-g1-review.sh  (ADAPTED copy of tracked docs/evidence/s0/run-g1.sh; tracked script NOT modified)",
+      "exitCode": 0,
+      "counts": {
+        "packages": 2,
+        "privateTrue": 2,
+        "lifecycleScripts": 0,
+        "licenseFields": 0,
+        "piManifests": 0,
+        "peerDependencies": 0,
+        "forbiddenFuturePackageDirs": 0
+      },
+      "coverage": null,
+      "rawPath": "docs/evidence/s0-review/r1-code-safety/g1-containment-adapted.txt",
+      "adaptation": "Tracked run-g1.sh hard-asserts ROOT ends in */apps/pi-hermes-gateway-s0 and branch == feat/s0-foundation. Both are false in this detached review worktree, so the tracked script cannot run here. It does NOT write tracked files; it is read-only. I reproduced it from a temp copy with exactly 3 substitutions (ROOT pinned to this worktree; path suffix -s0-review; branch assertion replaced by a stricter candidate-SHA assertion). Full diff vs tracked script is embedded in the raw log. All substantive checks (private:true, no lifecycle/publish scripts, no license field, no pi manifest, no peerDependencies, no future package dirs, base pin) executed unmodified and passed.",
+      "verifiedBeyondScript": "Independently confirmed package-lock.json contains only typescript@5.9.3, zero entries with hasInstallScript, and that packages/protocol declares zero dependencies/peerDependencies."
+    },
+    {
+      "id": "G2",
+      "command": "npm ci; npm run typecheck; npm run build  (substance of tracked run-g2.sh, run directly in this worktree)",
+      "exitCode": 0,
+      "counts": {
+        "npmCiExit": 0,
+        "typecheckExit": 0,
+        "buildExit": 0,
+        "node": "v24.20.0",
+        "npm": "11.19.0",
+        "projectTsc": "5.9.3",
+        "workspacePackagesInstalled": 2,
+        "externalRuntimeDeps": 0
+      },
+      "coverage": null,
+      "rawPath": "docs/evidence/s0-review/r1-code-safety/g2-npm-ci.txt, docs/evidence/s0-review/r1-code-safety/g2-typecheck-build.txt",
+      "note": "Toolchain identities match the worker's recorded values. tsc runs with strict, verbatimModuleSyntax, noUncheckedIndexedAccess, exactOptionalPropertyTypes - all clean."
+    },
+    {
+      "id": "G3",
+      "command": "npm test  (npm run build && node --experimental-strip-types --test test/*.test.ts)",
+      "exitCode": 0,
+      "counts": { "tests": 35, "pass": 35, "fail": 0, "skipped": 0, "todo": 0, "cancelled": 0 },
+      "coverage": {
+        "tool": "node --experimental-test-coverage",
+        "lines": 88.05,
+        "branches": 78.98,
+        "functions": 90.48,
+        "scope": "packages/protocol/dist (tests import compiled output)",
+        "weakestFiles": { "jobs.js": "84.44 line / 68.42 branch", "check.js": "76.67 line / 86.36 branch", "wire.js": "83.33 line / 81.25 branch" }
+      },
+      "rawPath": "docs/evidence/s0-review/r1-code-safety/g3-npm-test.txt, docs/evidence/s0-review/r1-code-safety/g3-coverage.txt",
+      "note": "Worker claim of 35/35/0 skipped independently reproduced. Coverage was NOT claimed by the worker; I measured it. Uncovered branches correlate with findings F1/F2/F5."
+    },
+    {
+      "id": "G4",
+      "command": "npm run build -w pi-hermes-gateway-protocol && node packages/protocol/test/g4-pack-import.mjs",
+      "exitCode": 0,
+      "counts": {
+        "tarballFiles": 34,
+        "importProtocolVersion": 1,
+        "importAdapterApiVersion": 1,
+        "srcOrTestFilesInTarball": 0,
+        "piOrTransportPackagesPulled": 0,
+        "sourcemapFilesInTarball": 16
+      },
+      "coverage": null,
+      "rawPath": "docs/evidence/s0-review/r1-code-safety/g4-pack-import.txt",
+      "note": "Packs to a real tarball, installs into a fresh mkdtemp consumer outside the repo, imports by package name, asserts no @earendil-works/pi-coding-agent/baileys. Tarball and consumer are removed in a finally block; *.tgz is gitignored. Reproduced green."
+    },
+    {
+      "id": "G5",
+      "command": "npm run build -w pi-hermes-gateway-protocol && node packages/protocol/test/g5-dual-import.mjs",
+      "exitCode": 0,
+      "counts": {
+        "distinctModules": true,
+        "distinctFns": true,
+        "structurallyEqualResults": true,
+        "moduleRoots": 2
+      },
+      "coverage": null,
+      "rawPath": "docs/evidence/s0-review/r1-code-safety/g5-dual-import.txt",
+      "note": "Two independent copies of dist under separate package roots produce non-identical namespaces and non-identical function references, yet structurally identical validated output. Confirms no cross-root singleton/class/Symbol identity requirement."
+    },
+    {
+      "id": "G6",
+      "command": "bash docs/evidence/s0/run-g6.sh",
+      "exitCode": 0,
+      "counts": { "requiredDocs": 7, "licenseFiles": 0, "piImportsInProtocolSrc": 0 },
+      "coverage": null,
+      "rawPath": "docs/evidence/s0-review/r1-code-safety/g6-docs-license.txt",
+      "note": "Ran unmodified - this script is read-only and path-agnostic. Passed in this worktree."
+    },
+    {
+      "id": "G7",
+      "command": "git rev-parse HEAD; git rev-parse origin/main; git diff <base>..<candidate> | sha256sum; git diff HEAD; git status --porcelain",
+      "exitCode": 0,
+      "counts": {
+        "trackedFileDiffLines": 0,
+        "workerLogDiffLines": 0,
+        "changedFilesInCandidate": 45,
+        "insertions": 3116,
+        "deletions": 1
+      },
+      "coverage": null,
+      "rawPath": "docs/evidence/s0-review/r1-code-safety/g7-source-unchanged.txt",
+      "note": "Worker left G7 exitCode null / counts uninlined. I executed it independently. All three launcher-pinned identifiers reproduce exactly."
+    }
+  ],
+  "findings": [
+    {
+      "severity": "medium",
+      "file": "packages/protocol/src/wire.ts",
+      "line": 69,
+      "problem": "opts.nowMs is never validated, unlike its sibling opts.frameByteLength which IS strictly validated at wire.ts:27-29. Passing nowMs as undefined or NaN makes both expiry comparisons (expiresAt <= nowMs and expiresAt > nowMs + maxRequestTtlMs) evaluate to false, so the request is accepted. Same defect in delivery.ts:63 for notAfter.",
+      "impact": "The bounded-expiry guarantee that AC3 requires, and that architecture.md advertises as 'request expiresAt (now, now+60s]', is silently and completely disabled by a caller-side mistake rather than failing closed. Verified empirically: validateWireRequest(validReq, {nowMs: undefined, frameByteLength: 100}) and {nowMs: NaN, ...} both return ok:true with an arbitrary expiresAt. Not exploitable in S0 (no live callers exist yet), but this is the exact trust-boundary guarantee the package is built to provide, and the asymmetry with frameByteLength shows it is an oversight rather than a documented contract.",
+      "requiredFix": "Validate nowMs with the same strictness already applied to frameByteLength: reject with a stable 'malformed' error unless Number.isInteger(opts.nowMs) (or at minimum Number.isFinite). Apply in validateWireRequest and validateStaticDelivery. Add negative tests for nowMs undefined/NaN/non-number.",
+      "evidence": "docs/evidence/s0-review/r1-code-safety/adversarial-2-limits-proto-manifest.txt"
+    },
+    {
+      "severity": "medium",
+      "file": "packages/protocol/src/jobs.ts",
+      "line": 27,
+      "problem": "validateOnceSchedule validates atUtc with a shape-only regex (\\d{4}-\\d{2}-\\d{2}T...) and then only checks Number.isFinite(Date.parse(...)). It never round-trips the parse, so calendar dates that do not exist are accepted and silently roll over to a different day.",
+      "impact": "Verified: '2026-02-30T00:00:00Z' is accepted and resolves to 2026-03-02; '2026-04-31T00:00:00Z' is accepted and resolves to 2026-05-01. For a message-scheduling protocol this means a malformed schedule is admitted at the trust boundary and will later fire on a date the requester never asked for, with no error surfaced anywhere. AC3 requires rejecting malformed input; the spec-conformance reviewer should weigh this against AC3 explicitly. (Note: '2026-09-21T24:00:00Z' -> 2026-09-22T00:00 is legitimate ISO-8601 end-of-day and is not part of this finding. Out-of-range month/second values such as month 13, month 00 and second 60 ARE correctly rejected.)",
+      "requiredFix": "After Date.parse, round-trip verify: reject unless new Date(ms).toISOString() matches the input normalized for the optional .SSS fraction. Add negative tests for 2026-02-30 and 2026-04-31.",
+      "evidence": "docs/evidence/s0-review/r1-code-safety/adversarial-2-limits-proto-manifest.txt"
+    },
+    {
+      "severity": "low",
+      "file": "packages/protocol/src/check.ts",
+      "line": 8,
+      "problem": "isPlainObject accepts any non-null non-array object and all field reads use dot access, which traverses the prototype chain. No Object.hasOwn guard is applied anywhere in wire.ts, delivery.ts, jobs.ts or adapter.ts.",
+      "impact": "If any other code in the host process pollutes Object.prototype, these validators will happily synthesize valid objects out of inherited properties. Verified: with Object.prototype.{profileId,adapterId,accountId,chatId,threadId} set, validateDeliveryRoute({}) returns ok:true with a fully attacker-controlled route; likewise validateWireRequest({}) returns ok:true. The package does not itself cause pollution - I confirmed JSON.parse('{\"__proto__\":{...}}') creates an own property and leaves Object.prototype clean - so this is a defense-in-depth gap in a component whose stated job is trust-boundary validation, not a standalone vulnerability.",
+      "requiredFix": "Guard reads with Object.hasOwn(obj, key), or have isPlainObject additionally require Object.getPrototypeOf(value) === Object.prototype || null.",
+      "evidence": "docs/evidence/s0-review/r1-code-safety/adversarial-2-limits-proto-manifest.txt"
+    },
+    {
+      "severity": "low",
+      "file": "packages/protocol/src/limits.ts",
+      "line": 4,
+      "problem": "LIMITS, METHODS, KNOWN_CAPABILITIES and RECEIPT_LEVELS are exported with 'as const', which is a compile-time-only annotation. None are Object.freeze'd, so they are mutable shared module state for every consumer of a given module root.",
+      "impact": "Verified: setting LIMITS.maxTextChars = 1 at runtime caused a previously valid delivery to be rejected with text_too_long, i.e. one consumer can silently change validation semantics for every other consumer in the same module instance. This sits uneasily with the 'stateless' claim in packages/protocol/README.md:5 and architecture.md:11. It does NOT violate the literal 'no runtime singleton / no class/Symbol identity' claim, which G5 independently confirms. Defense in depth noted: mutating METHODS to add an unknown method still failed closed, because validateMethodBody's switch default (jobs.ts:100-101) rejects anything without an explicit case.",
+      "requiredFix": "Object.freeze the exported constant objects and arrays in limits.ts. Low urgency; no untrusted-input path reaches this in S0.",
+      "evidence": "docs/evidence/s0-review/r1-code-safety/adversarial-2-limits-proto-manifest.txt"
+    },
+    {
+      "severity": "low",
+      "file": "packages/protocol/src/wire.ts",
+      "line": 55,
+      "problem": "validateWireRequest declares a total ProtocolResult return type but can throw. Reading input.body triggers a getter; if that getter throws, the exception propagates out of the validator instead of being converted to a stable error.",
+      "impact": "Verified: an input object with a throwing 'body' getter escapes as a raw Error. The JSON.stringify path is correctly guarded by try/catch at wire.ts:57-61 (BigInt, circular references and a throwing toJSON all return a clean invalid_body), so this is only reachable with non-JSON-derived inputs. Real callers parse JSON, which cannot produce getters, so impact is confined to in-process misuse.",
+      "requiredFix": "Either document that input must be JSON-derived, or wrap property access in the existing try/catch so the function is total as typed.",
+      "evidence": "docs/evidence/s0-review/r1-code-safety/adversarial-1-wire-values.txt"
+    },
+    {
+      "severity": "low",
+      "file": "packages/protocol/src/jobs.ts",
+      "line": 65,
+      "problem": "validateJobCreate explicitly discards the clock with 'void nowMs', so a 'once' schedule carries no temporal bound at all. Verified: atUtc of 1999-01-01 and of 9999-01-01 are both accepted.",
+      "impact": "Unbounded-in-both-directions job schedules pass the trust boundary. This is arguably a deliberate S0 deferral, since the contract forbids implementing scheduling in this lane and the catch-up/anchoring policy is genuinely an S1 decision. However architecture.md's 'Open items deferred' list records only the related-but-different question of notAfter anchoring for job-created deliveries; the absence of any bound on atUtc itself is not recorded anywhere. Flagged for the spec/AC reviewer rather than treated as a code-safety defect.",
+      "requiredFix": "Either bound atUtc (e.g. must be > nowMs) or add an explicit line to the deferred-items list in docs/architecture.md stating that atUtc temporal bounds are deferred to S1. Documentation-truthfulness item, not a code-safety blocker.",
+      "evidence": "docs/evidence/s0-review/r1-code-safety/adversarial-1-wire-values.txt"
+    }
+  ],
+  "verifiedClean": [
+    "No hidden Pi/transport/global dependency: compiled dist contains zero non-relative imports and zero occurrences of node:*, process.*, globalThis, __dirname, eval( or Function(. package-lock.json holds exactly one external package (typescript@5.9.3, devDependency).",
+    "No import side effects: importing dist/index.js changed globalThis key count by 0, process.env key count by 0 and process listener count by 0. sideEffects:false is truthful.",
+    "No install behavior: zero preinstall/install/postinstall/prepare/prepublish*/prepack/postpack scripts in either manifest; zero lockfile entries with hasInstallScript.",
+    "No secrets, credentials, network, filesystem or child-process use anywhere in packages/protocol/src.",
+    "utf8ByteLength is exactly correct: matched Buffer.byteLength on all 8 probes including lone surrogates (\\uD800, \\uDFFF), an unpaired high surrogate followed by ASCII, NUL and a 4-byte emoji.",
+    "No unvalidated passthrough or aliasing: validated output is always a freshly constructed object. Unknown keys are stripped at both top level and nested route level, and the returned value never aliases the attacker-supplied object (verified explicitly).",
+    "Malformed-JSON robustness: BigInt bodies, circular references and throwing toJSON all yield a stable invalid_body rather than a crash. Arrays, null and non-objects are rejected as malformed.",
+    "Numeric edge cases handled: expiresAt of NaN, Infinity, 1e21, -0 and string forms are all rejected; frameByteLength of undefined, null, '200', 1.5, {} and a missing key are all rejected as malformed; 65536 accepted and 65537 rejected at the exact boundary.",
+    "No ReDoS: all patterns are flat bounded character classes. A 1MB requestId was rejected in 0.41ms; a 1MB timeZone was rejected in 19ms.",
+    "Adapter manifest negatives all correct (12/12): duplicate capability, unknown capability, empty capabilities, array-like non-array capabilities, apiVersion 2/1.5/'1', maxTextLength 0 and 99999, receiptLevels missing 'accepted', duplicate receiptLevel, configSchemaVersion 0.",
+    "Clean packed consumer: tarball ships only dist + README (34 files, 0 src/, 0 test/, 0 tsconfig), installs and imports by package name in a fresh temp consumer with no ambient Pi or transport module.",
+    "Independent module roots: two separate copies yield distinct namespaces and distinct function references with structurally identical results - no singleton identity requirement.",
+    "Documentation truthfulness spot-checked: architecture.md's concrete limits table matches limits.ts exactly; the 'max text = UTF-16 code units' wording matches the actual .length check; toolchain versions (Node v24.20.0, npm 11.19.0, tsc 5.9.3) match what I observed; provenance.md's 'runtime dependencies: none' and 'no lifecycle scripts' claims are both true; no LICENSE file and no license field, consistent with the stated deliberate deferral."
+  ],
+  "unverified": [
+    "Any live transport, network, model, Telegram or WhatsApp operation - S0 ships no transport; OUT OF SCOPE for this stage and explicitly NOT marked PASS.",
+    "Node/SQLite behaviour on Node versions other than the observed v24.20.0 / sqlite 3.53.4.",
+    "systemd user-unit linger and logout survival.",
+    "Pi CLI isolation flags and provider credential behaviour under a user unit.",
+    "npm scope ownership, publication identity and outbound license choice.",
+    "notAfter anchoring for job-created deliveries (S1 decision, correctly deferred in docs).",
+    "Audit-row survival across database restore (S1).",
+    "G4's clean-consumer install runs npm install with --ignore-scripts; behaviour without that flag was not exercised. Indirect evidence that there is no script surface: the lockfile has zero hasInstallScript entries and the package declares zero dependencies.",
+    "Coverage is measured against compiled dist rather than TypeScript sources, so the 88.05%/78.98% figures are dist-line-based.",
+    "Spec compliance, origin/AC conformance and observable S0 outcome - deliberately NOT judged here; these are separate reviewer stages."
+  ],
+  "sourceUnchanged": true,
+  "sourceUnchangedEvidence": "Verified AFTER all gate and adversarial execution: git diff HEAD over all tracked paths excluding my evidence directory returned 0 lines; git diff HEAD over docs/evidence/s0/ returned 0 lines, so no worker log was overwritten. git status --porcelain shows only two untracked entries: docs/evidence/s0-review/ (my new evidence directory) and .omc/ (already present in the very first status I took at session start, before I executed anything). Build output (packages/protocol/dist), node_modules and the transient *.tgz are all gitignored. No product file was edited, no commit, push, PR or merge was performed.",
+  "nextAction": "PASS for code safety and independent gate reproduction: G1-G7 all reproduce green from the pinned base with matching counts, and no high or critical code-safety issue exists in this dependency-free, side-effect-free, I/O-free library. Forward findings F1 (unvalidated nowMs silently disables the expiry bound) and F2 (impossible calendar dates such as 2026-02-30 are accepted and silently roll over) to the spec/AC-conformance reviewer to judge against AC3's 'bounded expiry' and 'reject malformed' requirements - both are cheap, well-localized fixes. Findings F3-F6 are low-severity hardening and documentation items. No push, publication or activation."
+}

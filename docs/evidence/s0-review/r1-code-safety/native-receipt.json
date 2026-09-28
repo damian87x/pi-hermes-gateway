@@ -1,0 +1,32 @@
+{
+  "stage": "S0 independent gates and code safety",
+  "exitCode": 0,
+  "finishedAt": "2026-09-20T17:43:51.404700+00:00",
+  "cwd": "/home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s0-review",
+  "requestedModel": "opus",
+  "observedModelUsage": {
+    "claude-opus-5": {
+      "inputTokens": 40,
+      "outputTokens": 36807,
+      "cacheReadInputTokens": 918980,
+      "cacheCreationInputTokens": 89175,
+      "webSearchRequests": 0,
+      "costUSD": 2.271615,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "thinkingTokens": 13519,
+      "canonicalModel": "claude-opus-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "sessionId": "eb8ba0e6-3c5f-4793-bd34-65995488c7cd",
+  "subtype": "success",
+  "isError": false,
+  "parseError": null,
+  "summary": "**VERDICT: PASS** (code-safety + independent gate reproduction only)\n\n- **Candidate** `0da0a1d` vs base `4035d5b`; diff sha256 `e148a206\u20266080` \u2014 all three independently recomputed and matched, before and after test execution.\n- **G1** exit 0 \u2014 2 pkgs, both `private:true`, 0 lifecycle scripts, 0 pi manifests, 0 peerDeps. *Tracked `run-g1.sh` hard-asserts the mutation worktree path/branch and cannot run here; it is read-only, so I reproduced it from a temp copy with 3 substitutions (diff embedded in raw log). Tracked script unmodified.*\n- **G2** exit 0 \u2014 `npm ci`/typecheck/build clean; Node v24.20.0, npm 11.19.0, tsc 5.9.3.\n- **G3** exit 0 \u2014 35/35 pass, 0 skipped, 0 todo. Coverage (not claimed by worker, measured by me): 88.05% line / 78.98% branch / 90.48% func.\n- **G4** exit 0 \u2014 34-file tarball, 0 src/test, clean temp consumer imports, no Pi/transport pulled. **G5** exit 0 \u2014 distinct namespaces + distinct fn refs, structurally equal results. **G6** exit 0. **G7** exit 0 \u2014 worker left this `null`; I ran it.\n- **Verified clean:** zero non-relative imports and zero `node:*`/`process`/`eval` in dist; import causes 0 global/env/listener delta; `utf8ByteLength` matches `Buffer.byteLength` on all 8 probes incl. lone surrogates; output never aliases input and strips unknown keys; BigInt/circular/throwing-`toJSON` \u2192 stable `invalid_body`; no ReDoS (1MB id rejected in 0.41ms); 12/12 manifest negatives correct.\n- **Blockers: none.** Findings to forward: **MEDIUM `src/wire.ts:69`** (+`delivery.ts:63`) `nowMs` unvalidated \u2014 `undefined`/`NaN` silently disables the entire expiry bound while sibling `frameByteLength` *is* validated; **MEDIUM `src/jobs.ts:27`** `2026-02-30`/`2026-04-31` accepted, silently roll over to a different day. Both bear on AC3 \u2014 spec reviewer's call, not mine. LOW: `check.ts:8` (reads inherited props), `limits.ts:4` (`LIMITS` unfrozen, mutation changed validation globally), `wire.ts:55` (throwing getter escapes), `jobs.ts:65` (`atUtc` unbounded, deferral undocumented).\n- **sourceUnchanged: true** \u2014 0 tracked diff lines, 0 worker-log diff lines; untracked only my evidence dir and `.omc/` (pre-existing at session start).\n- Live transport/Telegram/model tests: **out of scope, not PASS**.\n- Evidence: `docs/evidence/s0-review/r1-code-safety/` (summary.json + 13 raw logs).",
+  "summaryTruncated": false,
+  "gateSummary": "/home/damian-linux/workspace/billioner-coder/apps/pi-hermes-gateway-s0-review/docs/evidence/s0-review/r1-code-safety/summary.json",
+  "raw": "/home/damian-linux/workspace/billioner-coder/.pi/tasks/pi-hermes-gateway-conductor/s0/opus-code-safety-r1/raw.json",
+  "stderr": "/home/damian-linux/workspace/billioner-coder/.pi/tasks/pi-hermes-gateway-conductor/s0/opus-code-safety-r1/stderr.log"
+}

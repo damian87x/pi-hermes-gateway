@@ -1,0 +1,16 @@
+### runtime mutability impact of exported LIMITS
+before: A rejects 5000-char text = {
+  ok: false,
+  error: {
+    code: 'text_too_long',
+    message: 'text exceeds 4096 UTF-16 code units (ECMAScript string length)'
+  }
+}
+isFrozen(A.LIMITS) = false
+after mutation: A result ok = true => enforcement changed: true
+other module root unaffected (still rejects) = true text_too_long
+### external TypeScript consumer typechecks against packed .d.ts
+EXIT_TSC=0
+### negative type control (wrong arg type must error)
+bad.ts(2,44): error TS2322: Type 'string' is not assignable to type 'number'.
+EXIT_TSC_NEG=

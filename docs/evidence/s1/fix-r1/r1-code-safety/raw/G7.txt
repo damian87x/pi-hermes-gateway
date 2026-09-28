@@ -1,0 +1,37 @@
+cmd: git rev-parse HEAD; git status --porcelain=v1 --untracked-files=all; git diff 83341eba..f5c88a43 | sha256sum; git diff --quiet HEAD (tracked cleanliness)
+f5c88a4323bdf8d3a2e1f30aee7eb8dd63195678
+?? .omc/project-memory.json
+?? docs/evidence/s1-review/r1-code-safety/raw/00-identity.txt
+?? docs/evidence/s1-review/r1-code-safety/raw/G1.txt
+?? docs/evidence/s1-review/r1-code-safety/raw/G2-npm-ci.txt
+?? docs/evidence/s1-review/r1-code-safety/raw/G2-pre-npm-ci-attempt.txt
+?? docs/evidence/s1-review/r1-code-safety/raw/G2.txt
+?? docs/evidence/s1-review/r1-code-safety/raw/G3.txt
+?? docs/evidence/s1-review/r1-code-safety/raw/G4.txt
+?? docs/evidence/s1-review/r1-code-safety/raw/G5.txt
+?? docs/evidence/s1-review/r1-code-safety/raw/G6.txt
+?? docs/evidence/s1-review/r1-code-safety/raw/G7.txt
+?? docs/evidence/s1-review/r1-code-safety/raw/P1-dst.txt
+?? docs/evidence/s1-review/r1-code-safety/raw/P2-core.txt
+?? docs/evidence/s1-review/r1-code-safety/raw/P3-real-kill.txt
+?? docs/evidence/s1-review/r1-code-safety/raw/P4-lock-clock.txt
+?? docs/evidence/s1-review/r1-code-safety/raw/P5-deps-native.txt
+?? docs/evidence/s1-review/r1-code-safety/raw/clone-run-g1.sh
+?? docs/evidence/s1-review/r1-code-safety/raw/clone-run-g2.sh
+?? docs/evidence/s1-review/r1-code-safety/raw/clone-run-g6.sh
+?? docs/evidence/s1-review/r1-code-safety/raw/gate-script-deltas-clone.diff
+?? docs/evidence/s1-review/r1-code-safety/raw/gate-script-deltas.diff
+?? docs/evidence/s1-review/r1-code-safety/raw/p1-dst.mjs
+?? docs/evidence/s1-review/r1-code-safety/raw/p2-core.mjs
+?? docs/evidence/s1-review/r1-code-safety/raw/p3-child.mjs
+?? docs/evidence/s1-review/r1-code-safety/raw/p4-lock-clock.mjs
+?? docs/evidence/s1-review/r1-code-safety/raw/run-g1.sh
+?? docs/evidence/s1-review/r1-code-safety/raw/run-g2.sh
+?? docs/evidence/s1-review/r1-code-safety/raw/run-g6.sh
+08a265cfb76f5f6dc7d9d05c0b02542f61ecbed08b16e2a2d805e7c1dd4914f3  -
+TRACKED_CLEAN=yes
+clone:
+f5c88a4323bdf8d3a2e1f30aee7eb8dd63195678
+0
+EXIT=0
+Mon Sep 21 10:17:57 AM UTC 2026

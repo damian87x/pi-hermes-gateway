@@ -1,0 +1,43 @@
+node=v24.20.0 path=/usr/bin/node
+npm=11.19.0 path=/usr/bin/npm
+project_tsc=Version 5.9.3
+global_tsc=Version 7.0.2
+pi_path=/home/damian-linux/.npm-global/bin/pi (not executed by reviewer)
+sqlite 3.53.4
+node:sqlite function
+pi-hermes-gateway@0.0.0 /tmp/s1r1-clone
+├─┬ pi-hermes-gateway-core@0.0.0 -> ./packages/gateway
+│ └── pi-hermes-gateway-protocol@0.0.0 deduped -> ./packages/protocol
+├── pi-hermes-gateway-protocol@0.0.0 -> ./packages/protocol
+└── typescript@5.9.3
+
+
+> pi-hermes-gateway@0.0.0 typecheck
+> npm run build -w pi-hermes-gateway-protocol && npm run typecheck -w pi-hermes-gateway-protocol && npm run typecheck -w pi-hermes-gateway-core
+
+
+> pi-hermes-gateway-protocol@0.0.0 build
+> tsc -p tsconfig.json
+
+
+> pi-hermes-gateway-protocol@0.0.0 typecheck
+> tsc -p tsconfig.json --noEmit
+
+
+> pi-hermes-gateway-core@0.0.0 typecheck
+> tsc -p tsconfig.json --noEmit
+
+
+> pi-hermes-gateway@0.0.0 build
+> npm run build -w pi-hermes-gateway-protocol && npm run build -w pi-hermes-gateway-core
+
+
+> pi-hermes-gateway-protocol@0.0.0 build
+> tsc -p tsconfig.json
+
+
+> pi-hermes-gateway-core@0.0.0 build
+> tsc -p tsconfig.json
+
+G2_OK
+EXIT=0

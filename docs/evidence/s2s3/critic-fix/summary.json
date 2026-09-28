@@ -1,0 +1,74 @@
+{
+  "role": "S2/S3 critic-fixer",
+  "status": "PASS_AFTER_FIX",
+  "baseSha": "2a7caa3c083a0e56be9dcccfe43dd1d8f44a0523",
+  "fixSha": null,
+  "fixShaNote": "Avoid self-reference: fixSha is the commit that contains this file (git rev-parse HEAD on feat/s1-durable-core).",
+  "mustHold": {
+    "fakeDefault": { "pass": true, "evidence": "adapter-seam.test.ts 'openGateway defaults to fake adapter'; daemon.ts/core.ts fall back to createFakeAdapter" },
+    "telegramSendOnly": { "pass": true, "evidence": "grep getUpdates|setWebhook|webhook over adapter-telegram src+dist: 0 hits; only sendMessage URL built; send.test.ts asserts URL" },
+    "timeoutIsCommitUnknown": { "pass": true, "evidence": "adapter: timeout/throw -> commit-unknown (send.test.ts); gateway: persists commit-unknown, no auto-retry; fixed fail-open below" },
+    "companionUnavailableStartsNothing": { "pass": true, "evidence": "unavailable.test.ts + g4 packed import; grep spawn|fork|execFile|child_process|api.telegram|startDaemon over companion src+dist: 0 hits" },
+    "noPiPeersOnDaemonOrAdapter": { "pass": true, "evidence": "gateway/adapter-telegram/protocol package.json: peerDependencies null, pi null, deps only protocol; no Pi imports in src" },
+    "s1TestsStillPass": { "pass": true, "evidence": "protocol 39 + gateway 52 prior S1 = 91 pass" }
+  },
+  "findings": [
+    {
+      "id": "F1",
+      "severity": "high",
+      "fixed": true,
+      "title": "Gateway marked any non-'commit-unknown' receipt as accepted",
+      "detail": "core.ts dispatchOne checked receiptLevel === 'commit-unknown' else accepted. A structural adapter returning a Promise (natural for async HTTP) or a malformed receipt was recorded accepted before/without confirmation; undefined receipt threw and left the row 'dispatching'.",
+      "fix": "packages/gateway/src/core.ts: only receipt?.receiptLevel === 'accepted' is accepted; everything else is commit-unknown (fail-closed).",
+      "test": "packages/gateway/test/adapter-seam.test.ts 'unconfirmed adapter receipt (async/malformed) is commit-unknown, never accepted' (failed before fix: TypeError on undefined receipt after Promise/{} were accepted)."
+    },
+    {
+      "id": "F2",
+      "severity": "info",
+      "fixed": false,
+      "title": "Telegram adapter loaded via CLI config is inert",
+      "detail": "loadSendAdapter calls createAdapter(config) without deps.post, so every send is commit-unknown 'http-client-unconfigured'. Fail-safe and matches README ('no live network calls'), but no real HTTP path exists; sync send() seam cannot host async HTTP without a seam change. Future slice, not an S2/S3 AC."
+    },
+    {
+      "id": "F3",
+      "severity": "low",
+      "fixed": false,
+      "title": "Companion reports ok:true for daemon-rejected requests",
+      "detail": "client.ts rpc wraps a daemon {ok:false,error} response as {ok:true,available:true,body:{ok:false,...}}. Error is visible in body; flag is misleading. Not in must-hold set."
+    },
+    {
+      "id": "F4",
+      "severity": "low",
+      "fixed": false,
+      "title": "loadSendAdapter checks shape only",
+      "detail": "isSendAdapter checks adapterId/maxTextLength/send; module manifests are not run through validateAdapterManifest."
+    }
+  ],
+  "manualChecks": [
+    "loadSendAdapter('packages/adapter-telegram/dist/index.js', dedicated-bot config) -> isSendAdapter true, adapterId telegram (AC2)",
+    "loadSendAdapter with null config -> 'telegram config must be a dedicated-bot object' (no token echo)"
+  ],
+  "gates": [
+    { "id": "typecheck", "command": "npm run typecheck", "exitCode": 0 },
+    { "id": "build", "command": "npm run build", "exitCode": 0 },
+    {
+      "id": "test",
+      "command": "npm test",
+      "exitCode": 0,
+      "counts": {
+        "protocol": { "tests": 39, "pass": 39, "fail": 0 },
+        "gateway": { "tests": 57, "pass": 57, "fail": 0 },
+        "adapterTelegram": { "tests": 6, "pass": 6, "fail": 0 },
+        "piCompanion": { "tests": 3, "pass": 3, "fail": 0 },
+        "priorS1": 91
+      }
+    }
+  ],
+  "changedPaths": [
+    "packages/gateway/src/core.ts",
+    "packages/gateway/test/adapter-seam.test.ts",
+    "docs/evidence/s2s3/critic-fix/summary.json"
+  ],
+  "notDone": ["live Telegram", "tokens", "WhatsApp", "push", "systemd", "telegram-companion (M4)"],
+  "blockers": []
+}

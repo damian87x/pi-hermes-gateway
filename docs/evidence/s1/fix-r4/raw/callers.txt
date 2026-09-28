@@ -1,0 +1,37 @@
+packages/gateway/src/index.ts:7:  TICK_GRACE_MARGIN_MS,
+packages/gateway/src/index.ts:14:export { startDaemon, DEFAULT_TICK_INTERVAL_MS, type Daemon } from "./daemon.js";
+packages/gateway/src/cli.ts:20:const restoreFromBackup = arg("--restore");
+packages/gateway/src/cli.ts:22:if (restoreFromBackup && resumeDispatch) {
+packages/gateway/src/cli.ts:43:    ...(restoreFromBackup ? { restoreFromBackup } : {}),
+packages/gateway/src/core.ts:28:  tickGraceMs: number;
+packages/gateway/src/core.ts:34:export const TICK_GRACE_MARGIN_MS = 5_000;
+packages/gateway/src/core.ts:39:  tickGraceMs: 60_000 + TICK_GRACE_MARGIN_MS,
+packages/gateway/src/core.ts:310:      const grace = this.config.tickGraceMs;
+packages/gateway/src/core.ts:464:  restoreQuarantine(backupTimeMs: number, recoveryTimeMs = this.clock.nowMs()): void {
+packages/gateway/src/core.ts:528:  tickGraceMs?: number;
+packages/gateway/src/core.ts:544:      tickGraceMs: opts.tickGraceMs ?? DEFAULT_CONFIG.tickGraceMs,
+packages/gateway/src/daemon.ts:17:import { DEFAULT_CONFIG, openGateway, TICK_GRACE_MARGIN_MS, type CatchUpPolicy, type Gateway } from "./core.js";
+packages/gateway/src/daemon.ts:24:export const DEFAULT_TICK_INTERVAL_MS = 60_000;
+packages/gateway/src/daemon.ts:81:function replaceDbWithBackup(dbPath: string, backupPath: string): void {
+packages/gateway/src/daemon.ts:123:  restoreFromBackup?: string;
+packages/gateway/src/daemon.ts:133:    if (opts.restoreFromBackup && opts.resumeDispatch) {
+packages/gateway/src/daemon.ts:136:    const intervalMs = opts.tickIntervalMs ?? DEFAULT_TICK_INTERVAL_MS;
+packages/gateway/src/daemon.ts:137:    if (intervalMs > DEFAULT_TICK_INTERVAL_MS || intervalMs < 1) {
+packages/gateway/src/daemon.ts:140:    if (!opts.restoreFromBackup) recoverInterruptedRestore(paths.dbPath);
+packages/gateway/src/daemon.ts:141:    if (opts.restoreFromBackup) replaceDbWithBackup(paths.dbPath, opts.restoreFromBackup);
+packages/gateway/src/daemon.ts:145:    const tickGraceMs = Math.max(DEFAULT_CONFIG.tickGraceMs, intervalMs + TICK_GRACE_MARGIN_MS);
+packages/gateway/src/daemon.ts:151:      tickGraceMs,
+packages/gateway/src/daemon.ts:156:    if (opts.restoreFromBackup) {
+packages/gateway/src/daemon.ts:157:      const backupTimeMs = opts.backupTimeMs ?? statSync(opts.restoreFromBackup).mtimeMs;
+packages/gateway/src/daemon.ts:158:      gw.restoreQuarantine(backupTimeMs, clock.nowMs());
+packages/gateway/test/restore.test.ts:33:  gw2.restoreQuarantine(backupTime, clock2.nowMs());
+packages/gateway/test/restore.test.ts:51:  gw.restoreQuarantine(clock.nowMs() - 1, clock.nowMs());
+packages/gateway/test/restore.test.ts:103:  gw2.restoreQuarantine(backupTime, clock2.nowMs());
+packages/gateway/test/restore.test.ts:161:  gw2.restoreQuarantine(backupTime, clock2.nowMs());
+packages/gateway/test/restore.test.ts:188:  gw.restoreQuarantine(clock.nowMs(), clock.nowMs());
+packages/gateway/test/restore.test.ts:235:    restoreFromBackup: backup,
+packages/gateway/test/restore.test.ts:285:      restoreFromBackup: bad,
+packages/gateway/test/restore.test.ts:306:      restoreFromBackup: bad,
+packages/gateway/test/scheduler.test.ts:3:import { dailyInstantsInRange, DEFAULT_CONFIG, DEFAULT_TICK_INTERVAL_MS, zonedLocalInstant } from "../dist/index.js";
+packages/gateway/test/scheduler.test.ts:190:  const interval = DEFAULT_TICK_INTERVAL_MS;
+packages/gateway/test/scheduler.test.ts:191:  const grace = DEFAULT_CONFIG.tickGraceMs;
