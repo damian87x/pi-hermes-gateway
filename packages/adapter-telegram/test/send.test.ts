@@ -81,17 +81,19 @@ test("2xx ok:true with missing message_id is commit-unknown, not the deliveryId"
 });
 
 test("2xx ok:true with invalid message_id is commit-unknown", () => {
-  const adapter = createTelegramAdapter(
-    { kind: "dedicated-bot", token: TOKEN },
-    {
-      post() {
-        return { kind: "ok", status: 200, json: { ok: true, result: { message_id: "" } } };
+  for (const message_id of ["", 0, -1, 1.5, "0", " 0 "]) {
+    const adapter = createTelegramAdapter(
+      { kind: "dedicated-bot", token: TOKEN },
+      {
+        post() {
+          return { kind: "ok", status: 200, json: { ok: true, result: { message_id } } };
+        },
       },
-    },
-  );
-  const receipt = adapter.send({ deliveryId: "dlv-empty-id", route: ROUTE, text: "hi" });
-  assert.equal(receipt.receiptLevel, "commit-unknown");
-  assert.equal(receipt.providerMessageId, undefined);
+    );
+    const receipt = adapter.send({ deliveryId: "dlv-empty-id", route: ROUTE, text: "hi" });
+    assert.equal(receipt.receiptLevel, "commit-unknown", String(message_id));
+    assert.equal(receipt.providerMessageId, undefined);
+  }
 });
 
 test("2xx with body error (ok:false) is commit-unknown", () => {
