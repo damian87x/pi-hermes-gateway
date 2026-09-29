@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -90,19 +91,42 @@ async function cli(): Promise<number | undefined> {
       process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
       return exitCode;
     }
+    const workerConfig = {
+      provider: process.env.PI_HERMES_WORKER_PROVIDER,
+      model: process.env.PI_HERMES_WORKER_MODEL,
+      prompt: process.env.PI_HERMES_WORKER_PROMPT,
+    };
+    const missing = Object.entries(workerConfig).filter(([, value]) => !value?.trim()).map(([key]) => key);
+    if (missing.length > 0) {
+      process.stderr.write(`missing worker configuration: ${missing.map((key) => `PI_HERMES_WORKER_${key.toUpperCase()}`).join(", ")}\n`);
+      return 2;
+    }
     const store = new Store(profilePaths(profileDir).dbPath);
+    const workerCwd = mkdtempSync(join(tmpdir(), "pi-hermes-worker-"));
     try {
       store.migrate();
       // Admission is durable in the profile DB: one attempted invocation per UTC day across processes.
-      const outcome = await runWorkerJob({ profileId, occurrenceId, prompt: "" }, {
+      const outcome = await runWorkerJob({ profileId, occurrenceId, prompt: workerConfig.prompt! }, {
         dailyInvocationLimit: 1, results: createResultsStore(store), nowMs: Date.now,
-        provider: "", model: "", cwd: profileDir, timeoutMs: 60_000, maxOutputBytes: 1_048_576,
+        provider: workerConfig.provider!, model: workerConfig.model!, cwd: workerCwd, timeoutMs: 60_000, maxOutputBytes: 1_048_576,
+        env: Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined)),
       });
+      if (outcome.status === "accepted") {
+        const deliveries = store.db.prepare("SELECT delivery_id FROM deliveries WHERE occurrence_id = ?").all(occurrenceId);
+        if (deliveries.length > 1) throw new Error(`expected at most one delivery for worker occurrence ${occurrenceId}`);
+        if (deliveries.length === 1) {
+          const updated = store.db.prepare(
+            "UPDATE deliveries SET text = ?, status = 'accepted' WHERE delivery_id = ? AND dispatch_intent = 0",
+          ).run(String((outcome.row.value as { text?: unknown }).text ?? ""), deliveries[0]!.delivery_id);
+          if (updated.changes !== 1) throw new Error(`worker delivery is already dispatching: ${occurrenceId}`);
+        }
+        exitCode = 0;
+      }
       process.stdout.write(`${JSON.stringify(outcome)}\n`);
-      if (outcome.status === "accepted") exitCode = 0;
     } catch (err) {
       process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
     } finally {
+      rmSync(workerCwd, { recursive: true, force: true });
       store.close();
     }
     return exitCode;
