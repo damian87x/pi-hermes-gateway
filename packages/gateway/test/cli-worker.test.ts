@@ -111,7 +111,24 @@ function setup(t, mode = "ok") {
       db.close();
     }
   };
-  return { dir, profileDir, marker, meta, env, argv, run, runPiped, spawns, claims, completedResult, deliveryRows, seedDelivery };
+  const allDeliveries = () => {
+    const db = new DatabaseSync(join(profileDir, "gateway.sqlite"), { readOnly: true });
+    try {
+      return db.prepare("SELECT * FROM deliveries ORDER BY delivery_id").all().map((row) => ({ ...row }));
+    } finally {
+      db.close();
+    }
+  };
+  const failWorkerDeliveryInserts = () => {
+    const store = new Store(join(profileDir, "gateway.sqlite"));
+    try {
+      store.migrate();
+      store.db.exec("CREATE TRIGGER fail_worker_delivery BEFORE INSERT ON deliveries WHEN NEW.source = 'worker' BEGIN SELECT RAISE(ABORT, 'injected worker delivery failure'); END");
+    } finally {
+      store.close();
+    }
+  };
+  return { dir, profileDir, marker, meta, env, argv, run, runPiped, spawns, claims, completedResult, deliveryRows, allDeliveries, failWorkerDeliveryInserts, seedDelivery };
 }
 
 const outcome = (result) => JSON.parse(result.stdout);
@@ -263,33 +280,74 @@ test("cli-worker: accepted result creates one inert delivery on an empty ledger"
   assert.deepEqual(deliveryRows("occ-empty"), [{ occurrence_id: "occ-empty", text: "worker ok", status: "worker-completed", dispatch_intent: 0 }]);
 });
 
-test("cli-worker: accepted result updates only an undispatched placeholder", async (t) => {
+test("cli-worker: a scheduled job delivery is preserved and rejected before admission", async (t) => {
   await avoidUtcMidnight();
-  const { run, seedDelivery, deliveryRows } = setup(t);
-  seedDelivery("occ-placeholder");
-  const result = run(["report", "occ-placeholder"]);
-  assert.equal(result.status, 0, result.stderr);
-  assert.deepEqual(deliveryRows("occ-placeholder"), [{ occurrence_id: "occ-placeholder", text: "worker ok", status: "worker-completed", dispatch_intent: 0 }]);
+  const { run, allDeliveries, claims, spawns, profileDir } = setup(t);
+  const { gw, clock } = openTestGw({ dir: profileDir });
+  gw.store.setMeta("dispatch_enabled", "0");
+  const created = handle(gw, "job.create", {
+    kind: "static-text", text: "original scheduled text", route: ROUTE,
+    schedule: { type: "once", atUtc: "2026-01-01T10:01:00.000Z" },
+  }, clock.nowMs());
+  assert.equal(created.ok, true);
+  clock.set(Date.parse("2026-01-01T10:02:00.000Z"));
+  gw.tick();
+  const [scheduled] = gw.store.listDeliveries();
+  assert.equal(scheduled?.status, "queued");
+  const occurrenceId = scheduled!.occurrence_id;
+  gw.close();
+  const before = allDeliveries();
+  const result = run(["report", occurrenceId]);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /worker occurrence already has a delivery/);
+  assert.deepEqual(allDeliveries(), before);
+  assert.deepEqual(claims(), []);
+  assert.equal(spawns(), 0);
 });
 
-test("cli-worker: multiple deliveries and dispatch-intent rows fail without mutation", async (t) => {
+test("cli-worker: unrelated worker-prefixed delivery IDs do not collide with new results", async (t) => {
   await avoidUtcMidnight();
-  const multi = setup(t);
-  multi.seedDelivery("occ-multi");
-  multi.seedDelivery("occ-multi", { delivery_id: "delivery-occ-multi-2" });
-  const multiBefore = multi.deliveryRows("occ-multi");
-  const multiResult = multi.run(["report", "occ-multi"]);
-  assert.equal(multiResult.status, 1);
-  assert.match(multiResult.stderr, /expected at most one delivery/);
-  assert.deepEqual(multi.deliveryRows("occ-multi"), multiBefore);
+  const { run, seedDelivery, allDeliveries, deliveryRows } = setup(t);
+  seedDelivery("unrelated", { delivery_id: "worker-occ-collision" });
+  const before = allDeliveries();
+  const result = run(["report", "occ-collision"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(allDeliveries().filter((row) => row.occurrence_id === "unrelated"), before);
+  assert.deepEqual(deliveryRows("occ-collision"), [{ occurrence_id: "occ-collision", text: "worker ok", status: "worker-completed", dispatch_intent: 0 }]);
+});
 
-  const dispatching = setup(t);
-  dispatching.seedDelivery("occ-dispatch", { status: "dispatching", dispatch_intent: 1 });
-  const before = dispatching.deliveryRows("occ-dispatch");
-  const result = dispatching.run(["report", "occ-dispatch"]);
-  assert.equal(result.status, 1);
-  assert.match(result.stderr, /already dispatching or is not a placeholder/);
-  assert.deepEqual(dispatching.deliveryRows("occ-dispatch"), before);
+test("cli-worker: result and delivery insertion roll back together and retry does not spawn", async (t) => {
+  await avoidUtcMidnight();
+  const { run, failWorkerDeliveryInserts, claims, deliveryRows, spawns } = setup(t);
+  failWorkerDeliveryInserts();
+  const failed = run(["report", "occ-insert-failure"]);
+  assert.equal(failed.status, 1);
+  assert.match(failed.stderr, /injected worker delivery failure/);
+  assert.deepEqual(claims(), [{ occurrence_id: "occ-insert-failure", status: "interrupted" }]);
+  assert.deepEqual(deliveryRows("occ-insert-failure"), []);
+  assert.equal(spawns(), 1);
+  const retry = run(["report", "occ-insert-failure"]);
+  assert.equal(retry.status, 1);
+  assert.deepEqual(outcome(retry), { status: "rejected", reason: "duplicate" });
+  assert.equal(spawns(), 1);
+});
+
+test("cli-worker: concurrent delivery occupation rejects completion without overwriting", { timeout: 15_000 }, async (t) => {
+  await avoidUtcMidnight();
+  const { run, env, argv, marker, seedDelivery, allDeliveries, claims, spawns } = setup(t, "slow");
+  const child = spawn(process.execPath, argv(["report", "occ-race"]), { env: env(), encoding: "utf8" });
+  const result = new Promise((resolve) => child.once("close", (code) => resolve(code)));
+  const deadline = Date.now() + 10_000;
+  while (!existsSync(marker) || !readFileSync(marker, "utf8").endsWith("\n")) {
+    assert.ok(Date.now() < deadline, "worker never started");
+    await sleep(20);
+  }
+  seedDelivery("occ-race");
+  const before = allDeliveries();
+  assert.equal(await result, 1);
+  assert.deepEqual(allDeliveries(), before);
+  assert.deepEqual(claims(), [{ occurrence_id: "occ-race", status: "interrupted" }]);
+  assert.equal(spawns(), 1);
 });
 
 test("cli-worker: a failing worker still consumes the daily invocation", async (t) => {
