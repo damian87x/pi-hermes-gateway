@@ -26,7 +26,7 @@ else if (mode === "big") process.stdout.write("0123456789".repeat(60_000) + "BIG
 else setTimeout(() => process.stdout.write("worker ok\\n"), mode === "slow" ? 500 : 0);
 `;
 
-function setup(t, mode = "ok") {
+function setup(t, mode = "ok", cliInjection) {
   const dir = mkdtempSync(join(tmpdir(), "cli-worker-"));
   const profileDir = join(dir, "profile");
   mkdirSync(profileDir, { mode: 0o700 });
@@ -34,6 +34,39 @@ function setup(t, mode = "ok") {
   const script = join(dir, "fake-worker.cjs");
   writeFileSync(script, FAKE_WORKER);
   const marker = join(dir, "marker");
+  const cliInjectionHook = cliInjection ? join(dir, "cli-injection-hook.mjs") : undefined;
+  if (cliInjection === "race") {
+    writeFileSync(cliInjectionHook, `
+      import { DatabaseSync } from "node:sqlite";
+      import { registerHooks } from "node:module";
+      globalThis.DatabaseSync = DatabaseSync;
+      registerHooks({ load(url, context, nextLoad) {
+        const loaded = nextLoad(url, context);
+        if (!url.endsWith("/dist/cli.js")) return loaded;
+        const source = String(loaded.source);
+        const marker = source.indexOf("source <> 'worker' LIMIT 1");
+        const at = source.lastIndexOf("if (", marker);
+        const end = source.indexOf("\\n            }", marker) + 14;
+        if (marker < 0 || at < 0 || end < 14) throw new Error("CLI occupancy check seam missing");
+        const insert = source.slice(at, end) + '\\n            { const db = new globalThis.DatabaseSync(process.env.CLI_WORKER_TEST_DB); db.prepare("INSERT INTO deliveries(delivery_id, job_id, occurrence_id, source, route_json, text, not_after_ms, status, request_id, created_at_ms, dispatch_intent) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run("race-delivery", "job-occ-race-before-spawn", "occ-race-before-spawn", "job", "{}", "preserved bytes", 123456789, "queued", null, 123, 0); db.close(); }';
+        return { ...loaded, source: source.slice(0, at) + insert + source.slice(end) };
+      }});
+    `);
+  } else if (cliInjection === "mkdtemp-failure") {
+    writeFileSync(cliInjectionHook, `
+      import { registerHooks } from "node:module";
+      registerHooks({ load(url, context, nextLoad) {
+        const loaded = nextLoad(url, context);
+        if (!url.endsWith("/dist/cli.js")) return loaded;
+        let source = String(loaded.source);
+        const store = 'const store = new Store(profilePaths(profileDir).dbPath);';
+        if (!source.includes(store)) throw new Error("CLI Store seam missing");
+        source = source.replace('import { readFileSync, existsSync, mkdtempSync, rmSync } from "node:fs";', 'import { readFileSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";').replace(store, store + ' const closeStore = store.close.bind(store); store.close = () => { writeFileSync(process.env.CLI_WORKER_TEST_CLOSED, "closed"); closeStore(); };');
+        source = source.replace('workerCwd = mkdtempSync(join(tmpdir(), "pi-hermes-worker-"));', 'throw new Error("injected mkdtemp failure");');
+        return { ...loaded, source };
+      }});
+    `);
+  }
   t.after(() => {
     // Workers run detached in their own process group; reap every one that started.
     const pids = existsSync(marker) ? readFileSync(marker, "utf8").trim().split("\n").filter(Boolean) : [];
@@ -55,7 +88,7 @@ function setup(t, mode = "ok") {
     PI_HERMES_WORKER_PROMPT: "synthetic prompt",
     ...extra,
   });
-  const argv = (args) => ["--import", HOOK, CLI, "--profile", profileDir, "worker", ...args];
+  const argv = (args) => ["--import", HOOK, ...(cliInjectionHook ? ["--import", cliInjectionHook] : []), CLI, "--profile", profileDir, "worker", ...args];
   const seedDelivery = (occurrenceId, overrides = {}) => {
     const store = new Store(join(profileDir, "gateway.sqlite"));
     try {
@@ -66,7 +99,11 @@ function setup(t, mode = "ok") {
       store.close();
     }
   };
-  const run = (args, profile, extra) => spawnSync(process.execPath, argv(args), { encoding: "utf8", env: env(profile, extra), timeout: 10_000 });
+  const run = (args, profile, extra) => spawnSync(process.execPath, argv(args), { encoding: "utf8", env: env(profile, {
+    ...(cliInjection === "race" ? { CLI_WORKER_TEST_DB: join(profileDir, "gateway.sqlite") } : {}),
+    ...(cliInjection === "mkdtemp-failure" ? { CLI_WORKER_TEST_CLOSED: join(dir, "store-closed") } : {}),
+    ...extra,
+  }), timeout: 10_000 });
   // Piped CLI run that reports on close, so every stdout byte is collected; readDelayMs defers reading.
   const runPiped = (args, { readDelayMs = 0, closeStdout = false } = {}) => new Promise((resolve, reject) => {
     const child = spawn(process.execPath, argv(args), { env: env(), stdio: ["ignore", "pipe", "pipe"] });
@@ -302,6 +339,42 @@ test("cli-worker: a scheduled job delivery is preserved and rejected before admi
   assert.match(result.stderr, /worker occurrence already has a delivery/);
   assert.deepEqual(allDeliveries(), before);
   assert.deepEqual(claims(), []);
+  assert.equal(spawns(), 0);
+});
+
+test("cli-worker: a delivery committed after the initial check blocks the physical spawn", async (t) => {
+  await avoidUtcMidnight();
+  const { run, profileDir, allDeliveries, claims, spawns } = setup(t, "ok", "race");
+  const result = run(["report", "occ-race-before-spawn"]);
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /worker occurrence already has a delivery/);
+  assert.ok(existsSync(join(profileDir, "gateway.sqlite")), result.stderr);
+  assert.deepEqual(allDeliveries(), [{
+    delivery_id: "race-delivery", job_id: "job-occ-race-before-spawn", occurrence_id: "occ-race-before-spawn",
+    source: "job", route_json: "{}", text: "preserved bytes", not_after_ms: 123456789, status: "queued",
+    request_id: null, created_at_ms: 123, dispatch_intent: 0,
+  }]);
+  assert.deepEqual(claims(), [{ occurrence_id: "occ-race-before-spawn", status: "interrupted" }]);
+  assert.equal(spawns(), 0);
+  const retry = run(["report", "occ-race-before-spawn"]);
+  assert.equal(retry.status, 1);
+  assert.deepEqual(claims(), [{ occurrence_id: "occ-race-before-spawn", status: "interrupted" }]);
+  assert.equal(spawns(), 0);
+});
+
+test("cli-worker: temporary-directory allocation failure closes Store without claim or spawn", (t) => {
+  const { run, claims, spawns, dir } = setup(t, "ok", "mkdtemp-failure");
+  const result = run(["report", "occ-mkdtemp-failure"]);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /injected mkdtemp failure/);
+  assert.equal(readFileSync(join(dir, "store-closed"), "utf8"), "closed");
+  const store = new Store(join(dir, "profile", "gateway.sqlite"));
+  try {
+    store.migrate();
+    assert.deepEqual(claims(), []);
+  } finally {
+    store.close();
+  }
   assert.equal(spawns(), 0);
 });
 

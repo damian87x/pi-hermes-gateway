@@ -18,6 +18,7 @@ export type RunWorkerJobDeps = {
   timeoutMs: number;
   maxOutputBytes: number;
   env?: Record<string, string>;
+  spawnGuard?: <T>(spawn: () => T) => T;
   loadProfile?: (job: WorkerJobBody) => WorkerProfile;
 };
 
@@ -44,7 +45,8 @@ export async function runWorkerJob(job: RunWorkerJobInput, deps: RunWorkerJobDep
       cwd: deps.cwd,
       timeoutMs: deps.timeoutMs,
       maxOutputBytes: deps.maxOutputBytes,
-      ...(deps.env ? { env: deps.env } : {}),
+      env: deps.env ?? {},
+      ...(deps.spawnGuard ? { spawnGuard: deps.spawnGuard } : {}),
     });
     // Only a completed run may accept; timeouts and rejections fall through to the interrupt path below.
     if (result.kind !== "ok") throw new Error(`worker did not complete: ${JSON.stringify(result)}`);

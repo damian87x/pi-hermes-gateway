@@ -103,8 +103,9 @@ async function cli(): Promise<number | undefined> {
       return 2;
     }
     const store = new Store(profilePaths(profileDir).dbPath);
-    const workerCwd = mkdtempSync(join(tmpdir(), "pi-hermes-worker-"));
+    let workerCwd: string | undefined;
     try {
+      workerCwd = mkdtempSync(join(tmpdir(), "pi-hermes-worker-"));
       store.migrate();
       if (store.db.prepare("SELECT 1 FROM deliveries WHERE occurrence_id = ? AND source <> 'worker' LIMIT 1").get(occurrenceId)) {
         throw new Error(`worker occurrence already has a delivery: ${occurrenceId}`);
@@ -128,14 +129,23 @@ async function cli(): Promise<number | undefined> {
       const outcome = await runWorkerJob({ profileId, occurrenceId, prompt: workerConfig.prompt! }, {
         dailyInvocationLimit: 1, results, nowMs: Date.now,
         provider: workerConfig.provider!, model: workerConfig.model!, cwd: workerCwd, timeoutMs: 60_000, maxOutputBytes: 1_048_576,
+        spawnGuard: (spawn) => store.transaction(() => {
+          if (store.db.prepare("SELECT 1 FROM deliveries WHERE occurrence_id = ? LIMIT 1").get(occurrenceId)) {
+            throw new Error(`worker occurrence already has a delivery: ${occurrenceId}`);
+          }
+          return spawn();
+        }),
       });
       if (outcome.status === "accepted") exitCode = 0;
       process.stdout.write(`${JSON.stringify(outcome)}\n`);
     } catch (err) {
       process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
     } finally {
-      rmSync(workerCwd, { recursive: true, force: true });
-      store.close();
+      try {
+        if (workerCwd) rmSync(workerCwd, { recursive: true, force: true });
+      } finally {
+        store.close();
+      }
     }
     return exitCode;
   }
