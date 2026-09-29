@@ -109,17 +109,30 @@ async function cli(): Promise<number | undefined> {
       const outcome = await runWorkerJob({ profileId, occurrenceId, prompt: workerConfig.prompt! }, {
         dailyInvocationLimit: 1, results: createResultsStore(store), nowMs: Date.now,
         provider: workerConfig.provider!, model: workerConfig.model!, cwd: workerCwd, timeoutMs: 60_000, maxOutputBytes: 1_048_576,
-        env: Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined)),
       });
       if (outcome.status === "accepted") {
-        const deliveries = store.db.prepare("SELECT delivery_id FROM deliveries WHERE occurrence_id = ?").all(occurrenceId);
-        if (deliveries.length > 1) throw new Error(`expected at most one delivery for worker occurrence ${occurrenceId}`);
-        if (deliveries.length === 1) {
-          const updated = store.db.prepare(
-            "UPDATE deliveries SET text = ?, status = 'accepted' WHERE delivery_id = ? AND dispatch_intent = 0",
-          ).run(String((outcome.row.value as { text?: unknown }).text ?? ""), deliveries[0]!.delivery_id);
-          if (updated.changes !== 1) throw new Error(`worker delivery is already dispatching: ${occurrenceId}`);
-        }
+        store.transaction(() => {
+          const deliveries = store.db.prepare("SELECT * FROM deliveries WHERE occurrence_id = ?").all(occurrenceId);
+          if (deliveries.length > 1) throw new Error(`expected at most one delivery for worker occurrence ${occurrenceId}`);
+          const text = String((outcome.row.value as { text?: unknown }).text ?? "");
+          if (deliveries.length === 0) {
+            store.insertDelivery({
+              delivery_id: `worker-${occurrenceId}`, job_id: null, occurrence_id: occurrenceId, source: "worker",
+              route_json: "{}", text, not_after_ms: 0, status: "worker-completed", request_id: null,
+              created_at_ms: outcome.row.acceptedAtMs, dispatch_intent: 0,
+            });
+          } else {
+            const delivery = deliveries[0]!;
+            if (delivery.dispatch_intent !== 0 || delivery.status !== "queued" || delivery.source !== "job" ||
+                delivery.job_id === null || delivery.request_id !== null) {
+              throw new Error(`worker delivery is already dispatching or is not a placeholder: ${occurrenceId}`);
+            }
+            const updated = store.db.prepare(
+              "UPDATE deliveries SET text = ?, status = 'worker-completed' WHERE delivery_id = ? AND dispatch_intent = 0 AND status = 'queued' AND source = 'job' AND job_id IS NOT NULL AND request_id IS NULL",
+            ).run(text, delivery.delivery_id);
+            if (updated.changes !== 1) throw new Error(`worker delivery is already dispatching: ${occurrenceId}`);
+          }
+        });
         exitCode = 0;
       }
       process.stdout.write(`${JSON.stringify(outcome)}\n`);

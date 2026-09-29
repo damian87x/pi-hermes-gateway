@@ -14,12 +14,12 @@ import { handle, openTestGw, ROUTE } from "./helpers.ts";
 const CLI = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
 const HOOK = fileURLToPath(new URL("./cli-worker-profile-hook.mjs", import.meta.url));
 
-// argv after node: [marker, mode, ...worker CLI flags]
+// argv after node: [marker, mode, meta, ...worker CLI flags]
 const FAKE_WORKER = `
-const { appendFileSync } = require("node:fs");
-const [marker, mode] = process.argv.slice(2);
+const { appendFileSync, writeFileSync, readdirSync } = require("node:fs");
+const [marker, mode, meta] = process.argv.slice(2);
 appendFileSync(marker, process.pid + "\\n");
-if (process.env.CLI_WORKER_TEST_META) require("node:fs").writeFileSync(process.env.CLI_WORKER_TEST_META, JSON.stringify({ cwd: process.cwd(), entries: require("node:fs").readdirSync(process.cwd()), argv: process.argv.slice(2) }));
+writeFileSync(meta, JSON.stringify({ cwd: process.cwd(), entries: readdirSync(process.cwd()), argv: process.argv.slice(5), parentSentinel: process.env.PARENT_ONLY_SENTINEL }));
 if (mode === "fail") process.exit(3);
 if (mode === "hang") setInterval(() => {}, 1000);
 else if (mode === "big") process.stdout.write("0123456789".repeat(60_000) + "BIG-TAIL\\n");
@@ -47,35 +47,28 @@ function setup(t, mode = "ok") {
     rmSync(dir, { recursive: true, force: true });
   });
   const meta = join(dir, "worker-meta.json");
-  const env = (profile = [process.execPath, script, marker, mode], extra = {}) => ({
+  const env = (profile = [process.execPath, script, marker, mode, meta], extra = {}) => ({
     ...process.env,
     CLI_WORKER_TEST_PROFILE: JSON.stringify(profile),
-    CLI_WORKER_TEST_META: meta,
     PI_HERMES_WORKER_PROVIDER: "synthetic-provider",
     PI_HERMES_WORKER_MODEL: "synthetic-model",
     PI_HERMES_WORKER_PROMPT: "synthetic prompt",
     ...extra,
   });
   const argv = (args) => ["--import", HOOK, CLI, "--profile", profileDir, "worker", ...args];
-  const ensureOccurrence = (occurrenceId) => {
-    if ((statSync(profileDir).mode & 0o777) !== 0o700) return;
+  const seedDelivery = (occurrenceId, overrides = {}) => {
     const store = new Store(join(profileDir, "gateway.sqlite"));
     try {
       store.migrate();
-      if (store.getOccurrence(occurrenceId)) return;
       const jobId = `job-${occurrenceId}`;
-      store.insertJob({ job_id: jobId, kind: "worker", text: "prompt", route_json: JSON.stringify(ROUTE), schedule_json: "{}", status: "active", created_at_ms: Date.now(), watermark_ms: 0 });
-      store.insertOccurrence({ occurrence_id: occurrenceId, job_id: jobId, scheduled_instant_ms: Date.now(), status: "pending" });
-      store.insertDelivery({ delivery_id: `delivery-${occurrenceId}`, job_id: jobId, occurrence_id: occurrenceId, source: "job", route_json: JSON.stringify(ROUTE), text: "placeholder", not_after_ms: Date.now() + 60_000, status: "queued", request_id: null, created_at_ms: Date.now(), dispatch_intent: 0 });
+      store.insertDelivery({ delivery_id: `delivery-${occurrenceId}`, job_id: jobId, occurrence_id: occurrenceId, source: "job", route_json: JSON.stringify(ROUTE), text: "placeholder", not_after_ms: Date.now() + 60_000, status: "queued", request_id: null, created_at_ms: Date.now(), dispatch_intent: 0, ...overrides });
     } finally {
       store.close();
     }
   };
-  const prepare = (args) => { if (args.length === 2 && args[0] === "report" && args[1] && !args[1].startsWith("--")) ensureOccurrence(args[1]); };
-  const run = (args, profile, extra) => { prepare(args); return spawnSync(process.execPath, argv(args), { encoding: "utf8", env: env(profile, extra), timeout: 10_000 }); };
+  const run = (args, profile, extra) => spawnSync(process.execPath, argv(args), { encoding: "utf8", env: env(profile, extra), timeout: 10_000 });
   // Piped CLI run that reports on close, so every stdout byte is collected; readDelayMs defers reading.
   const runPiped = (args, { readDelayMs = 0, closeStdout = false } = {}) => new Promise((resolve, reject) => {
-    prepare(args);
     const child = spawn(process.execPath, argv(args), { env: env(), stdio: ["ignore", "pipe", "pipe"] });
     const stdout = [];
     let stderr = "";
@@ -118,7 +111,7 @@ function setup(t, mode = "ok") {
       db.close();
     }
   };
-  return { dir, profileDir, marker, meta, env, argv, run, runPiped, spawns, claims, completedResult, deliveryRows };
+  return { dir, profileDir, marker, meta, env, argv, run, runPiped, spawns, claims, completedResult, deliveryRows, seedDelivery };
 }
 
 const outcome = (result) => JSON.parse(result.stdout);
@@ -143,13 +136,13 @@ test("cli-worker: rejects extra arguments and job-supplied executables before ad
 });
 
 test("cli-worker: missing synthetic config refuses before claim or spawn", (t) => {
-  const { run, spawns, claims } = setup(t);
+  const { profileDir, run, spawns } = setup(t);
   const result = run(["report", "occ-missing-config"], undefined, {
     PI_HERMES_WORKER_PROVIDER: "", PI_HERMES_WORKER_MODEL: "", PI_HERMES_WORKER_PROMPT: "",
   });
   assert.equal(result.status, 2, result.stderr);
   assert.match(result.stderr, /missing worker configuration: PI_HERMES_WORKER_PROVIDER, PI_HERMES_WORKER_MODEL, PI_HERMES_WORKER_PROMPT/);
-  assert.deepEqual(claims(), []);
+  assert.equal(existsSync(join(profileDir, "gateway.sqlite")), false);
   assert.equal(spawns(), 0);
 });
 
@@ -237,25 +230,66 @@ test("cli-worker: the command is the first positional; `worker approve ID` never
 test("cli-worker: separate processes reject a repeated occurrence and a second occurrence the same UTC day", async (t) => {
   await avoidUtcMidnight();
   const { run, spawns, claims, deliveryRows, meta, profileDir } = setup(t);
-  const first = run(["report", "occ-1"]);
+  const first = run(["report", "occ-1"], undefined, { PARENT_ONLY_SENTINEL: "must-not-reach-worker" });
   assert.equal(first.status, 0, first.stderr);
   assert.deepEqual(outcome(first).row.value, { kind: "ok", text: "worker ok" });
-  assert.deepEqual(deliveryRows("occ-1"), [{ occurrence_id: "occ-1", text: "worker ok", status: "accepted", dispatch_intent: 0 }]);
+  assert.deepEqual(deliveryRows("occ-1"), [{ occurrence_id: "occ-1", text: "worker ok", status: "worker-completed", dispatch_intent: 0 }]);
   const metadata = JSON.parse(readFileSync(meta, "utf8"));
   assert.notEqual(metadata.cwd, profileDir);
   assert.deepEqual(metadata.entries, []);
+  assert.equal(metadata.parentSentinel, undefined);
   const args = metadata.argv;
   assert.equal(args[args.indexOf("--provider") + 1], "synthetic-provider");
   assert.equal(args[args.indexOf("--model") + 1], "synthetic-model");
   assert.equal(args.at(-1), "synthetic prompt");
+  const firstDelivery = deliveryRows("occ-1");
   const repeat = run(["report", "occ-1"]);
   assert.equal(repeat.status, 1);
   assert.deepEqual(outcome(repeat), { status: "rejected", reason: "duplicate" });
+  assert.deepEqual(deliveryRows("occ-1"), firstDelivery);
   const other = run(["report", "occ-2"]);
   assert.equal(other.status, 1);
   assert.deepEqual(outcome(other), exhausted);
   assert.equal(spawns(), 1);
   assert.deepEqual(claims(), [{ occurrence_id: "occ-1", status: "completed" }]);
+});
+
+test("cli-worker: accepted result creates one inert delivery on an empty ledger", async (t) => {
+  await avoidUtcMidnight();
+  const { run, deliveryRows } = setup(t);
+  const result = run(["report", "occ-empty"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(outcome(result).status, "accepted");
+  assert.deepEqual(deliveryRows("occ-empty"), [{ occurrence_id: "occ-empty", text: "worker ok", status: "worker-completed", dispatch_intent: 0 }]);
+});
+
+test("cli-worker: accepted result updates only an undispatched placeholder", async (t) => {
+  await avoidUtcMidnight();
+  const { run, seedDelivery, deliveryRows } = setup(t);
+  seedDelivery("occ-placeholder");
+  const result = run(["report", "occ-placeholder"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(deliveryRows("occ-placeholder"), [{ occurrence_id: "occ-placeholder", text: "worker ok", status: "worker-completed", dispatch_intent: 0 }]);
+});
+
+test("cli-worker: multiple deliveries and dispatch-intent rows fail without mutation", async (t) => {
+  await avoidUtcMidnight();
+  const multi = setup(t);
+  multi.seedDelivery("occ-multi");
+  multi.seedDelivery("occ-multi", { delivery_id: "delivery-occ-multi-2" });
+  const multiBefore = multi.deliveryRows("occ-multi");
+  const multiResult = multi.run(["report", "occ-multi"]);
+  assert.equal(multiResult.status, 1);
+  assert.match(multiResult.stderr, /expected at most one delivery/);
+  assert.deepEqual(multi.deliveryRows("occ-multi"), multiBefore);
+
+  const dispatching = setup(t);
+  dispatching.seedDelivery("occ-dispatch", { status: "dispatching", dispatch_intent: 1 });
+  const before = dispatching.deliveryRows("occ-dispatch");
+  const result = dispatching.run(["report", "occ-dispatch"]);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /already dispatching or is not a placeholder/);
+  assert.deepEqual(dispatching.deliveryRows("occ-dispatch"), before);
 });
 
 test("cli-worker: a failing worker still consumes the daily invocation", async (t) => {
@@ -554,6 +588,17 @@ async function concurrentFreshProfileRound(t, round, children) {
     assert.equal(db.prepare("PRAGMA journal_mode").get().journal_mode, "wal", details);
     assert.equal(db.prepare("PRAGMA user_version").get().user_version, SCHEMA_VERSION, details);
     assert.equal(db.prepare("PRAGMA integrity_check").get().integrity_check, "ok", details);
+    const deliveries = db.prepare("SELECT occurrence_id, job_id, request_id, source, route_json, text, not_after_ms, created_at_ms, dispatch_intent, status FROM deliveries").all();
+    assert.equal(deliveries.length, 1, details);
+    assert.equal(deliveries[0].occurrence_id, accepted[0].occurrenceId, details);
+    assert.equal(deliveries[0].job_id, null, details);
+    assert.equal(deliveries[0].request_id, null, details);
+    assert.equal(deliveries[0].source, "worker", details);
+    assert.equal(deliveries[0].route_json, "{}", details);
+    assert.equal(deliveries[0].text, "worker ok", details);
+    assert.equal(deliveries[0].not_after_ms, 0, details);
+    assert.equal(deliveries[0].dispatch_intent, 0, details);
+    assert.equal(deliveries[0].status, "worker-completed", details);
   } finally {
     db.close();
   }
