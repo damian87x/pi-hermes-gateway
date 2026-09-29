@@ -88,6 +88,9 @@ export function parseBotTokenConfig(input: unknown): BotTokenConfig {
     if (typeof rec.apiOrigin !== "string" || !ORIGIN_PATTERN.test(rec.apiOrigin)) {
       throw new Error("apiOrigin must be an http(s) host origin");
     }
+    if (rec.apiOrigin.startsWith("http://") && !/^http:\/\/127\.0\.0\.1(?::\d{1,5})?$/.test(rec.apiOrigin)) {
+      throw new Error("apiOrigin must use HTTPS unless targeting 127.0.0.1");
+    }
     parsed.apiOrigin = rec.apiOrigin;
   }
   return parsed;
