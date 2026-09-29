@@ -30,6 +30,34 @@ test("dedicated-bot config only; invalid token is not echoed", () => {
   }
 });
 
+test("origin policy rejects non-loopback HTTP before posting and permits HTTPS or exact loopback", () => {
+  const deniedOrigins = ["http://api.telegram.org", "http://192.168.1.10:8080", "http://127.0.0.1.attacker.test"];
+  for (const apiOrigin of deniedOrigins) {
+    let calls = 0;
+    assert.throws(
+      () => createTelegramAdapter(
+        { kind: "dedicated-bot", token: TOKEN, apiOrigin },
+        { post() { calls += 1; return { kind: "ok", status: 200, json: { ok: true, result: { message_id: 1 } } }; } },
+      ),
+      (err: unknown) => {
+        assert.equal((err instanceof Error ? err.message : String(err)).includes(TOKEN), false);
+        return true;
+      },
+    );
+    assert.equal(calls, 0, apiOrigin);
+  }
+
+  for (const apiOrigin of ["https://api.telegram.org", "http://127.0.0.1", "http://127.0.0.1:8080"]) {
+    const calls: string[] = [];
+    const adapter = createTelegramAdapter(
+      { kind: "dedicated-bot", token: TOKEN, apiOrigin },
+      { post(req) { calls.push(req.url); return { kind: "ok", status: 200, json: { ok: true, result: { message_id: 1 } } }; } },
+    );
+    assert.equal(adapter.send({ deliveryId: "origin-policy", route: ROUTE, text: "hi" }).receiptLevel, "accepted");
+    assert.deepEqual(calls, [`${apiOrigin}/bot${TOKEN}/sendMessage`]);
+  }
+});
+
 test("mock sendMessage success returns accepted provider id", () => {
   const calls: Array<{ url: string; method: string; body: Record<string, unknown> }> = [];
   const adapter = createTelegramAdapter(

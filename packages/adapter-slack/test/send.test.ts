@@ -35,6 +35,34 @@ test("bot-token config only; invalid token is not echoed", () => {
   }
 });
 
+test("origin policy rejects non-loopback HTTP before posting and permits HTTPS or exact loopback", () => {
+  const deniedOrigins = ["http://slack.com", "http://10.0.0.12:8080", "http://127.0.0.1.attacker.test"];
+  for (const apiOrigin of deniedOrigins) {
+    let calls = 0;
+    assert.throws(
+      () => createSlackAdapter(
+        { kind: "bot-token", token: TOKEN, apiOrigin },
+        { post() { calls += 1; return { kind: "ok", status: 200, json: { ok: true, ts: "1.0" } }; } },
+      ),
+      (err: unknown) => {
+        assert.equal((err instanceof Error ? err.message : String(err)).includes(TOKEN), false);
+        return true;
+      },
+    );
+    assert.equal(calls, 0, apiOrigin);
+  }
+
+  for (const apiOrigin of ["https://slack.com", "http://127.0.0.1", "http://127.0.0.1:8080"]) {
+    const calls: string[] = [];
+    const adapter = createSlackAdapter(
+      { kind: "bot-token", token: TOKEN, apiOrigin },
+      { post(req) { calls.push(req.url); return { kind: "ok", status: 200, json: { ok: true, ts: "1.0" } }; } },
+    );
+    assert.equal(adapter.send({ deliveryId: "origin-policy", route: ROUTE, text: "hi" }).receiptLevel, "accepted");
+    assert.deepEqual(calls, [`${apiOrigin}/api/chat.postMessage`]);
+  }
+});
+
 test("mock chat.postMessage success returns accepted provider id", () => {
   const calls: Array<{ url: string; method: string; body: Record<string, unknown> }> = [];
   const adapter = createSlackAdapter(
