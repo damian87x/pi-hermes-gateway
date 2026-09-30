@@ -42,6 +42,10 @@ function setup(t, mode = "ok", cliInjection) {
       globalThis.DatabaseSync = DatabaseSync;
       registerHooks({ load(url, context, nextLoad) {
         const loaded = nextLoad(url, context);
+        if (url.endsWith("/dist/worker/runner.js") && process.env.CLI_WORKER_TEST_TRACK_SPAWN === "1") {
+          const source = String(loaded.source).replace('import { spawn } from "node:child_process";', 'import { spawn as nodeSpawn } from "node:child_process"; import { appendFileSync } from "node:fs"; const spawn = (...args) => { appendFileSync(process.env.CLI_WORKER_TEST_PHYSICAL_SPAWN, "spawn\\\\n"); return nodeSpawn(...args); };');
+          return { ...loaded, source };
+        }
         if (!url.endsWith("/dist/cli.js")) return loaded;
         const source = String(loaded.source);
         const marker = source.indexOf("source <> 'worker' LIMIT 1");
@@ -52,17 +56,35 @@ function setup(t, mode = "ok", cliInjection) {
         return { ...loaded, source: source.slice(0, at) + insert + source.slice(end) };
       }});
     `);
-  } else if (cliInjection === "mkdtemp-failure") {
+  } else if (cliInjection === "mkdtemp-failure" || cliInjection === "postspawn-commit-failure" || cliInjection === "rmsync-failure" || cliInjection === "spawn-track") {
     writeFileSync(cliInjectionHook, `
       import { registerHooks } from "node:module";
       registerHooks({ load(url, context, nextLoad) {
         const loaded = nextLoad(url, context);
-        if (!url.endsWith("/dist/cli.js")) return loaded;
         let source = String(loaded.source);
+        if (url.endsWith("/dist/worker/runner.js") && process.env.CLI_WORKER_TEST_TRACK_SPAWN === "1") {
+          source = source.replace('import { spawn } from "node:child_process";', 'import { spawn as nodeSpawn } from "node:child_process"; import { appendFileSync, existsSync } from "node:fs"; const spawn = (...args) => { const child = nodeSpawn(...args); appendFileSync(process.env.CLI_WORKER_TEST_PHYSICAL_SPAWN, "spawn\\\\n"); if (process.env.CLI_WORKER_TEST_CHILD_CLOSE) child.once("close", () => appendFileSync(process.env.CLI_WORKER_TEST_CHILD_CLOSE, JSON.stringify({ cwd: args[2].cwd, cwdExists: existsSync(args[2].cwd) }) + "\\\\n")); return child; };');
+          return { ...loaded, source };
+        }
+        if (!url.endsWith("/dist/cli.js")) return loaded;
         const store = 'const store = new Store(profilePaths(profileDir).dbPath);';
         if (!source.includes(store)) throw new Error("CLI Store seam missing");
-        source = source.replace('import { readFileSync, existsSync, mkdtempSync, rmSync } from "node:fs";', 'import { readFileSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";').replace(store, store + ' const closeStore = store.close.bind(store); store.close = () => { writeFileSync(process.env.CLI_WORKER_TEST_CLOSED, "closed"); closeStore(); };');
-        source = source.replace('workerCwd = mkdtempSync(join(tmpdir(), "pi-hermes-worker-"));', 'throw new Error("injected mkdtemp failure");');
+        if (process.env.CLI_WORKER_TEST_CLOSED) {
+          source = source.replace('import { readFileSync, existsSync, mkdtempSync, rmSync } from "node:fs";', 'import { readFileSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";').replace(store, store + ' const closeStore = store.close.bind(store); store.close = () => { writeFileSync(process.env.CLI_WORKER_TEST_CLOSED, "closed"); closeStore(); };');
+        }
+        if (process.env.CLI_WORKER_TEST_MKDTEMP_FAILURE === "1") {
+          source = source.replace('workerCwd = mkdtempSync(join(tmpdir(), "pi-hermes-worker-"));', 'throw new Error("injected mkdtemp failure");');
+        }
+        if (process.env.CLI_WORKER_TEST_COMMIT_FAILURE === "1") {
+          source = source.replace(store, store + ' const exec = store.db.exec.bind(store.db); store.db.exec = (sql) => sql === "COMMIT" && existsSync(process.env.CLI_WORKER_TEST_PHYSICAL_SPAWN) ? (() => { throw new Error("injected COMMIT failure"); })() : exec(sql);');
+        }
+        if (process.env.CLI_WORKER_TEST_RMSYNC_FAILURE === "1") {
+          const rmAt = source.indexOf("rmSync(workerCwd, { recursive: true, force: true });");
+          const start = source.lastIndexOf("if (workerCwd)", rmAt);
+          if (rmAt < 0 || start < 0) throw new Error("CLI rmSync seam missing");
+          const end = source.indexOf(";", rmAt) + 1;
+          source = source.slice(0, start) + 'if (workerCwd) { writeFileSync(process.env.CLI_WORKER_TEST_RMSYNC, "attempted"); throw new Error("injected rmSync failure"); }' + source.slice(end);
+        }
         return { ...loaded, source };
       }});
     `);
@@ -100,8 +122,19 @@ function setup(t, mode = "ok", cliInjection) {
     }
   };
   const run = (args, profile, extra) => spawnSync(process.execPath, argv(args), { encoding: "utf8", env: env(profile, {
-    ...(cliInjection === "race" ? { CLI_WORKER_TEST_DB: join(profileDir, "gateway.sqlite") } : {}),
-    ...(cliInjection === "mkdtemp-failure" ? { CLI_WORKER_TEST_CLOSED: join(dir, "store-closed") } : {}),
+    ...(cliInjection === "race" ? {
+      CLI_WORKER_TEST_DB: join(profileDir, "gateway.sqlite"),
+      CLI_WORKER_TEST_TRACK_SPAWN: "1",
+      CLI_WORKER_TEST_PHYSICAL_SPAWN: join(dir, "physical-spawn"),
+    } : {}),
+    ...(cliInjection === "mkdtemp-failure" || cliInjection === "postspawn-commit-failure" || cliInjection === "rmsync-failure" ? { CLI_WORKER_TEST_CLOSED: join(dir, "store-closed") } : {}),
+    ...(cliInjection === "mkdtemp-failure" ? { CLI_WORKER_TEST_MKDTEMP_FAILURE: "1" } : {}),
+    ...(cliInjection === "postspawn-commit-failure" || cliInjection === "spawn-track" ? {
+      CLI_WORKER_TEST_TRACK_SPAWN: "1",
+      CLI_WORKER_TEST_PHYSICAL_SPAWN: join(dir, "physical-spawn"),
+      ...(cliInjection === "postspawn-commit-failure" ? { CLI_WORKER_TEST_COMMIT_FAILURE: "1", CLI_WORKER_TEST_CHILD_CLOSE: join(dir, "child-close") } : {}),
+    } : {}),
+    ...(cliInjection === "rmsync-failure" ? { CLI_WORKER_TEST_RMSYNC_FAILURE: "1", CLI_WORKER_TEST_RMSYNC: join(dir, "rmsync") } : {}),
     ...extra,
   }), timeout: 10_000 });
   // Piped CLI run that reports on close, so every stdout byte is collected; readDelayMs defers reading.
@@ -344,7 +377,7 @@ test("cli-worker: a scheduled job delivery is preserved and rejected before admi
 
 test("cli-worker: a delivery committed after the initial check blocks the physical spawn", async (t) => {
   await avoidUtcMidnight();
-  const { run, profileDir, allDeliveries, claims, spawns } = setup(t, "ok", "race");
+  const { run, dir, profileDir, allDeliveries, claims, spawns } = setup(t, "ok", "race");
   const result = run(["report", "occ-race-before-spawn"]);
   assert.equal(result.status, 1, result.stderr);
   assert.match(result.stderr, /worker occurrence already has a delivery/);
@@ -360,6 +393,34 @@ test("cli-worker: a delivery committed after the initial check blocks the physic
   assert.equal(retry.status, 1);
   assert.deepEqual(claims(), [{ occurrence_id: "occ-race-before-spawn", status: "interrupted" }]);
   assert.equal(spawns(), 0);
+  assert.equal(existsSync(join(dir, "physical-spawn")), false, "occupied guard must not invoke physical spawn");
+});
+
+test("cli-worker: physical spawn and successful child close are recorded by the spawn control", (t) => {
+  const { run, dir, spawns } = setup(t, "ok", "spawn-track");
+  const result = run(["report", "occ-spawn-positive"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(spawns(), 1);
+  assert.equal(readFileSync(join(dir, "physical-spawn"), "utf8"), "spawn\n");
+});
+
+test("cli-worker: post-spawn COMMIT failure kills and reaps child before cwd cleanup", (t) => {
+  const { run, dir, claims } = setup(t, "hang", "postspawn-commit-failure");
+  const result = run(["report", "occ-commit-failure"]);
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /injected COMMIT failure/);
+  assert.equal(readFileSync(join(dir, "physical-spawn"), "utf8"), "spawn\n");
+  const close = JSON.parse(readFileSync(join(dir, "child-close"), "utf8"));
+  assert.equal(close.cwdExists, true, "child close must precede temporary cwd cleanup");
+  assert.deepEqual(claims(), [{ occurrence_id: "occ-commit-failure", status: "interrupted" }]);
+});
+
+test("cli-worker: rmSync failure still closes Store", (t) => {
+  const { run, dir } = setup(t, "ok", "rmsync-failure");
+  const result = run(["report", "occ-rmsync-failure"]);
+  assert.match(result.stderr, /injected rmSync failure/);
+  assert.equal(readFileSync(join(dir, "rmsync"), "utf8"), "attempted");
+  assert.equal(readFileSync(join(dir, "store-closed"), "utf8"), "closed");
 });
 
 test("cli-worker: temporary-directory allocation failure closes Store without claim or spawn", (t) => {
