@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { dirname, join, relative } from "node:path";
+import { isolatedEnvironment, workspaceStageMap } from "./s6-verify.mjs";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -31,19 +32,119 @@ function writeIsolatedNpmrc(home: string): { userconfig: string; globalconfig: s
 }
 
 function isolatedEnv(home: string): NodeJS.ProcessEnv {
+  const config = join(home, "config");
+  const cache = join(home, "cache");
+  const tmp = join(home, "tmp");
+  mkdirSync(config, { recursive: true });
+  mkdirSync(cache, { recursive: true });
+  mkdirSync(tmp, { recursive: true });
   const { userconfig, globalconfig } = writeIsolatedNpmrc(home);
-  return {
-    ...process.env,
-    HOME: home,
-    npm_config_cache: join(home, "npm-cache"),
-    npm_config_prefix: join(home, "prefix"),
-    npm_config_userconfig: userconfig,
-    npm_config_globalconfig: globalconfig,
-    npm_config_registry: "http://127.0.0.1:9/",
-    npm_config_update_notifier: "false",
-    npm_config_audit: "false",
-    npm_config_fund: "false",
+  return isolatedEnvironment({ home, tmp, config, cache, npmUserConfig: userconfig, npmGlobalConfig: globalconfig });
+}
+
+const NPM_CLI = "/usr/lib/node_modules/npm/bin/npm-cli.js";
+const TAR = "/usr/bin/tar";
+const FIND = "/usr/bin/find";
+const GIT = "/usr/bin/git";
+const TYPESCRIPT = "/home/damian-linux/workspace/billioner-coder/apps/oh-my-agents/node_modules/typescript";
+const TYPESCRIPT_TREE_SHA256 = "af722887c894cc274dc5ed82be876b5b55e339a79a53a4a0896db4abd527a6ae";
+const TYPESCRIPT_MANIFEST_SHA256 = "822ef7ca6452205657b6288b066481ecf508bfbf43455d715cf7d3ec457561e6";
+const NPM_TREE_SHA256 = "9732661c75f8c8d1b26c1b044d4327899540076b586b1bba28909573485ee7c8";
+const NODE = "/usr/bin/node";
+const EXECUTABLE_HASHES = new Map([
+  [NODE, "89af8424dd53e560b1933f87ba650d8bf57c83ca5a04600eefb31f416aabbae7"],
+  [NPM_CLI, "8e5f6f3429f8cdbe693cdc29904e9d5a7b127a494bd15c804bd54c7403bfcbe7"],
+  [TAR, "708692f9457a16a95a51fd881551b55b4ce72200d16b8c6d2bacbea857cfd9cc"],
+  [FIND, "efe4843f166525b02f328f0c456a884d6a597f32d2c78cd615b6be0b64279bcf"],
+  ["/usr/bin/gzip", "2ba6fd35db5f0b5561e56b97124a08b067464b795e8e08278367f23dc539d549"],
+  [GIT, "5516c9f362c29376ab9a499a33082f9f611941d8c75930c880e30ad109e39c9a"],
+  ["/usr/bin/dash", "c626229526bb58ec2d0f585f3c3ae1412e6f973b4353385042d11c38d8426917"],
+  ["/usr/lib/cargo/bin/coreutils/env", "48893b0fb21436b54619db80486e83ef39dfccaf1aefe83dfa00c02d6146e8c0"],
+]);
+
+function npm(args: string[], options: Parameters<typeof execFileSync>[2]): string {
+  return execFileSync(NODE, [NPM_CLI, ...args], options as never) as string;
+}
+
+function directoryHash(root: string): string {
+  const entries: { path: string; kind: string; bytes: Buffer }[] = [];
+  const visit = (dir: string, prefix: string) => {
+    for (const name of readdirSync(dir).sort()) {
+      const path = join(dir, name);
+      const rel = prefix ? `${prefix}/${name}` : name;
+      const stat = lstatSync(path);
+      if (stat.isSymbolicLink()) entries.push({ path: rel, kind: "L", bytes: Buffer.from(readlinkSync(path)) });
+      else if (stat.isDirectory()) visit(path, rel);
+      else if (stat.isFile()) entries.push({ path: rel, kind: "F", bytes: readFileSync(path) });
+      else throw new Error(`unexpected executable tree entry: ${rel}`);
+    }
   };
+  visit(root, "");
+  const hash = createHash("sha256");
+  for (const entry of entries.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))) {
+    hash.update(entry.path).update("\0").update(entry.kind).update(entry.bytes).update("\0");
+  }
+  return hash.digest("hex");
+}
+
+function verifyExecutableInputs(): void {
+  if (realpathSync("/usr/bin/npm") !== NPM_CLI || realpathSync("/bin/sh") !== "/usr/bin/dash") {
+    throw new Error("unexpected npm/shell executable chain");
+  }
+  for (const [path, expected] of EXECUTABLE_HASHES) {
+    if (realpathSync(path) !== path || !statSync(path).isFile()) throw new Error(`unexpected executable input: ${path}`);
+    if (createHash("sha256").update(readFileSync(path)).digest("hex") !== expected) throw new Error(`executable input changed: ${path}`);
+  }
+  if (directoryHash("/usr/lib/node_modules/npm") !== NPM_TREE_SHA256) throw new Error("npm executable tree changed");
+}
+
+function verifyCompiler(): void {
+  verifyExecutableInputs();
+  if (lstatSync(TYPESCRIPT).uid !== process.getuid()) throw new Error("TypeScript artifact has unexpected owner");
+  const manifestPath = join(TYPESCRIPT, "package.json");
+  const manifest = readFileSync(manifestPath);
+  if (createHash("sha256").update(manifest).digest("hex") !== TYPESCRIPT_MANIFEST_SHA256) {
+    throw new Error("audited TypeScript manifest changed");
+  }
+  if ((JSON.parse(manifest.toString("utf8")) as { version?: string }).version !== "5.9.3") {
+    throw new Error("TypeScript 5.9.3 required");
+  }
+  if (directoryHash(TYPESCRIPT) !== TYPESCRIPT_TREE_SHA256) throw new Error("audited TypeScript tree changed");
+  for (const file of ["bin/tsc", "lib/tsc.js", "lib/typescript.js", "lib/lib.es5.d.ts"]) {
+    if (!statSync(join(TYPESCRIPT, file)).isFile()) throw new Error(`incomplete TypeScript artifact: ${file}`);
+  }
+}
+
+function bootstrapStaging(work: string, env: NodeJS.ProcessEnv): string {
+  verifyCompiler();
+  const stage = join(work, "source");
+  mkdirSync(stage);
+  const archive = execFileSync(GIT, ["archive", "--format=tar", "HEAD"], { cwd: root, env, encoding: "buffer" });
+  execFileSync(TAR, ["-xf", "-", "-C", stage], { cwd: root, env, input: archive, stdio: "pipe" });
+  const rootManifest = JSON.parse(readFileSync(join(stage, "package.json"), "utf8")) as { workspaces?: unknown };
+  const expectedPaths = PACKAGES.map((spec) => `packages/${spec.dir}`);
+  const committedWorkspaces = rootManifest.workspaces;
+  if (!Array.isArray(committedWorkspaces) || committedWorkspaces.length !== expectedPaths.length
+    || expectedPaths.some((path) => !committedWorkspaces.includes(path))) {
+    throw new Error("committed workspace list changed or is incomplete");
+  }
+  const packageMap: { dir: string; name: string }[] = [];
+  for (const spec of PACKAGES) {
+    const manifest = JSON.parse(readFileSync(join(stage, "packages", spec.dir, "package.json"), "utf8")) as { name?: string };
+    packageMap.push({ dir: `packages/${spec.dir}`, name: manifest.name ?? "" });
+  }
+  const links = workspaceStageMap(stage, packageMap);
+  for (const spec of PACKAGES) {
+    const path = join(stage, "packages", spec.dir);
+    if (lstatSync(path).isSymbolicLink() || !lstatSync(path).isDirectory()) throw new Error(`workspace is not a staged directory: ${spec.dir}`);
+  }
+  const modules = join(stage, "node_modules");
+  const bins = join(modules, ".bin");
+  mkdirSync(bins, { recursive: true });
+  for (const link of links) symlinkSync(relative(dirname(link.link), link.source), link.link, "dir");
+  symlinkSync(TYPESCRIPT, join(modules, "typescript"), "dir");
+  symlinkSync(join(TYPESCRIPT, "bin", "tsc"), join(bins, "tsc"));
+  return stage;
 }
 
 function packTo(
@@ -51,7 +152,7 @@ function packTo(
   pkgDir: string,
   env: NodeJS.ProcessEnv,
 ): { filename: string; name: string; version: string; sha256: string } {
-  const packOut = execFileSync("npm", ["pack", "--json", "--pack-destination", dest, "--offline"], {
+  const packOut = npm(["pack", "--json", "--ignore-scripts", "--pack-destination", dest, "--offline"], {
     cwd: pkgDir,
     encoding: "utf8",
     env,
@@ -64,7 +165,7 @@ function packTo(
 }
 
 function tarList(tarball: string): string[] {
-  return execFileSync("tar", ["-tzf", tarball], { encoding: "utf8" }).split("\n").filter(Boolean);
+  return execFileSync(TAR, ["-tzf", tarball], { encoding: "utf8", env: isolatedEnv(dirname(tarball)) }).split("\n").filter(Boolean);
 }
 
 function install(home: string, tarballs: string[]): string {
@@ -73,9 +174,10 @@ function install(home: string, tarballs: string[]): string {
     join(consumer, "package.json"),
     JSON.stringify({ name: "s6-consumer", version: "0.0.0", private: true, type: "module" }),
   );
-  execFileSync("npm", ["install", "--ignore-scripts", "--no-package-lock", "--offline", ...tarballs], {
+  const env = isolatedEnv(home);
+  npm(["install", "--omit=dev", "--ignore-scripts", "--no-package-lock", "--offline", ...tarballs], {
     cwd: consumer,
-    env: isolatedEnv(home),
+    env,
     encoding: "utf8",
     stdio: "pipe",
   });
@@ -84,12 +186,13 @@ function install(home: string, tarballs: string[]): string {
 
 function runImport(consumer: string, source: string): string {
   writeFileSync(join(consumer, "import.mjs"), source);
-  return execFileSync(process.execPath, ["import.mjs"], { cwd: consumer, encoding: "utf8" });
+  return execFileSync(NODE, ["import.mjs"], { cwd: consumer, encoding: "utf8", env: isolatedEnv(consumer) });
 }
 
 function nestedDirs(consumer: string): string {
-  return execFileSync("find", [join(consumer, "node_modules"), "-maxdepth", "4", "-type", "d"], {
+  return execFileSync(FIND, [join(consumer, "node_modules"), "-maxdepth", "4", "-type", "d"], {
     encoding: "utf8",
+    env: isolatedEnv(consumer),
   });
 }
 
@@ -112,33 +215,37 @@ test("s6 packed tarballs install in a disposable npm home without publish", { ti
       assert.equal(pkg.pi, undefined);
     }
   }
-  const doctorSrc = readFileSync(join(gatewayDir, "src", "doctor.ts"), "utf8");
-  const cliSrc = readFileSync(join(gatewayDir, "src", "cli.ts"), "utf8");
+  const doctorSrc = readFileSync(join(root, "packages", "gateway", "src", "doctor.ts"), "utf8");
+  const cliSrc = readFileSync(join(root, "packages", "gateway", "src", "cli.ts"), "utf8");
   for (const src of [doctorSrc, cliSrc]) {
     assert.equal(src.includes("npm" + " publish"), false);
     assert.equal(src.includes("systemctl enable"), false);
     assert.equal(src.includes("enable-linger"), false);
   }
 
-  const home = process.env.HOME;
-  assert.ok(home, "S6 tests require a task-owned HOME on the home filesystem");
-  const work = mkdtempSync(join(home, "s6-pack-"));
+  const taskHome = process.env.S6_TASK_HOME;
+  assert.ok(taskHome && taskHome.startsWith("/"), "S6 requires an explicitly supplied owned task home");
+  const homeStat = lstatSync(taskHome);
+  assert.equal(homeStat.isSymbolicLink(), false, "task home must not be a symlink");
+  assert.equal(homeStat.uid, process.getuid(), "task home must be owned by the test user");
+  const work = mkdtempSync(join(taskHome, "s6-pack-"));
   try {
     const packEnv = isolatedEnv(work);
     assert.equal(packEnv.npm_config_userconfig, join(work, ".npmrc"));
     assert.equal(packEnv.npm_config_globalconfig, join(work, "npmrc-global"));
     assert.equal(packEnv.npm_config_registry, "http://127.0.0.1:9/");
-    assert.notEqual(packEnv.npm_config_userconfig, join(home, ".npmrc"));
-    execFileSync("npm", ["run", "build"], { cwd: root, encoding: "utf8", stdio: "pipe", env: packEnv });
+    assert.notEqual(packEnv.npm_config_userconfig, join(taskHome, ".npmrc"));
+    const stage = bootstrapStaging(work, packEnv);
+    npm(["run", "build"], { cwd: stage, encoding: "utf8", stdio: "pipe", env: packEnv });
     const tarballs: Record<string, string> = {};
     const listings: Record<string, string[]> = {};
     const identities: Record<string, { name: string; version: string; sha256: string }> = {};
     for (const spec of PACKAGES) {
-      const manifest = JSON.parse(readFileSync(join(packagesDir, spec.dir, "package.json"), "utf8")) as {
+      const manifest = JSON.parse(readFileSync(join(stage, "packages", spec.dir, "package.json"), "utf8")) as {
         name: string;
         version: string;
       };
-      const packed = packTo(work, join(packagesDir, spec.dir), packEnv);
+      const packed = packTo(work, join(stage, "packages", spec.dir), packEnv);
       assert.equal(packed.name, manifest.name, `${spec.dir} packed name drift`);
       assert.equal(packed.version, manifest.version, `${spec.dir} packed version drift`);
       assert.equal(packed.name, spec.name);
