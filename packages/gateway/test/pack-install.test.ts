@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -46,16 +46,21 @@ function isolatedEnv(home: string): NodeJS.ProcessEnv {
   };
 }
 
-function packTo(dest: string, pkgDir: string, env: NodeJS.ProcessEnv): string {
+function packTo(
+  dest: string,
+  pkgDir: string,
+  env: NodeJS.ProcessEnv,
+): { filename: string; name: string; version: string; sha256: string } {
   const packOut = execFileSync("npm", ["pack", "--json", "--pack-destination", dest, "--offline"], {
     cwd: pkgDir,
     encoding: "utf8",
     env,
   });
-  const packed = JSON.parse(packOut) as { filename: string }[];
-  const filename = packed[0]?.filename;
-  if (!filename) throw new Error(`npm pack produced no filename in ${pkgDir}`);
-  return join(dest, filename);
+  const packed = JSON.parse(packOut) as { filename: string; name: string; version: string }[];
+  const entry = packed[0];
+  if (!entry?.filename) throw new Error(`npm pack produced no filename in ${pkgDir}`);
+  const tarball = join(dest, entry.filename);
+  return { ...entry, sha256: createHash("sha256").update(readFileSync(tarball)).digest("hex") };
 }
 
 function tarList(tarball: string): string[] {
@@ -115,20 +120,33 @@ test("s6 packed tarballs install in a disposable npm home without publish", { ti
     assert.equal(src.includes("enable-linger"), false);
   }
 
-  const work = mkdtempSync(join(tmpdir(), "s6-pack-"));
+  const home = process.env.HOME;
+  assert.ok(home, "S6 tests require a task-owned HOME on the home filesystem");
+  const work = mkdtempSync(join(home, "s6-pack-"));
   try {
     const packEnv = isolatedEnv(work);
     assert.equal(packEnv.npm_config_userconfig, join(work, ".npmrc"));
     assert.equal(packEnv.npm_config_globalconfig, join(work, "npmrc-global"));
     assert.equal(packEnv.npm_config_registry, "http://127.0.0.1:9/");
-    assert.notEqual(packEnv.npm_config_userconfig, process.env.HOME ? join(process.env.HOME, ".npmrc") : packEnv.npm_config_userconfig);
-    execFileSync("npm", ["run", "build"], { cwd: root, encoding: "utf8", stdio: "pipe" });
+    assert.notEqual(packEnv.npm_config_userconfig, join(home, ".npmrc"));
+    execFileSync("npm", ["run", "build"], { cwd: root, encoding: "utf8", stdio: "pipe", env: packEnv });
     const tarballs: Record<string, string> = {};
     const listings: Record<string, string[]> = {};
+    const identities: Record<string, { name: string; version: string; sha256: string }> = {};
     for (const spec of PACKAGES) {
-      tarballs[spec.name] = packTo(work, join(packagesDir, spec.dir), packEnv);
+      const manifest = JSON.parse(readFileSync(join(packagesDir, spec.dir, "package.json"), "utf8")) as {
+        name: string;
+        version: string;
+      };
+      const packed = packTo(work, join(packagesDir, spec.dir), packEnv);
+      assert.equal(packed.name, manifest.name, `${spec.dir} packed name drift`);
+      assert.equal(packed.version, manifest.version, `${spec.dir} packed version drift`);
+      assert.equal(packed.name, spec.name);
+      tarballs[spec.name] = join(work, packed.filename);
+      identities[spec.name] = { name: packed.name, version: packed.version, sha256: packed.sha256 };
       listings[spec.name] = tarList(tarballs[spec.name]!);
     }
+    console.log(`S6 packed tarball identities: ${JSON.stringify(identities)}`);
 
     const coreList = listings["pi-hermes-gateway-core"]!;
     for (const name of [
