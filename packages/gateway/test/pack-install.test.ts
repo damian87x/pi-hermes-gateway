@@ -72,7 +72,7 @@ function requireUnprovenProductBoundary(): never {
 
 const pathResolver = {
   lstat(path: string) {
-    return { isSymbolicLink: lstatSync(path).isSymbolicLink() };
+    return lstatSync(path);
   },
   realpath: realpathSync,
 };

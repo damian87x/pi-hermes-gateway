@@ -121,7 +121,7 @@ export function runSelfTest() {
   const syntheticResolver = (symlinks = [], failures = []) => ({
     lstat(path) {
       if (failures.includes(path)) throw new Error("synthetic resolver failure");
-      return { isSymbolicLink: symlinks.includes(path) };
+      return { isSymbolicLink: () => symlinks.includes(path) };
     },
     realpath(path) {
       if (failures.includes(path)) throw new Error("synthetic resolver failure");
@@ -133,6 +133,8 @@ export function runSelfTest() {
     { dir: "packages/gateway", name: "pi-hermes-gateway-core" },
   ];
   const resolver = syntheticResolver();
+  assert.equal(typeof resolver.lstat("/staged").isSymbolicLink, "function");
+  assert.doesNotThrow(() => assertCanonicalWithin("/staged", "/staged/packages/protocol", resolver));
   const mapped = workspaceStageMap("/staged", entries, resolver);
   assert.deepEqual(mapped.map(({ link }) => link), [
     "/staged/node_modules/pi-hermes-gateway-protocol",
