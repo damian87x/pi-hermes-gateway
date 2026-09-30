@@ -37,7 +37,31 @@ export function isolatedEnvironment(owned, _untrusted = {}) {
   };
 }
 
-export function workspaceStageMap(root, entries) {
+export function assertCanonicalPath(path, resolver) {
+  if (!isAbsolute(path) || resolve(path) !== path) throw new Error("path must be absolute and normalized");
+  let current = sep;
+  for (const component of path.split(sep).filter(Boolean)) {
+    current = join(current, component);
+    const stat = resolver.lstat(current);
+    if (stat.isSymbolicLink() || resolver.realpath(current) !== current) {
+      throw new Error("path contains a symlink or noncanonical ancestor");
+    }
+  }
+  return path;
+}
+
+export function assertCanonicalWithin(root, path, resolver) {
+  assertCanonicalPath(root, resolver);
+  assertCanonicalPath(path, resolver);
+  const rel = relative(root, path);
+  if (!rel || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+    throw new Error("path is outside canonical root");
+  }
+  return path;
+}
+
+export function workspaceStageMap(root, entries, resolver) {
+  assertCanonicalPath(root, resolver);
   const names = new Set();
   const paths = new Set();
   const result = [];
@@ -48,11 +72,9 @@ export function workspaceStageMap(root, entries) {
     if (isAbsolute(entry.dir) || rel !== entry.dir || rel === "." || rel === ".." || rel.startsWith(`..${sep}`)) {
       throw new Error("untrusted workspace path");
     }
-    const source = resolve(root, rel);
-    const fromRoot = relative(resolve(root), source);
-    if (!fromRoot || fromRoot === ".." || fromRoot.startsWith(`..${sep}`) || isAbsolute(fromRoot) || paths.has(fromRoot)) {
-      throw new Error("duplicate or escaping workspace path");
-    }
+    const source = assertCanonicalWithin(root, resolve(root, rel), resolver);
+    const fromRoot = relative(root, source);
+    if (paths.has(fromRoot)) throw new Error("duplicate workspace path");
     names.add(entry.name);
     paths.add(fromRoot);
     result.push({ name: entry.name, source, link: join(root, "node_modules", entry.name) });
@@ -65,7 +87,16 @@ export function runSelfTest() {
     home: "/owned/home", tmp: "/owned/tmp", config: "/owned/config", cache: "/owned/cache",
     npmUserConfig: "/owned/home/.npmrc", npmGlobalConfig: "/owned/home/npmrc-global",
   });
-  const synthetic = { ...env, SYNTHETIC_TOKEN: "secret", API_KEY: "secret", NODE_OPTIONS: "--import=evil", npm_config_userconfig: "/untrusted/npmrc" };
+  const synthetic = {
+    ...env,
+    SYNTHETIC_TOKEN: "secret",
+    API_KEY: "secret",
+    NODE_OPTIONS: "--import=evil",
+    LD_PRELOAD: "/untrusted/preload.so",
+    npm_config_userconfig: "/untrusted/npmrc",
+    npm_config_globalconfig: "/untrusted/global.npmrc",
+    NPM_CONFIG_GLOBALCONFIG: "/untrusted/upper.npmrc",
+  };
   const clean = isolatedEnvironment({
     home: "/owned/home", tmp: "/owned/tmp", config: "/owned/config", cache: "/owned/cache",
     npmUserConfig: "/owned/home/.npmrc", npmGlobalConfig: "/owned/home/npmrc-global",
@@ -73,7 +104,13 @@ export function runSelfTest() {
   assert.equal(clean.SYNTHETIC_TOKEN, undefined);
   assert.equal(clean.API_KEY, undefined);
   assert.equal(clean.NODE_OPTIONS, undefined);
+  assert.equal(clean.LD_PRELOAD, undefined);
   assert.equal(clean.npm_config_userconfig, "/owned/home/.npmrc");
+  assert.equal(clean.npm_config_globalconfig, "/owned/home/npmrc-global");
+  assert.equal(clean.NPM_CONFIG_GLOBALCONFIG, undefined);
+  assert.equal(synthetic.LD_PRELOAD, "/untrusted/preload.so");
+  assert.equal(synthetic.npm_config_globalconfig, "/untrusted/global.npmrc");
+  assert.equal(synthetic.NPM_CONFIG_GLOBALCONFIG, "/untrusted/upper.npmrc");
   assert.equal(clean.npm_config_cache, "/owned/cache/npm");
   assert.equal(clean.TMPDIR, "/owned/tmp");
   assert.equal(clean.XDG_CONFIG_HOME, "/owned/config");
@@ -81,11 +118,22 @@ export function runSelfTest() {
   assert.equal(synthetic.NODE_OPTIONS, "--import=evil");
   assert.equal(clean.HOME, "/owned/home");
 
+  const syntheticResolver = (symlinks = [], failures = []) => ({
+    lstat(path) {
+      if (failures.includes(path)) throw new Error("synthetic resolver failure");
+      return { isSymbolicLink: symlinks.includes(path) };
+    },
+    realpath(path) {
+      if (failures.includes(path)) throw new Error("synthetic resolver failure");
+      return path;
+    },
+  });
   const entries = [
     { dir: "packages/protocol", name: "pi-hermes-gateway-protocol" },
     { dir: "packages/gateway", name: "pi-hermes-gateway-core" },
   ];
-  const mapped = workspaceStageMap("/staged", entries);
+  const resolver = syntheticResolver();
+  const mapped = workspaceStageMap("/staged", entries, resolver);
   assert.deepEqual(mapped.map(({ link }) => link), [
     "/staged/node_modules/pi-hermes-gateway-protocol",
     "/staged/node_modules/pi-hermes-gateway-core",
@@ -96,7 +144,15 @@ export function runSelfTest() {
     [{ dir: "packages/protocol", name: "attacker-name" }],
     [entries[0], entries[0]],
     [{ dir: "packages/protocol/../../outside", name: "pi-hermes-gateway-protocol" }],
-  ]) assert.throws(() => workspaceStageMap("/staged", bad));
+  ]) assert.throws(() => workspaceStageMap("/staged", bad, resolver));
+  for (const [root, path, hostile] of [
+    ["/", "/task/home", syntheticResolver(["/task"])],
+    ["/", "/staged", syntheticResolver(["/staged"])],
+    ["/staged", "/staged/packages/protocol", syntheticResolver(["/staged/packages"])],
+    ["/staged", "/staged/inside", syntheticResolver(["/staged/inside"])],
+    ["/staged", "/staged/packages/protocol", syntheticResolver([], ["/staged/packages"])],
+  ]) assert.throws(() => assertCanonicalWithin(root, path, hostile));
+  assert.throws(() => assertCanonicalWithin("/staged", "/staged-sibling/file", resolver));
   console.log("S6 pure synthetic checks passed");
 }
 

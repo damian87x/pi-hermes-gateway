@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync,
+  rmSync, statSync, symlinkSync, writeFileSync,
+} from "node:fs";
 import { createHash } from "node:crypto";
 import { dirname, join, relative } from "node:path";
-import { isolatedEnvironment, workspaceStageMap } from "./s6-verify.mjs";
+import { assertCanonicalPath, assertCanonicalWithin, isolatedEnvironment, workspaceStageMap } from "./s6-verify.mjs";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -62,8 +65,29 @@ const EXECUTABLE_HASHES = new Map([
   ["/usr/lib/cargo/bin/coreutils/env", "48893b0fb21436b54619db80486e83ef39dfccaf1aefe83dfa00c02d6146e8c0"],
 ]);
 
+function requireUnprovenProductBoundary(): never {
+  // Replace only with an independently reviewed validator for actual owned controls.
+  throw new Error("UNPROVEN: approved task-owned product execution boundary is unavailable");
+}
+
+const pathResolver = {
+  lstat(path: string) {
+    return { isSymbolicLink: lstatSync(path).isSymbolicLink() };
+  },
+  realpath: realpathSync,
+};
+
+function runProductSubprocess(
+  command: string,
+  args: string[],
+  options: Parameters<typeof execFileSync>[2],
+): string | Buffer {
+  requireUnprovenProductBoundary();
+  return execFileSync(command, args, options as never);
+}
+
 function npm(args: string[], options: Parameters<typeof execFileSync>[2]): string {
-  return execFileSync(NODE, [NPM_CLI, ...args], options as never) as string;
+  return runProductSubprocess(NODE, [NPM_CLI, ...args], options) as string;
 }
 
 function directoryHash(root: string): string {
@@ -117,10 +141,23 @@ function verifyCompiler(): void {
 
 function bootstrapStaging(work: string, env: NodeJS.ProcessEnv): string {
   verifyCompiler();
+  assertCanonicalPath(work, pathResolver);
   const stage = join(work, "source");
   mkdirSync(stage);
-  const archive = execFileSync(GIT, ["archive", "--format=tar", "HEAD"], { cwd: root, env, encoding: "buffer" });
-  execFileSync(TAR, ["-xf", "-", "-C", stage], { cwd: root, env, input: archive, stdio: "pipe" });
+  const archive = runProductSubprocess(GIT, ["archive", "--format=tar", "HEAD"], {
+    cwd: root,
+    env,
+    encoding: "buffer",
+  }) as Buffer;
+  runProductSubprocess(TAR, ["-xf", "-", "-C", stage], { cwd: root, env, input: archive, stdio: "pipe" });
+  assertCanonicalPath(stage, pathResolver);
+  assertCanonicalWithin(stage, join(stage, "package.json"), pathResolver);
+  assertCanonicalWithin(stage, join(stage, "packages"), pathResolver);
+  for (const spec of PACKAGES) {
+    const packageDir = join(stage, "packages", spec.dir);
+    assertCanonicalWithin(stage, packageDir, pathResolver);
+    assertCanonicalWithin(stage, join(packageDir, "package.json"), pathResolver);
+  }
   const rootManifest = JSON.parse(readFileSync(join(stage, "package.json"), "utf8")) as { workspaces?: unknown };
   const expectedPaths = PACKAGES.map((spec) => `packages/${spec.dir}`);
   const committedWorkspaces = rootManifest.workspaces;
@@ -133,14 +170,15 @@ function bootstrapStaging(work: string, env: NodeJS.ProcessEnv): string {
     const manifest = JSON.parse(readFileSync(join(stage, "packages", spec.dir, "package.json"), "utf8")) as { name?: string };
     packageMap.push({ dir: `packages/${spec.dir}`, name: manifest.name ?? "" });
   }
-  const links = workspaceStageMap(stage, packageMap);
+  const links = workspaceStageMap(stage, packageMap, pathResolver);
   for (const spec of PACKAGES) {
-    const path = join(stage, "packages", spec.dir);
-    if (lstatSync(path).isSymbolicLink() || !lstatSync(path).isDirectory()) throw new Error(`workspace is not a staged directory: ${spec.dir}`);
+    if (!lstatSync(join(stage, "packages", spec.dir)).isDirectory()) throw new Error(`workspace is not a staged directory: ${spec.dir}`);
   }
   const modules = join(stage, "node_modules");
+  assertCanonicalPath(stage, pathResolver);
+  mkdirSync(modules);
   const bins = join(modules, ".bin");
-  mkdirSync(bins, { recursive: true });
+  mkdirSync(bins);
   for (const link of links) symlinkSync(relative(dirname(link.link), link.source), link.link, "dir");
   symlinkSync(TYPESCRIPT, join(modules, "typescript"), "dir");
   symlinkSync(join(TYPESCRIPT, "bin", "tsc"), join(bins, "tsc"));
@@ -165,7 +203,11 @@ function packTo(
 }
 
 function tarList(tarball: string): string[] {
-  return execFileSync(TAR, ["-tzf", tarball], { encoding: "utf8", env: isolatedEnv(dirname(tarball)) }).split("\n").filter(Boolean);
+  const listing = runProductSubprocess(TAR, ["-tzf", tarball], {
+    encoding: "utf8",
+    env: isolatedEnv(dirname(tarball)),
+  }) as string;
+  return listing.split("\n").filter(Boolean);
 }
 
 function install(home: string, tarballs: string[]): string {
@@ -186,17 +228,22 @@ function install(home: string, tarballs: string[]): string {
 
 function runImport(consumer: string, source: string): string {
   writeFileSync(join(consumer, "import.mjs"), source);
-  return execFileSync(NODE, ["import.mjs"], { cwd: consumer, encoding: "utf8", env: isolatedEnv(consumer) });
+  return runProductSubprocess(NODE, ["import.mjs"], {
+    cwd: consumer,
+    encoding: "utf8",
+    env: isolatedEnv(consumer),
+  }) as string;
 }
 
 function nestedDirs(consumer: string): string {
-  return execFileSync(FIND, [join(consumer, "node_modules"), "-maxdepth", "4", "-type", "d"], {
+  return runProductSubprocess(FIND, [join(consumer, "node_modules"), "-maxdepth", "4", "-type", "d"], {
     encoding: "utf8",
     env: isolatedEnv(consumer),
-  });
+  }) as string;
 }
 
 test("s6 packed tarballs install in a disposable npm home without publish", { timeout: 180_000 }, () => {
+  requireUnprovenProductBoundary();
   for (const spec of PACKAGES) {
     const pkg = JSON.parse(readFileSync(join(packagesDir, spec.dir, "package.json"), "utf8")) as {
       private?: boolean;
@@ -225,8 +272,9 @@ test("s6 packed tarballs install in a disposable npm home without publish", { ti
 
   const taskHome = process.env.S6_TASK_HOME;
   assert.ok(taskHome && taskHome.startsWith("/"), "S6 requires an explicitly supplied owned task home");
+  assertCanonicalPath(taskHome, pathResolver);
   const homeStat = lstatSync(taskHome);
-  assert.equal(homeStat.isSymbolicLink(), false, "task home must not be a symlink");
+  assert.equal(homeStat.isDirectory(), true, "task home must be a directory");
   assert.equal(homeStat.uid, process.getuid(), "task home must be owned by the test user");
   const work = mkdtempSync(join(taskHome, "s6-pack-"));
   try {
