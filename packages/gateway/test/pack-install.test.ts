@@ -218,12 +218,16 @@ function containsPackedSecret(contents: Buffer): boolean {
 }
 
 function assertNoPackedSecrets(tarball: string): void {
+  const env = isolatedEnv(dirname(tarball));
   const contents = runProductSubprocess(TAR, ["-xOzf", tarball], {
     encoding: "buffer",
     maxBuffer: 16 * 1024 * 1024,
-    env: isolatedEnv(dirname(tarball)),
+    env,
   }) as Buffer;
   assert.equal(containsPackedSecret(contents), false, `packed credential in ${tarball}`);
+  // GNU tar verbose listings expose member names and link targets, not all raw PAX/xattr metadata.
+  const metadata = runProductSubprocess(TAR, ["-tvzf", tarball], { encoding: "utf8", env }) as string;
+  assert.equal(containsPackedSecret(Buffer.from(metadata)), false, `packed credential in archive metadata: ${tarball}`);
 }
 
 function install(home: string, tarballs: string[]): string {
@@ -262,7 +266,11 @@ test("s6 packed tarballs install in a disposable npm home without publish", { ti
   requireUnprovenProductBoundary();
   assert.equal(containsPackedSecret(Buffer.from("S6_SECRET_CANARY_positive-control")), true);
   assert.equal(containsPackedSecret(Buffer.from("ghp_abcdefghijklmnopqrstuvwxyz1234567890")), true);
+  assert.equal(containsPackedSecret(Buffer.from("-rw-r--r-- owner/group 32 2026-01-01 package/S6_SECRET_CANARY_member-name")), true);
+  assert.equal(containsPackedSecret(Buffer.from("lrwxrwxrwx owner/group 32 2026-01-01 package/link -> S6_SECRET_CANARY_link-target")), true);
   assert.equal(containsPackedSecret(Buffer.from("ordinary package documentation")), false);
+  assert.equal(containsPackedSecret(Buffer.from("-rw-r--r-- owner/group 32 2026-01-01 package/README.md")), false);
+  assert.equal(containsPackedSecret(Buffer.from("lrwxrwxrwx owner/group 4 2026-01-01 package/link -> docs")), false);
   for (const spec of PACKAGES) {
     const pkg = JSON.parse(readFileSync(join(packagesDir, spec.dir, "package.json"), "utf8")) as {
       private?: boolean;
