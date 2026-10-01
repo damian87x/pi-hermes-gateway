@@ -210,6 +210,22 @@ function tarList(tarball: string): string[] {
   return listing.split("\n").filter(Boolean);
 }
 
+function containsPackedSecret(contents: Buffer): boolean {
+  const text = contents.toString("utf8");
+  return /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/.test(text)
+    || /(?:gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16})/.test(text)
+    || text.includes("S6_SECRET_CANARY_positive-control");
+}
+
+function assertNoPackedSecrets(tarball: string): void {
+  const contents = runProductSubprocess(TAR, ["-xOzf", tarball], {
+    encoding: "buffer",
+    maxBuffer: 16 * 1024 * 1024,
+    env: isolatedEnv(dirname(tarball)),
+  }) as Buffer;
+  assert.equal(containsPackedSecret(contents), false, `packed credential in ${tarball}`);
+}
+
 function install(home: string, tarballs: string[]): string {
   const consumer = mkdtempSync(join(home, "consumer-"));
   writeFileSync(
@@ -244,6 +260,9 @@ function nestedDirs(consumer: string): string {
 
 test("s6 packed tarballs install in a disposable npm home without publish", { timeout: 180_000 }, () => {
   requireUnprovenProductBoundary();
+  assert.equal(containsPackedSecret(Buffer.from("S6_SECRET_CANARY_positive-control")), true);
+  assert.equal(containsPackedSecret(Buffer.from("ghp_abcdefghijklmnopqrstuvwxyz1234567890")), true);
+  assert.equal(containsPackedSecret(Buffer.from("ordinary package documentation")), false);
   for (const spec of PACKAGES) {
     const pkg = JSON.parse(readFileSync(join(packagesDir, spec.dir, "package.json"), "utf8")) as {
       private?: boolean;
@@ -294,6 +313,7 @@ test("s6 packed tarballs install in a disposable npm home without publish", { ti
         version: string;
       };
       const packed = packTo(work, join(stage, "packages", spec.dir), packEnv);
+      assertNoPackedSecrets(join(work, packed.filename));
       assert.equal(packed.name, manifest.name, `${spec.dir} packed name drift`);
       assert.equal(packed.version, manifest.version, `${spec.dir} packed version drift`);
       assert.equal(packed.name, spec.name);
@@ -361,21 +381,51 @@ test("s6 packed tarballs install in a disposable npm home without publish", { ti
     const companionHome = install(work, [protocolTar, companionTar]);
     const companionOut = runImport(
       companionHome,
-      `import { companionStatus, daemonAvailable } from "pi-hermes-gateway-companion";
-       if (daemonAvailable("/no/such/hermes-profile")) throw new Error("missing profile available");
-       const status = await companionStatus("/no/such/hermes-profile");
-       if (status.ok !== false || status.error.code !== "daemon-unavailable") throw new Error("expected unavailable");
-       console.log(JSON.stringify({ unavailable: true }));
+      `import { companionStatus } from "pi-hermes-gateway-companion";
+       import gatewayCompanion from "pi-hermes-gateway-companion/extension";
+       const missingProfileStatus = await companionStatus("/no/such/hermes-profile");
+       if (missingProfileStatus.ok !== false || missingProfileStatus.available !== false || missingProfileStatus.error.code !== "daemon-unavailable") throw new Error("missing profile status");
+       const handlers = new Map();
+       const tools = new Map();
+       const hostEvents = [];
+       gatewayCompanion({
+         on(event, handler) { handlers.set(event, handler); hostEvents.push({ type: "registered", event }); },
+         registerTool(tool) { tools.set(tool.name, tool); },
+       });
+       const emit = async (event) => {
+         hostEvents.push({ type: "invoked", event });
+         return await handlers.get(event)?.();
+       };
+       if (!handlers.has("session_start")) throw new Error("session_start handler missing");
+       const sessionStartResult = await emit("session_start");
+       if (sessionStartResult !== undefined) throw new Error("offline session_start should be passive");
+       if (!hostEvents.some((event) => event.type === "invoked" && event.event === "session_start")) throw new Error("session_start host event not observed");
+       const statusTool = tools.get("gateway_status");
+       if (!statusTool) throw new Error("gateway_status handler missing");
+       const toolResult = await statusTool.execute();
+       const payload = JSON.parse(toolResult.content[0].text);
+       if (payload.ok !== false || payload.available !== false || payload.error.code !== "daemon-unavailable") throw new Error("status tool did not report unavailable");
+       console.log(JSON.stringify({ unavailable: true, sessionStartAwaited: true, statusHandler: true }));
       `,
     );
-    assert.match(companionOut, /"unavailable":true/);
+    assert.match(companionOut, /"sessionStartAwaited":true/);
+    assert.match(companionOut, /"statusHandler":true/);
 
     const protoHome = install(work, [protocolTar]);
     runImport(
       protoHome,
-      `import { PROTOCOL_VERSION, validateWireRequest } from "pi-hermes-gateway-protocol";
+      `import { ADAPTER_API_VERSION, PROTOCOL_VERSION, validateAdapterManifest, validateWireRequest } from "pi-hermes-gateway-protocol";
        if (PROTOCOL_VERSION !== 1) throw new Error("protocol");
        if (typeof validateWireRequest !== "function") throw new Error("validateWireRequest");
+       const incompatible = validateAdapterManifest({
+         adapterId: "packed-incompatible",
+         adapterApiVersion: ADAPTER_API_VERSION + 1,
+         capabilities: ["send.text"],
+         configSchemaVersion: 1,
+         maxTextLength: 4096,
+         receiptLevels: ["accepted"],
+       });
+       if (incompatible.ok || incompatible.error.code !== "unsupported_adapter_api_version") throw new Error("incompatible adapter API was not rejected");
        console.log("ok");
       `,
     );
