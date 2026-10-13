@@ -107,6 +107,24 @@ test("doctor rejects a symlinked WhatsApp profile directory", (t) => {
   assert.equal(JSON.stringify(report).includes(secretSentinel), false);
 });
 
+test("doctor rejects symlinked WhatsApp profile paths with trailing separators and dot segments", (t) => {
+  for (const suffix of ["/", "/."]) {
+    const { dir } = setup(t);
+    const existing = tmpDir();
+    chmodSync(existing, 0o700);
+    t.after(() => cleanup(existing));
+    symlinkSync(existing, join(dir, "whatsapp-pilot"));
+    const report = runDoctor({ profileDir: `${join(dir, "whatsapp-pilot")}${suffix}`, lingerEnabled: false });
+    assert.equal(report.ok, false, suffix);
+    assert.deepEqual(report.checks.find((c) => c.id === "whatsapp-auth"), {
+      id: "whatsapp-auth", ok: false, severity: "error", message: "WhatsApp profile must be a real directory",
+    }, suffix);
+    assert.deepEqual(report.checks.find((c) => c.id === "config-file"), {
+      id: "config-file", ok: false, severity: "error", message: "config.json profile path must be a real directory",
+    }, suffix);
+  }
+});
+
 test("CLI doctor never echoes a WhatsApp session-secret sentinel", (t) => {
   const secretSentinel = "whatsapp-session-secret-sentinel-not-real";
   const { dir } = setup(t, JSON.stringify({

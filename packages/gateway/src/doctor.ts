@@ -162,9 +162,10 @@ function checkSqlite(): DoctorCheck {
 }
 
 function checkConfigFile(profileDir: string): DoctorCheck {
+  const normalizedProfileDir = profileDir ? resolve(profileDir) : profileDir;
   let profile;
   try {
-    profile = lstatSync(profileDir);
+    profile = lstatSync(normalizedProfileDir);
   } catch (err) {
     if (typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT") {
       return { id: "config-file", ok: true, severity: "info", message: "config.json not present" };
@@ -175,7 +176,7 @@ function checkConfigFile(profileDir: string): DoctorCheck {
     return { id: "config-file", ok: false, severity: "error", message: "config.json profile path must be a real directory" };
   }
 
-  const configPath = join(profileDir, "config.json");
+  const configPath = join(normalizedProfileDir, "config.json");
   let file;
   try {
     file = lstatSync(configPath);
@@ -216,9 +217,10 @@ function checkConfigFile(profileDir: string): DoctorCheck {
 }
 
 function checkWhatsAppAuthLocation(profileDir: string): DoctorCheck {
+  const normalizedProfileDir = profileDir ? resolve(profileDir) : profileDir;
   let profile;
   try {
-    profile = lstatSync(profileDir);
+    profile = lstatSync(normalizedProfileDir);
   } catch (err) {
     if (typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT") {
       return { id: "whatsapp-auth", ok: true, severity: "info", message: "WhatsApp profile is not present yet" };
@@ -229,7 +231,7 @@ function checkWhatsAppAuthLocation(profileDir: string): DoctorCheck {
     return { id: "whatsapp-auth", ok: false, severity: "error", message: "WhatsApp profile must be a real directory" };
   }
 
-  const authDir = join(profileDir, "whatsapp-auth");
+  const authDir = join(normalizedProfileDir, "whatsapp-auth");
   let auth;
   try {
     auth = lstatSync(authDir);
