@@ -191,22 +191,29 @@ test("createAdapter is a structural send adapter without a live socket", () => {
   assert.equal(receipt.reason, "send-fn-unconfigured");
 });
 
-test("package is private npm-only and source never opens Baileys or an auth dir", () => {
+test("package is private npm-only, depends only on protocol, and source bundles no socket library", () => {
   const pkg = pkgJson();
   assert.equal(pkg.private, true);
   assert.equal(pkg.pi, undefined);
   assert.equal(pkg.peerDependencies, undefined);
+  assert.equal(pkg.optionalDependencies, undefined);
   const deps = (pkg.dependencies ?? {}) as Record<string, unknown>;
+  assert.deepEqual(Object.keys(deps), ["pi-hermes-gateway-protocol"]);
   assert.equal("baileys" in deps, false);
   assert.equal("@whiskeysockets/baileys" in deps, false);
   for (const src of srcFiles()) {
     assert.equal(/baileys/i.test(src), false);
     assert.equal(src.includes("makeWASocket"), false);
     assert.equal(src.includes("useMultiFileAuthState"), false);
-    assert.equal(/authDir/i.test(src), false);
     assert.equal(/\bQR\b/i.test(src), false);
     assert.equal(/pair(ing)?/i.test(src), false);
+    assert.equal(/logout/i.test(src), false);
+    assert.equal(/homedir/i.test(src), false);
     assert.equal(src.includes("sendReadReceipt"), false);
     assert.equal(src.includes("readMessages"), false);
+    // The auth dir is derived from the profile dir under one fixed name; it is never a config key.
+    assert.match(src, /WHATSAPP_AUTH_DIR_NAME = "whatsapp-auth"/);
+    assert.match(src, /resolve\(profileDir, WHATSAPP_AUTH_DIR_NAME\)/);
+    assert.equal(/ALLOWED_CONFIG_KEYS = new Set\(\[[^\]]*authDir/.test(src), false);
   }
 });

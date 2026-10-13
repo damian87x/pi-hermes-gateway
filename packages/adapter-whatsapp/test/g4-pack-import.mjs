@@ -38,6 +38,17 @@ if (pkg.peerDependencies && Object.keys(pkg.peerDependencies).length) {
 if (pkg.dependencies?.baileys || pkg.dependencies?.["@whiskeysockets/baileys"]) {
   throw new Error("whatsapp adapter must not depend on baileys in this slice");
 }
+if (pkg.optionalDependencies && Object.keys(pkg.optionalDependencies).length) {
+  throw new Error("whatsapp adapter must not declare optionalDependencies");
+}
+const depNames = Object.keys(pkg.dependencies ?? {});
+if (depNames.length !== 1 || depNames[0] !== "pi-hermes-gateway-protocol") {
+  throw new Error(`whatsapp adapter runtime dependency must be exactly pi-hermes-gateway-protocol, got ${depNames.join(",")}`);
+}
+const readme = readFileSync(path.join(adapterDir, "README.md"), "utf8");
+if (!/socket factory/i.test(readme) || !readme.includes("pi-hermes-gateway-protocol")) {
+  throw new Error("whatsapp README must document the operator-supplied socket factory and the sole runtime dependency");
+}
 const scripts = pkg.scripts || {};
 for (const name of Object.keys(scripts)) {
   if (/^(pre|post)?(install|prepare|publish)/.test(name) || name === "prepublishOnly") {
@@ -54,11 +65,19 @@ try {
   execFileSync("npm", ["install", "--ignore-scripts", protoTar, adapterTar], { cwd: consumer, stdio: "inherit" });
   writeFileSync(
     path.join(consumer, "import.mjs"),
-    `import { createAdapter } from "pi-hermes-gateway-adapter-whatsapp";
-     const adapter = createAdapter({ kind: "send-only" });
+    `import { createAdapter, defaultWhatsAppSend, whatsAppAuthDir } from "pi-hermes-gateway-adapter-whatsapp";
+     const bare = defaultWhatsAppSend({ jid: "1001@s.whatsapp.net", text: "hi", timeoutMs: 10 });
+     if (!bare || bare.kind !== "unconfigured") throw new Error("default sender must be unconfigured without a socket factory");
+     if (typeof whatsAppAuthDir !== "function") throw new Error("whatsAppAuthDir");
+     const adapter = createAdapter({ kind: "send-only" }, { send: defaultWhatsAppSend });
      if (adapter.manifest.adapterId !== "whatsapp") throw new Error("adapter id");
      if (typeof adapter.send !== "function") throw new Error("send");
-     console.log(JSON.stringify({ adapterId: adapter.manifest.adapterId }));
+     const route = { profileId: "p", adapterId: "whatsapp", accountId: "a", chatId: "1001@s.whatsapp.net" };
+     const receipt = adapter.send({ deliveryId: "g4", route, text: "hi" });
+     if (receipt.receiptLevel !== "commit-unknown" || receipt.reason !== "whatsapp-socket-unconfigured") {
+       throw new Error("unconfigured default sender must be commit-unknown and send nothing");
+     }
+     console.log(JSON.stringify({ adapterId: adapter.manifest.adapterId, reason: receipt.reason }));
     `,
   );
   const imported = execFileSync("node", ["import.mjs"], { cwd: consumer, encoding: "utf8" });

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "sideEffects": false,
-  "description": "Send-only WhatsApp adapter with injected send. Provisional local name; not an npm-scope claim.",
+  "description": "Send-only WhatsApp adapter over an injected socket factory; no socket library bundled (protocol is the only runtime dependency). Provisional local name; not an npm-scope claim.",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
