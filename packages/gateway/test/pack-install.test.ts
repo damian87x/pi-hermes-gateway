@@ -6,7 +6,10 @@ import {
 } from "node:fs";
 import { createHash } from "node:crypto";
 import { dirname, join, relative } from "node:path";
-import { assertCanonicalPath, assertCanonicalWithin, isolatedEnvironment, workspaceStageMap } from "./s6-verify.mjs";
+import {
+  assertCanonicalPath, assertCanonicalWithin, isolatedEnvironment, requireApprovedProductBoundary,
+  requireOwnedTaskHome, workspaceStageMap,
+} from "./s6-verify.mjs";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -65,11 +68,6 @@ const EXECUTABLE_HASHES = new Map([
   ["/usr/lib/cargo/bin/coreutils/env", "48893b0fb21436b54619db80486e83ef39dfccaf1aefe83dfa00c02d6146e8c0"],
 ]);
 
-function requireUnprovenProductBoundary(): never {
-  // Replace only with an independently reviewed validator for actual owned controls.
-  throw new Error("UNPROVEN: approved task-owned product execution boundary is unavailable");
-}
-
 const pathResolver = {
   lstat(path: string) {
     return lstatSync(path);
@@ -77,12 +75,24 @@ const pathResolver = {
   realpath: realpathSync,
 };
 
+// Set once per test run by requireOwnedTaskHome; every subprocess call is bound to this proven home.
+let currentTaskHome: string | undefined;
+
 function runProductSubprocess(
   command: string,
   args: string[],
   options: Parameters<typeof execFileSync>[2],
 ): string | Buffer {
-  requireUnprovenProductBoundary();
+  if (!currentTaskHome) throw new Error("UNPROVEN: no owned task home has been established for this product boundary");
+  requireApprovedProductBoundary({
+    allowedExecutables: EXECUTABLE_HASHES,
+    command,
+    args,
+    env: (options as { env?: NodeJS.ProcessEnv } | undefined)?.env,
+    taskHome: currentTaskHome,
+    realHome: process.env.HOME,
+    registry: "http://127.0.0.1:9/",
+  });
   return execFileSync(command, args, options as never);
 }
 
@@ -263,7 +273,6 @@ function nestedDirs(consumer: string): string {
 }
 
 test("s6 packed tarballs install in a disposable npm home without publish", { timeout: 180_000 }, () => {
-  requireUnprovenProductBoundary();
   assert.equal(containsPackedSecret(Buffer.from("S6_SECRET_CANARY_positive-control")), true);
   assert.equal(containsPackedSecret(Buffer.from("ghp_abcdefghijklmnopqrstuvwxyz1234567890")), true);
   assert.equal(containsPackedSecret(Buffer.from("-rw-r--r-- owner/group 32 2026-01-01 package/S6_SECRET_CANARY_positive-control_member-name")), true);
@@ -297,12 +306,8 @@ test("s6 packed tarballs install in a disposable npm home without publish", { ti
     assert.equal(src.includes("enable-linger"), false);
   }
 
-  const taskHome = process.env.S6_TASK_HOME;
-  assert.ok(taskHome && taskHome.startsWith("/"), "S6 requires an explicitly supplied owned task home");
-  assertCanonicalPath(taskHome, pathResolver);
-  const homeStat = lstatSync(taskHome);
-  assert.equal(homeStat.isDirectory(), true, "task home must be a directory");
-  assert.equal(homeStat.uid, process.getuid(), "task home must be owned by the test user");
+  const taskHome = requireOwnedTaskHome(pathResolver, process.getuid(), process.env.S6_TASK_HOME);
+  currentTaskHome = taskHome;
   const work = mkdtempSync(join(taskHome, "s6-pack-"));
   try {
     const packEnv = isolatedEnv(work);
@@ -488,5 +493,6 @@ test("s6 packed tarballs install in a disposable npm home without publish", { ti
     );
   } finally {
     rmSync(work, { recursive: true, force: true });
+    currentTaskHome = undefined;
   }
 });

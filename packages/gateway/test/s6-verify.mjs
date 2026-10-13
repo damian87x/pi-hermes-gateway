@@ -82,6 +82,45 @@ export function workspaceStageMap(root, entries, resolver) {
   return result;
 }
 
+export function requireOwnedTaskHome(resolver, ownerUid, taskHome) {
+  if (typeof taskHome !== "string" || !taskHome.startsWith("/")) {
+    throw new Error("UNPROVEN: S6_TASK_HOME is not an explicitly supplied owned task home");
+  }
+  assertCanonicalPath(taskHome, resolver);
+  const stat = resolver.lstat(taskHome);
+  if (!stat.isDirectory()) throw new Error("UNPROVEN: task home is not a directory");
+  if (stat.uid !== ownerUid) throw new Error("UNPROVEN: task home is not owned by the task user");
+  return taskHome;
+}
+
+const DENIED_ARG_PATTERNS = [/publish/i, /systemctl/i, /enable-linger/i, /--enable\b/i];
+const DENIED_ENV_KEY_PATTERN = /token|secret|password/i;
+
+export function requireApprovedProductBoundary({ allowedExecutables, command, args, env, taskHome, realHome, registry }) {
+  if (!allowedExecutables.has(command)) {
+    throw new Error(`UNPROVEN: ${command} is not an approved product executable`);
+  }
+  for (const arg of args) {
+    if (typeof arg === "string" && DENIED_ARG_PATTERNS.some((pattern) => pattern.test(arg))) {
+      throw new Error(`UNPROVEN: denied action in subprocess argument: ${arg}`);
+    }
+  }
+  if (!env) return;
+  for (const key of Object.keys(env)) {
+    if (DENIED_ENV_KEY_PATTERN.test(key)) throw new Error(`UNPROVEN: subprocess env carries a credential-shaped key: ${key}`);
+  }
+  if (env.HOME !== undefined) {
+    const resolvedHome = resolve(env.HOME);
+    const withinTaskHome = resolvedHome === taskHome || resolvedHome.startsWith(taskHome + sep);
+    if (resolvedHome !== env.HOME || resolvedHome === realHome || !withinTaskHome) {
+      throw new Error("UNPROVEN: subprocess HOME escapes the owned disposable task home");
+    }
+  }
+  if (env.npm_config_registry !== undefined && env.npm_config_registry !== registry) {
+    throw new Error("UNPROVEN: subprocess registry is not the isolated offline sink");
+  }
+}
+
 export function runSelfTest() {
   const env = isolatedEnvironment({
     home: "/owned/home", tmp: "/owned/tmp", config: "/owned/config", cache: "/owned/cache",
@@ -155,6 +194,61 @@ export function runSelfTest() {
     ["/staged", "/staged/packages/protocol", syntheticResolver([], ["/staged/packages"])],
   ]) assert.throws(() => assertCanonicalWithin(root, path, hostile));
   assert.throws(() => assertCanonicalWithin("/staged", "/staged-sibling/file", resolver));
+
+  const taskHomeResolver = (symlinks = [], isDirectory = true, uid = 4242) => ({
+    lstat(path) {
+      return { isSymbolicLink: () => symlinks.includes(path), isDirectory: () => isDirectory, uid };
+    },
+    realpath(path) {
+      return path;
+    },
+  });
+  assert.doesNotThrow(() => requireOwnedTaskHome(taskHomeResolver(), 4242, "/owned/task"));
+  assert.throws(() => requireOwnedTaskHome(taskHomeResolver(), 4242, undefined), /explicitly supplied owned task home/);
+  assert.throws(() => requireOwnedTaskHome(taskHomeResolver(), 4242, "relative/path"), /explicitly supplied owned task home/);
+  assert.throws(() => requireOwnedTaskHome(taskHomeResolver([], false), 4242, "/owned/task"), /not a directory/);
+  assert.throws(() => requireOwnedTaskHome(taskHomeResolver(), 9999, "/owned/task"), /not owned by the task user/);
+  assert.throws(() => requireOwnedTaskHome(taskHomeResolver(["/owned"]), 4242, "/owned/task"), /symlink/);
+
+  const boundaryBase = {
+    allowedExecutables: new Map([["/usr/bin/git", "hash"]]),
+    command: "/usr/bin/git",
+    args: ["archive", "--format=tar", "HEAD"],
+    env: { HOME: "/owned/task/work", npm_config_registry: "http://127.0.0.1:9/" },
+    taskHome: "/owned/task",
+    realHome: "/home/real-user",
+    registry: "http://127.0.0.1:9/",
+  };
+  assert.doesNotThrow(() => requireApprovedProductBoundary(boundaryBase));
+  assert.doesNotThrow(() => requireApprovedProductBoundary({ ...boundaryBase, env: undefined }));
+  assert.throws(
+    () => requireApprovedProductBoundary({ ...boundaryBase, command: "/usr/bin/systemctl" }),
+    /not an approved product executable/,
+  );
+  assert.throws(
+    () => requireApprovedProductBoundary({ ...boundaryBase, args: ["publish"] }),
+    /denied action in subprocess argument/,
+  );
+  assert.throws(
+    () => requireApprovedProductBoundary({ ...boundaryBase, args: ["...", "systemctl", "enable-linger"] }),
+    /denied action in subprocess argument/,
+  );
+  assert.throws(
+    () => requireApprovedProductBoundary({ ...boundaryBase, env: { ...boundaryBase.env, TELEGRAM_TOKEN: "x" } }),
+    /credential-shaped key/,
+  );
+  assert.throws(
+    () => requireApprovedProductBoundary({ ...boundaryBase, env: { ...boundaryBase.env, HOME: "/other/place" } }),
+    /escapes the owned disposable task home/,
+  );
+  assert.throws(
+    () => requireApprovedProductBoundary({ ...boundaryBase, env: { ...boundaryBase.env, HOME: boundaryBase.realHome } }),
+    /escapes the owned disposable task home/,
+  );
+  assert.throws(
+    () => requireApprovedProductBoundary({ ...boundaryBase, env: { ...boundaryBase.env, npm_config_registry: "https://registry.npmjs.org/" } }),
+    /not the isolated offline sink/,
+  );
   console.log("S6 pure synthetic checks passed");
 }
 
