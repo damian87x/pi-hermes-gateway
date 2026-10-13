@@ -5,7 +5,7 @@ import process from "node:process";
 import { DatabaseSync } from "node:sqlite";
 import { profilePaths } from "./profile.js";
 
-export type DoctorCheckId = "node-path" | "cli-path" | "node-sqlite" | "config-file" | "profile-dirs" | "linger" | "unit";
+export type DoctorCheckId = "node-path" | "cli-path" | "node-sqlite" | "config-file" | "whatsapp-auth" | "profile-dirs" | "linger" | "unit";
 
 export type DoctorCheck = {
   id: DoctorCheckId;
@@ -162,7 +162,21 @@ function checkSqlite(): DoctorCheck {
 }
 
 function checkConfigFile(profileDir: string): DoctorCheck {
-  const configPath = join(profileDir, "config.json");
+  const normalizedProfileDir = profileDir ? resolve(profileDir) : profileDir;
+  let profile;
+  try {
+    profile = lstatSync(normalizedProfileDir);
+  } catch (err) {
+    if (typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT") {
+      return { id: "config-file", ok: true, severity: "info", message: "config.json not present" };
+    }
+    return { id: "config-file", ok: false, severity: "error", message: "config.json profile path could not be inspected" };
+  }
+  if (!profile.isDirectory()) {
+    return { id: "config-file", ok: false, severity: "error", message: "config.json profile path must be a real directory" };
+  }
+
+  const configPath = join(normalizedProfileDir, "config.json");
   let file;
   try {
     file = lstatSync(configPath);
@@ -200,6 +214,40 @@ function checkConfigFile(profileDir: string): DoctorCheck {
     };
   }
   return { id: "config-file", ok: true, severity: "info", message: "config.json is safe" };
+}
+
+function checkWhatsAppAuthLocation(profileDir: string): DoctorCheck {
+  const normalizedProfileDir = profileDir ? resolve(profileDir) : profileDir;
+  let profile;
+  try {
+    profile = lstatSync(normalizedProfileDir);
+  } catch (err) {
+    if (typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT") {
+      return { id: "whatsapp-auth", ok: true, severity: "info", message: "WhatsApp profile is not present yet" };
+    }
+    return { id: "whatsapp-auth", ok: false, severity: "error", message: "WhatsApp profile could not be inspected" };
+  }
+  if (!profile.isDirectory()) {
+    return { id: "whatsapp-auth", ok: false, severity: "error", message: "WhatsApp profile must be a real directory" };
+  }
+
+  const authDir = join(normalizedProfileDir, "whatsapp-auth");
+  let auth;
+  try {
+    auth = lstatSync(authDir);
+  } catch (err) {
+    if (typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT") {
+      return { id: "whatsapp-auth", ok: true, severity: "info", message: "WhatsApp auth path is a dedicated child of this profile" };
+    }
+    return { id: "whatsapp-auth", ok: false, severity: "error", message: "WhatsApp auth path could not be inspected" };
+  }
+  if (!auth.isDirectory()) {
+    return {
+      id: "whatsapp-auth", ok: false, severity: "error",
+      message: "WhatsApp auth path must be a real directory under the profile; symlinks are not allowed",
+    };
+  }
+  return { id: "whatsapp-auth", ok: true, severity: "info", message: "WhatsApp auth path is a dedicated child of this profile" };
 }
 
 function checkProfileDirs(profileDir: string): DoctorCheck {
@@ -285,6 +333,7 @@ export function runDoctor(opts: DoctorOptions): DoctorReport {
     checkNodePath(nodePath),
     checkSqlite(),
     checkConfigFile(opts.profileDir),
+    checkWhatsAppAuthLocation(opts.profileDir),
     checkProfileDirs(opts.profileDir),
     checkLinger(lingerEnabled),
     checkUnit(unitEvidence, lingerEnabled),
