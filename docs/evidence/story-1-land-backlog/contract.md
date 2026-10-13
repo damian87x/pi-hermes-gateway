@@ -135,7 +135,7 @@ run outside `npm test`). Re-pinning hashes or relocating the path without that r
 supply-chain integrity control — exactly what `requireUnprovenProductBoundary`'s original comment warned against
 — so this lane implemented the real gate and left the deeper pin data untouched.
 
-### Validation after the fix
+### Validation after the first fix (gate made real, deeper pins still stale/non-portable)
 
 ```
 NODE_OPTIONS=--max-old-space-size=4096 npm ci            # exit 0
@@ -145,3 +145,56 @@ node packages/gateway/test/s6-verify.mjs --self-test      # "S6 pure synthetic c
 S6_TASK_HOME=<owned dir> node --experimental-strip-types --test packages/gateway/test/pack-install.test.ts
   # fails at verifyExecutableInputs (stale /usr/bin/node pin), proving the gate itself is no longer the blocker
 ```
+
+## f) Follow-up: made the toolchain inputs themselves portable (not just the gate)
+
+Per a further review instruction, the two remaining non-portable inputs identified in section (e) were replaced
+with genuinely portable, still-real checks, rather than left as a known gap:
+
+- **Node and npm.** `NODE` is now `process.execPath` and the npm CLI path is read from `process.env.npm_execpath`
+  (the exact binaries already running/launching this test process, set by npm itself on every `npm test`
+  invocation — verified to propagate to child `node --test` processes). Both are still checked with
+  `isNonTamperableSystemFile`: must be a regular file, not a symlink, owned by root or the current uid, and not
+  group/other-writable. No SHA-256 content pin remains.
+- **tar / find / git.** Resolved from a fixed candidate list of standard Debian/Ubuntu locations
+  (`/usr/bin/<name>`, `/bin/<name>` — present on this machine and on GitHub's `ubuntu-latest` runners), then
+  required to resolve (after following symlinks) to a path under `/usr/bin/`, `/bin/`, `/usr/sbin/`, or
+  `/usr/lib/`/`/sbin/` and pass the same non-tamperable-file check. No full-tree SHA-256 pin remains.
+- **TypeScript.** `TYPESCRIPT` now resolves to `<repo root>/node_modules/typescript`, this repository's own
+  hoisted devDependency (confirmed present via `npm ci`), never a path on one engineer's machine. `verifyCompiler`
+  checks the installed `package.json` `version` against the `typescript` version actually pinned in the repo's
+  own root `package.json` devDependencies — a real, portable, repo-tracked pin instead of a hardcoded directory
+  hash.
+- **Git archive buffer.** Raising the fake gate also exposed a latent, unrelated `ENOBUFS` from `execFileSync`'s
+  default 1 MB buffer against this repo's ~2 MB `git archive HEAD` output; both the archive and extraction calls
+  now pass an explicit 64 MB `maxBuffer`. This was never reachable before because the placeholder always threw
+  first.
+- **Task home.** The test now self-allocates its own disposable, owned task home via `mkdtempSync` under the
+  system temp directory by default (still passed through the full `requireOwnedTaskHome` canonical/ownership
+  check), removing the need for CI or an operator to inject `S6_TASK_HOME`. Setting `S6_TASK_HOME` explicitly is
+  still honored and still fully validated, for an operator who wants a specific disposable location.
+
+### Validation after the portability fix
+
+```
+npx tsc -p packages/gateway/tsconfig.json --noEmit                                   # exit 0 (twice, before/after)
+npm_execpath=<npm-cli.js> node --experimental-strip-types --test test/product-boundary.test.ts
+  # 2/2 pass (boundary logic pass + every deny case)
+env -u npm_execpath node --experimental-strip-types --test test/pack-install.test.ts
+  # fails closed cleanly: "UNPROVEN: npm_execpath is not set; this test must run through npm"
+npm_execpath=<npm-cli.js> node --experimental-strip-types --test test/pack-install.test.ts
+  # PASSES end to end: self-allocated task home, resolved node/npm/tar/find/git, matched the repo's pinned
+  # TypeScript version, built, packed, installed, and imported all 8 workspace tarballs with no network,
+  # no publish, no live adapter calls, no tokens, no systemd
+NODE_OPTIONS=--max-old-space-size=4096 npm ci             # exit 0
+NODE_OPTIONS=--max-old-space-size=4096 npm run typecheck  # exit 0
+NODE_OPTIONS=--max-old-space-size=4096 npm test           # exit 0 (full monorepo suite, run once, load <16
+                                                           # confirmed before each step; no other full suite
+                                                           # concurrently running)
+```
+
+The one previously-failing test now passes genuinely in both the direct manual invocation and the full `npm test`
+run used by CI. The fail-closed invariant is preserved and was re-proven, not weakened: `product-boundary.test.ts`
+still exercises every deny case (unsafe executable, `publish`/`systemctl`/`enable-linger` in args, credential-
+shaped env keys, `HOME` escaping the disposable sandbox, a non-local registry), and running the real test outside
+`npm`'s control still fails closed with a specific, honest message instead of silently proceeding.

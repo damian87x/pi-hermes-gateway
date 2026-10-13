@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import {
-  lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync,
+  lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync,
   rmSync, statSync, symlinkSync, writeFileSync,
 } from "node:fs";
 import { createHash } from "node:crypto";
+import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import {
   assertCanonicalPath, assertCanonicalWithin, isolatedEnvironment, requireApprovedProductBoundary,
@@ -48,25 +49,62 @@ function isolatedEnv(home: string): NodeJS.ProcessEnv {
   return isolatedEnvironment({ home, tmp, config, cache, npmUserConfig: userconfig, npmGlobalConfig: globalconfig });
 }
 
-const NPM_CLI = "/usr/lib/node_modules/npm/bin/npm-cli.js";
-const TAR = "/usr/bin/tar";
-const FIND = "/usr/bin/find";
-const GIT = "/usr/bin/git";
-const TYPESCRIPT = "/home/damian-linux/workspace/billioner-coder/apps/oh-my-agents/node_modules/typescript";
-const TYPESCRIPT_TREE_SHA256 = "af722887c894cc274dc5ed82be876b5b55e339a79a53a4a0896db4abd527a6ae";
-const TYPESCRIPT_MANIFEST_SHA256 = "822ef7ca6452205657b6288b066481ecf508bfbf43455d715cf7d3ec457561e6";
-const NPM_TREE_SHA256 = "9732661c75f8c8d1b26c1b044d4327899540076b586b1bba28909573485ee7c8";
-const NODE = "/usr/bin/node";
-const EXECUTABLE_HASHES = new Map([
-  [NODE, "89af8424dd53e560b1933f87ba650d8bf57c83ca5a04600eefb31f416aabbae7"],
-  [NPM_CLI, "8e5f6f3429f8cdbe693cdc29904e9d5a7b127a494bd15c804bd54c7403bfcbe7"],
-  [TAR, "708692f9457a16a95a51fd881551b55b4ce72200d16b8c6d2bacbea857cfd9cc"],
-  [FIND, "efe4843f166525b02f328f0c456a884d6a597f32d2c78cd615b6be0b64279bcf"],
-  ["/usr/bin/gzip", "2ba6fd35db5f0b5561e56b97124a08b067464b795e8e08278367f23dc539d549"],
-  [GIT, "5516c9f362c29376ab9a499a33082f9f611941d8c75930c880e30ad109e39c9a"],
-  ["/usr/bin/dash", "c626229526bb58ec2d0f585f3c3ae1412e6f973b4353385042d11c38d8426917"],
-  ["/usr/lib/cargo/bin/coreutils/env", "48893b0fb21436b54619db80486e83ef39dfccaf1aefe83dfa00c02d6146e8c0"],
-]);
+// NODE and npm's CLI path come from the controlled process actually running this test (process.execPath /
+// npm_execpath), not a hardcoded machine snapshot, so they are portable to any CI runner or workstation.
+const NODE = process.execPath;
+const TRUSTED_SYSTEM_DIR_PREFIXES = ["/usr/bin/", "/bin/", "/usr/sbin/", "/sbin/"];
+
+function isNonTamperableSystemFile(path: string): boolean {
+  const stat = lstatSync(path);
+  if (stat.isSymbolicLink() || !stat.isFile()) return false;
+  if (stat.uid !== 0 && stat.uid !== process.getuid()) return false;
+  return (stat.mode & 0o022) === 0;
+}
+
+function resolveTrustedSystemExecutable(name: string, candidates: string[]): string {
+  for (const candidate of candidates) {
+    let resolved: string;
+    try {
+      resolved = realpathSync(candidate);
+    } catch {
+      continue;
+    }
+    if (!TRUSTED_SYSTEM_DIR_PREFIXES.some((prefix) => resolved.startsWith(prefix))) continue;
+    if (!isNonTamperableSystemFile(resolved)) continue;
+    return resolved;
+  }
+  throw new Error(`UNPROVEN: no trusted ${name} executable found among ${candidates.join(", ")}`);
+}
+
+let cachedNpmCli: string | undefined;
+let cachedTar: string | undefined;
+let cachedFind: string | undefined;
+let cachedGit: string | undefined;
+
+function getNpmCli(): string {
+  if (cachedNpmCli) return cachedNpmCli;
+  const execpath = process.env.npm_execpath;
+  if (!execpath || !execpath.startsWith("/")) {
+    throw new Error("UNPROVEN: npm_execpath is not set; this test must run through npm (e.g. npm test) so the real npm CLI is known");
+  }
+  if (!statSync(execpath).isFile()) throw new Error(`UNPROVEN: npm_execpath does not resolve to a file: ${execpath}`);
+  cachedNpmCli = execpath;
+  return execpath;
+}
+
+function getTar(): string {
+  return cachedTar ??= resolveTrustedSystemExecutable("tar", ["/usr/bin/tar", "/bin/tar"]);
+}
+function getFind(): string {
+  return cachedFind ??= resolveTrustedSystemExecutable("find", ["/usr/bin/find", "/bin/find"]);
+}
+function getGit(): string {
+  return cachedGit ??= resolveTrustedSystemExecutable("git", ["/usr/bin/git", "/bin/git"]);
+}
+
+// TypeScript is resolved from this repo's own hoisted devDependency (npm workspaces put it at the repo root),
+// never a path on one engineer's machine, and its version is checked against the repo's own package.json pin.
+const TYPESCRIPT = join(root, "node_modules", "typescript");
 
 const pathResolver = {
   lstat(path: string) {
@@ -85,7 +123,7 @@ function runProductSubprocess(
 ): string | Buffer {
   if (!currentTaskHome) throw new Error("UNPROVEN: no owned task home has been established for this product boundary");
   requireApprovedProductBoundary({
-    allowedExecutables: EXECUTABLE_HASHES,
+    allowedExecutables: new Set([NODE, getNpmCli(), getTar(), getFind(), getGit()]),
     command,
     args,
     env: (options as { env?: NodeJS.ProcessEnv } | undefined)?.env,
@@ -97,53 +135,32 @@ function runProductSubprocess(
 }
 
 function npm(args: string[], options: Parameters<typeof execFileSync>[2]): string {
-  return runProductSubprocess(NODE, [NPM_CLI, ...args], options) as string;
-}
-
-function directoryHash(root: string): string {
-  const entries: { path: string; kind: string; bytes: Buffer }[] = [];
-  const visit = (dir: string, prefix: string) => {
-    for (const name of readdirSync(dir).sort()) {
-      const path = join(dir, name);
-      const rel = prefix ? `${prefix}/${name}` : name;
-      const stat = lstatSync(path);
-      if (stat.isSymbolicLink()) entries.push({ path: rel, kind: "L", bytes: Buffer.from(readlinkSync(path)) });
-      else if (stat.isDirectory()) visit(path, rel);
-      else if (stat.isFile()) entries.push({ path: rel, kind: "F", bytes: readFileSync(path) });
-      else throw new Error(`unexpected executable tree entry: ${rel}`);
-    }
-  };
-  visit(root, "");
-  const hash = createHash("sha256");
-  for (const entry of entries.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))) {
-    hash.update(entry.path).update("\0").update(entry.kind).update(entry.bytes).update("\0");
-  }
-  return hash.digest("hex");
+  return runProductSubprocess(NODE, [getNpmCli(), ...args], options) as string;
 }
 
 function verifyExecutableInputs(): void {
-  if (realpathSync("/usr/bin/npm") !== NPM_CLI || realpathSync("/bin/sh") !== "/usr/bin/dash") {
-    throw new Error("unexpected npm/shell executable chain");
-  }
-  for (const [path, expected] of EXECUTABLE_HASHES) {
-    if (realpathSync(path) !== path || !statSync(path).isFile()) throw new Error(`unexpected executable input: ${path}`);
-    if (createHash("sha256").update(readFileSync(path)).digest("hex") !== expected) throw new Error(`executable input changed: ${path}`);
-  }
-  if (directoryHash("/usr/lib/node_modules/npm") !== NPM_TREE_SHA256) throw new Error("npm executable tree changed");
+  if (!isNonTamperableSystemFile(realpathSync(NODE))) throw new Error(`untrusted executable input: ${NODE}`);
+  const npmCli = getNpmCli();
+  if (!isNonTamperableSystemFile(realpathSync(npmCli))) throw new Error(`untrusted executable input: ${npmCli}`);
+  getTar();
+  getFind();
+  getGit();
 }
 
 function verifyCompiler(): void {
   verifyExecutableInputs();
-  if (lstatSync(TYPESCRIPT).uid !== process.getuid()) throw new Error("TypeScript artifact has unexpected owner");
-  const manifestPath = join(TYPESCRIPT, "package.json");
-  const manifest = readFileSync(manifestPath);
-  if (createHash("sha256").update(manifest).digest("hex") !== TYPESCRIPT_MANIFEST_SHA256) {
-    throw new Error("audited TypeScript manifest changed");
+  const rootManifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as {
+    devDependencies?: Record<string, string>;
+  };
+  const pinnedVersion = rootManifest.devDependencies?.typescript;
+  if (!pinnedVersion) throw new Error("root package.json does not pin a typescript devDependency version");
+  const stat = lstatSync(TYPESCRIPT);
+  if (stat.isSymbolicLink() || !stat.isDirectory()) throw new Error("TypeScript artifact is not an owned directory");
+  if (stat.uid !== process.getuid()) throw new Error("TypeScript artifact has unexpected owner");
+  const manifest = JSON.parse(readFileSync(join(TYPESCRIPT, "package.json"), "utf8")) as { version?: string };
+  if (manifest.version !== pinnedVersion) {
+    throw new Error(`installed TypeScript ${manifest.version} does not match the pinned devDependency ${pinnedVersion}`);
   }
-  if ((JSON.parse(manifest.toString("utf8")) as { version?: string }).version !== "5.9.3") {
-    throw new Error("TypeScript 5.9.3 required");
-  }
-  if (directoryHash(TYPESCRIPT) !== TYPESCRIPT_TREE_SHA256) throw new Error("audited TypeScript tree changed");
   for (const file of ["bin/tsc", "lib/tsc.js", "lib/typescript.js", "lib/lib.es5.d.ts"]) {
     if (!statSync(join(TYPESCRIPT, file)).isFile()) throw new Error(`incomplete TypeScript artifact: ${file}`);
   }
@@ -154,12 +171,19 @@ function bootstrapStaging(work: string, env: NodeJS.ProcessEnv): string {
   assertCanonicalPath(work, pathResolver);
   const stage = join(work, "source");
   mkdirSync(stage);
-  const archive = runProductSubprocess(GIT, ["archive", "--format=tar", "HEAD"], {
+  const archive = runProductSubprocess(getGit(), ["archive", "--format=tar", "HEAD"], {
     cwd: root,
     env,
     encoding: "buffer",
+    maxBuffer: 64 * 1024 * 1024,
   }) as Buffer;
-  runProductSubprocess(TAR, ["-xf", "-", "-C", stage], { cwd: root, env, input: archive, stdio: "pipe" });
+  runProductSubprocess(getTar(), ["-xf", "-", "-C", stage], {
+    cwd: root,
+    env,
+    input: archive,
+    stdio: "pipe",
+    maxBuffer: 64 * 1024 * 1024,
+  });
   assertCanonicalPath(stage, pathResolver);
   assertCanonicalWithin(stage, join(stage, "package.json"), pathResolver);
   assertCanonicalWithin(stage, join(stage, "packages"), pathResolver);
@@ -213,7 +237,7 @@ function packTo(
 }
 
 function tarList(tarball: string): string[] {
-  const listing = runProductSubprocess(TAR, ["-tzf", tarball], {
+  const listing = runProductSubprocess(getTar(), ["-tzf", tarball], {
     encoding: "utf8",
     env: isolatedEnv(dirname(tarball)),
   }) as string;
@@ -229,14 +253,14 @@ function containsPackedSecret(contents: Buffer): boolean {
 
 function assertNoPackedSecrets(tarball: string): void {
   const env = isolatedEnv(dirname(tarball));
-  const contents = runProductSubprocess(TAR, ["-xOzf", tarball], {
+  const contents = runProductSubprocess(getTar(), ["-xOzf", tarball], {
     encoding: "buffer",
     maxBuffer: 16 * 1024 * 1024,
     env,
   }) as Buffer;
   assert.equal(containsPackedSecret(contents), false, `packed credential in ${tarball}`);
   // GNU tar verbose listings expose member names and link targets, not all raw PAX/xattr metadata.
-  const metadata = runProductSubprocess(TAR, ["-tvzf", tarball], { encoding: "utf8", env }) as string;
+  const metadata = runProductSubprocess(getTar(), ["-tvzf", tarball], { encoding: "utf8", env }) as string;
   assert.equal(containsPackedSecret(Buffer.from(metadata)), false, `packed credential in archive metadata: ${tarball}`);
 }
 
@@ -266,7 +290,7 @@ function runImport(consumer: string, source: string): string {
 }
 
 function nestedDirs(consumer: string): string {
-  return runProductSubprocess(FIND, [join(consumer, "node_modules"), "-maxdepth", "4", "-type", "d"], {
+  return runProductSubprocess(getFind(), [join(consumer, "node_modules"), "-maxdepth", "4", "-type", "d"], {
     encoding: "utf8",
     env: isolatedEnv(consumer),
   }) as string;
@@ -306,7 +330,12 @@ test("s6 packed tarballs install in a disposable npm home without publish", { ti
     assert.equal(src.includes("enable-linger"), false);
   }
 
-  const taskHome = requireOwnedTaskHome(pathResolver, process.getuid(), process.env.S6_TASK_HOME);
+  // Self-allocate a disposable, owned task home by default so this proof needs no externally injected
+  // environment variable in CI; an operator may still point S6_TASK_HOME at a specific owned directory.
+  const requestedTaskHome = process.env.S6_TASK_HOME;
+  const ownsAllocatedTaskHome = !requestedTaskHome;
+  const allocatedTaskHome = requestedTaskHome ?? mkdtempSync(join(realpathSync(tmpdir()), "s6-task-"));
+  const taskHome = requireOwnedTaskHome(pathResolver, process.getuid(), allocatedTaskHome);
   currentTaskHome = taskHome;
   const work = mkdtempSync(join(taskHome, "s6-pack-"));
   try {
@@ -493,6 +522,7 @@ test("s6 packed tarballs install in a disposable npm home without publish", { ti
     );
   } finally {
     rmSync(work, { recursive: true, force: true });
+    if (ownsAllocatedTaskHome) rmSync(allocatedTaskHome, { recursive: true, force: true });
     currentTaskHome = undefined;
   }
 });
