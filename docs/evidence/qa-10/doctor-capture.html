@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QA — doctor config guard</title>
+  <style>
+    :root { color-scheme: dark; font: 16px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; background: #0b1220; color: #e5edf8; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 48px; }
+    main { max-width: 1000px; margin: auto; padding: 32px; border: 1px solid #29354a; border-radius: 16px; background: #111b2d; }
+    header { display: flex; justify-content: space-between; gap: 16px; align-items: start; border-bottom: 1px solid #29354a; padding-bottom: 22px; }
+    h1 { margin: 0 0 8px; font: 600 24px/1.25 system-ui, sans-serif; }
+    p { margin: 0; color: #9cadc4; font: 14px/1.5 system-ui, sans-serif; }
+    .status { flex: none; border: 1px solid #fb7185; border-radius: 999px; padding: 6px 12px; color: #fecdd3; font: 700 12px/1.4 system-ui, sans-serif; letter-spacing: .06em; }
+    .command { margin: 24px 0 16px; color: #bdc9da; font-size: 14px; }
+    .command span { color: #67e8f9; }
+    pre { overflow-wrap: anywhere; white-space: pre-wrap; margin: 0; padding: 22px; border: 1px solid #29354a; border-radius: 10px; background: #080e19; color: #cbd5e1; font-size: 14px; }
+    .error { color: #fda4af; }
+    footer { margin-top: 18px; color: #91a2ba; font: 13px/1.5 system-ui, sans-serif; }
+    @media (max-width: 700px) { body { padding: 16px; } main { padding: 20px; } header { flex-direction: column; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>Doctor rejects an unsafe config file</h1>
+        <p>Observed CLI result · isolated temporary profile · fake-only check</p>
+      </div>
+      <div class="status">EXPECTED REFUSAL · EXIT 1</div>
+    </header>
+    <div class="command"><span>$</span> pi-hermes-gateway-core --profile &lt;temporary-profile&gt; doctor</div>
+    <pre>{
+  "ok": false,
+  "checks": [
+    {
+      "id": "config-file",
+      "ok": false,
+      "severity": "error",
+      "message": "config.json containing an adapter token must be owned by the current user with mode 0600"
+    }
+  ]
+}</pre>
+    <footer>Result from the built CLI using a temporary token-key presence sentinel with mode 0644. No adapter loaded, network request, live send, or chat identifier.</footer>
+  </main>
+</body>
+</html>

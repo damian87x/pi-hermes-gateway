@@ -29,6 +29,13 @@ declare module "node:fs" {
   export function readFileSync(path: string, encoding: "utf8"): string;
   export function copyFileSync(src: string, dest: string): void;
   export function chmodSync(path: string, mode: number): void;
+  export function lstatSync(path: string): {
+    uid: number;
+    mode: number;
+    isDirectory(): boolean;
+    isSocket(): boolean;
+    isFile(): boolean;
+  };
   export function statSync(path: string): {
     uid: number;
     gid: number;

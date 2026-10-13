@@ -1,11 +1,11 @@
-import { existsSync, realpathSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir, userInfo } from "node:os";
 import { basename, isAbsolute, join, resolve, sep } from "node:path";
 import process from "node:process";
 import { DatabaseSync } from "node:sqlite";
 import { profilePaths } from "./profile.js";
 
-export type DoctorCheckId = "node-path" | "cli-path" | "node-sqlite" | "profile-dirs" | "linger" | "unit";
+export type DoctorCheckId = "node-path" | "cli-path" | "node-sqlite" | "config-file" | "profile-dirs" | "linger" | "unit";
 
 export type DoctorCheck = {
   id: DoctorCheckId;
@@ -161,6 +161,47 @@ function checkSqlite(): DoctorCheck {
   }
 }
 
+function checkConfigFile(profileDir: string): DoctorCheck {
+  const configPath = join(profileDir, "config.json");
+  let file;
+  try {
+    file = lstatSync(configPath);
+  } catch (err) {
+    if (typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT") {
+      return { id: "config-file", ok: true, severity: "info", message: "config.json not present" };
+    }
+    return { id: "config-file", ok: false, severity: "error", message: "config.json could not be inspected" };
+  }
+  if (!file.isFile()) {
+    return { id: "config-file", ok: false, severity: "error", message: "config.json must be a regular file, not a symlink" };
+  }
+
+  let content: string;
+  try {
+    content = readFileSync(configPath, "utf8");
+  } catch {
+    return { id: "config-file", ok: false, severity: "error", message: "config.json could not be read" };
+  }
+  let config: unknown;
+  try {
+    config = JSON.parse(content);
+  } catch {
+    return { id: "config-file", ok: false, severity: "error", message: "config.json must contain valid JSON" };
+  }
+
+  const adapter = (config as { adapter?: unknown } | null)?.adapter;
+  const adapterConfig = (adapter as { config?: unknown } | null)?.config;
+  const hasTokenKey = typeof adapterConfig === "object" && adapterConfig !== null &&
+    Object.hasOwn(adapterConfig, "token");
+  if (hasTokenKey && (file.uid !== process.getuid() || (file.mode & 0o7777) !== 0o600)) {
+    return {
+      id: "config-file", ok: false, severity: "error",
+      message: "config.json containing an adapter token must be owned by the current user with mode 0600",
+    };
+  }
+  return { id: "config-file", ok: true, severity: "info", message: "config.json is safe" };
+}
+
 function checkProfileDirs(profileDir: string): DoctorCheck {
   if (!profileDir) {
     return { id: "profile-dirs", ok: false, severity: "error", message: "profile directory is required" };
@@ -243,6 +284,7 @@ export function runDoctor(opts: DoctorOptions): DoctorReport {
   const checks: DoctorCheck[] = [
     checkNodePath(nodePath),
     checkSqlite(),
+    checkConfigFile(opts.profileDir),
     checkProfileDirs(opts.profileDir),
     checkLinger(lingerEnabled),
     checkUnit(unitEvidence, lingerEnabled),

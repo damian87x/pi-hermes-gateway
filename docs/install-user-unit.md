@@ -20,6 +20,18 @@ The default (also explicit `--dry-run`) prints the rendered template and does no
 
 Only after operator approval, add `--install` to write the unit. This does not reload, enable, or start anything. It replaces the same profile's existing unit; save that file first if it contains manual changes. Create the profile directory with mode 0700 and provide its `config.json` separately; the installer does not create profile configuration or credentials.
 
+### Token-bearing adapter configuration
+
+The operator owns the external `<PROFILE>/config.json`; never put it in the checkout or include its values in logs, screenshots, or evidence. When `adapter.config.token` is present, `doctor` requires the file to be owned by the current user with mode 0600 and reports no configuration contents. Route values such as `routes[0].chatId` must be supplied by the owner; do not infer them. Fake-adapter checks do not require a real token or chat id and do not authorize a live send.
+
+After the owner has filled the required values in the external profile, run:
+
+```sh
+pi-hermes-gateway-core --profile <PROFILE> doctor
+```
+
+Doctor only reports checks; it does not load an adapter, send a message, or enable a user unit.
+
 For a safe installation rehearsal, use a temporary HOME and **only** passive installation:
 
 ```sh

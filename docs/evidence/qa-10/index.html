@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QA — Telegram config safety guard</title>
+  <style>
+    :root { color-scheme: dark; font: 16px/1.5 system-ui, sans-serif; background: #0b1220; color: #e5edf8; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 32px 20px; }
+    main { max-width: 1080px; margin: auto; }
+    h1 { margin: 0; font-size: clamp(24px, 4vw, 34px); letter-spacing: -.03em; }
+    .lede { margin: 8px 0 24px; max-width: 760px; color: #9cadc4; }
+    .status { display: inline-flex; margin-bottom: 24px; padding: 7px 12px; border: 1px solid #34d399; border-radius: 999px; color: #a7f3d0; font-size: 12px; font-weight: 700; letter-spacing: .06em; }
+    figure { margin: 0; padding: 12px; border: 1px solid #29354a; border-radius: 14px; background: #111b2d; }
+    img { display: block; width: 100%; height: auto; border-radius: 8px; }
+    figcaption { padding: 12px 4px 2px; color: #9cadc4; font-size: 13px; }
+    section { margin-top: 20px; padding: 18px 20px; border: 1px solid #29354a; border-radius: 12px; background: #111b2d; }
+    h2 { margin: 0 0 8px; font-size: 16px; }
+    p { margin: 0; color: #bdc9da; font-size: 14px; }
+    code { color: #67e8f9; }
+    @media (max-width: 700px) { body { padding: 20px 12px; } figure { padding: 6px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Telegram adapter config guard</h1>
+    <p class="lede">Live CLI evidence for the doctor refusal path. The run used only an isolated temporary profile and a token-key presence sentinel.</p>
+    <div class="status">PASS · UNSAFE CONFIG REFUSED · EXIT 1</div>
+    <figure>
+      <img src="doctor.png" alt="Built doctor CLI reports config-file as an error and requires mode 0600 for a token-key config">
+      <figcaption>Built CLI result with a temporary config file at mode 0644. Doctor refused without loading an adapter or displaying configuration contents.</figcaption>
+    </figure>
+    <section>
+      <h2>Scope and safety</h2>
+      <p>This is fake-only preflight evidence, not proof of Telegram delivery. No real token, chat identifier, live send, or user unit was used or changed. Owner-supplied values remain outside the repository; after that boundary, run <code>pi-hermes-gateway-core --profile &lt;PROFILE&gt; doctor</code>.</p>
+    </section>
+  </main>
+</body>
+</html>
