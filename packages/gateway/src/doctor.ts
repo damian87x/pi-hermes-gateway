@@ -1,6 +1,6 @@
 import { existsSync, realpathSync, statSync } from "node:fs";
 import { homedir, userInfo } from "node:os";
-import { isAbsolute, join, resolve, sep } from "node:path";
+import { basename, isAbsolute, join, resolve, sep } from "node:path";
 import process from "node:process";
 import { DatabaseSync } from "node:sqlite";
 import { profilePaths } from "./profile.js";
@@ -228,9 +228,17 @@ export function runDoctor(opts: DoctorOptions): DoctorReport {
           ...(opts.lingerDir ? { lingerDir: opts.lingerDir } : {}),
           ...(opts.env ? { env: opts.env } : {}),
         });
+  const home = opts.env?.HOME ?? homedir();
+  const profileName = basename(resolve(opts.profileDir));
+  // Only the install script's conventional profile directory identifies its rendered unit.
+  const installedUnitFile = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(profileName) &&
+    resolve(opts.profileDir) === resolve(home, ".config", "pi-hermes-gateway", profileName)
+      ? join(home, ".config", "systemd", "user", `pi-hermes-gateway@${profileName}.service`)
+      : undefined;
+  const unitFile = opts.unitFile ?? installedUnitFile;
   const unitEvidence = probeUnitEvidence({
     ...(opts.unitEvidence !== undefined ? { unitEvidence: opts.unitEvidence } : {}),
-    ...(opts.unitFile ? { unitFile: opts.unitFile } : {}),
+    ...(unitFile ? { unitFile } : {}),
   });
   const checks: DoctorCheck[] = [
     checkNodePath(nodePath),
