@@ -15,13 +15,15 @@ const ROUTE = {
 
 const whatsappModule = join(dirname(fileURLToPath(import.meta.url)), "..", "dist", "index.js");
 
-test("gateway loader loads whatsapp like telegram", async () => {
+test("gateway loader loads whatsapp like telegram and injects the unconfigured default sender", async () => {
   const adapter = await loadSendAdapter(whatsappModule, { kind: "send-only", timeoutMs: 20 }, dirname(whatsappModule));
   assert.equal(adapter.manifest.adapterId, "whatsapp");
   assert.deepEqual(adapter.manifest.capabilities, ["send.text"]);
+  // The loader passes defaultWhatsAppSend with no socket deps: commit-unknown, nothing opened or sent.
   const receipt = adapter.send({ deliveryId: "dlv-load", route: ROUTE, text: "via-loader" });
   assert.equal(receipt.receiptLevel, "commit-unknown");
-  assert.equal(receipt.reason, "send-fn-unconfigured");
+  assert.equal(receipt.reason, "whatsapp-socket-unconfigured");
+  assert.equal(receipt.providerMessageId, undefined);
 });
 
 test("openGateway still defaults to fake when whatsapp exists", async () => {
