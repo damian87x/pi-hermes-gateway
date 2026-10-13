@@ -3,7 +3,7 @@ import {
   LIMITS,
   validateAdapterManifest,
 } from "pi-hermes-gateway-protocol";
-import { writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import type { SendAdapter, SendEnvelope } from "./adapter.js";
 
 export type FakeSendEnvelope = SendEnvelope;
@@ -78,7 +78,13 @@ export function createFakeAdapter(opts?: FakeAdapterConfig): FakeAdapter {
       }
       sent.push({ ...envelope, route: { ...envelope.route } });
       if (adapter.sinkPath) {
-        writeFileSync(adapter.sinkPath, `${JSON.stringify(sent)}\n`);
+        // Keep the observation history across process restarts; overwriting it with this instance's
+        // sent array would hide duplicate sends from a later daemon.
+        const history: FakeSendEnvelope[] = existsSync(adapter.sinkPath)
+          ? JSON.parse(readFileSync(adapter.sinkPath, "utf8"))
+          : [];
+        history.push(sent[sent.length - 1]!);
+        writeFileSync(adapter.sinkPath, `${JSON.stringify(history)}\n`);
       }
       return { receiptLevel: "accepted", providerMessageId: `fake:${envelope.deliveryId}` };
     },
