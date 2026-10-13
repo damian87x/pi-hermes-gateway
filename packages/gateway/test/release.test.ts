@@ -10,6 +10,7 @@ import {
   readFileSync,
   readlinkSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -82,10 +83,16 @@ test("release script refuses publish and writes tarballs locally", { timeout: 18
     assert.match(stderr, /publish/i);
   }
 
+  const tempRoot = mkdtempSync(join(tmpdir(), "s6-release-src-"));
   const dest = mkdtempSync(join(tmpdir(), "s6-release-"));
+  const sharedCore = join(gatewayDir, "dist", "core.js");
+  const sharedCoreBefore = statSync(sharedCore, { bigint: true });
   try {
-    execFileSync(script, ["--out", dest], {
-      cwd: root,
+    // release rebuilds dist; never rewrite modules concurrent CLI tests are loading.
+    copyTrackedFiles(root, tempRoot);
+    linkNodeModules(root, tempRoot);
+    execFileSync(join(tempRoot, "scripts", "release"), ["--out", dest], {
+      cwd: tempRoot,
       encoding: "utf8",
       stdio: "pipe",
     });
@@ -94,7 +101,11 @@ test("release script refuses publish and writes tarballs locally", { timeout: 18
     for (const name of EXPECTED_TARBALLS) {
       assert.equal(existsSync(join(dest, name)), true);
     }
+    const sharedCoreAfter = statSync(sharedCore, { bigint: true });
+    assert.equal(sharedCoreAfter.mtimeNs, sharedCoreBefore.mtimeNs, "release must not rewrite shared dist/core.js");
+    assert.equal(sharedCoreAfter.ctimeNs, sharedCoreBefore.ctimeNs, "release must not touch shared dist/core.js");
   } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
     rmSync(dest, { recursive: true, force: true });
   }
 });
