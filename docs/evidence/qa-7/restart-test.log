@@ -1,0 +1,22 @@
+
+> pi-hermes-gateway-protocol@0.0.0 build
+> tsc -p tsconfig.json
+
+
+> pi-hermes-gateway-core@0.0.0 build
+> tsc -p tsconfig.json
+
+✔ fake sink retains sends across adapter instances so restarts cannot hide duplicates (2.556634ms)
+✔ scheduled message is delivered exactly once after the daemon process is restarted with no client connected (4194.870315ms)
+▶ SIGKILL while dispatching recovers as commit-unknown without a second sink entry
+  ✔ before fake sink write (4344.788037ms)
+  ✔ after fake sink write (4243.795261ms)
+✔ SIGKILL while dispatching recovers as commit-unknown without a second sink entry (8589.534756ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 12887.927964
