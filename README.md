@@ -15,8 +15,8 @@ Nothing is sent until you reply `go`.
    `chmod 600 "$HOME/.config/pi-hermes-gateway/pilot/config.json"`.
 4. Check the profile:
    ```sh
-   pi-hermes-gateway-core \\
-     --profile "$HOME/.config/pi-hermes-gateway/pilot" doctor
+   PROFILE="$HOME/.config/pi-hermes-gateway/pilot"
+   pi-hermes-gateway-core --profile "$PROFILE" doctor
    ```
 5. Reply `go` when ready. Keep the token and chat ID private.
 
@@ -31,8 +31,8 @@ Nothing is sent until you reply `go`.
    or a ban; proceed only if you accept that risk.
 5. Check the profile:
    ```sh
-   pi-hermes-gateway-core \\
-     --profile "$HOME/.config/pi-hermes-gateway/whatsapp-pilot" doctor
+   PROFILE="$HOME/.config/pi-hermes-gateway/whatsapp-pilot"
+   pi-hermes-gateway-core --profile "$PROFILE" doctor
    ```
 6. Reply `go` when ready. Keep the JID private.
 
