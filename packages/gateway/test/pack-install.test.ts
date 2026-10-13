@@ -1,8 +1,16 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync,
+  rmSync, statSync, symlinkSync, writeFileSync,
+} from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
+import {
+  assertCanonicalPath, assertCanonicalWithin, isolatedEnvironment, requireApprovedProductBoundary,
+  requireOwnedTaskHome, workspaceStageMap,
+} from "./s6-verify.mjs";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -31,35 +39,236 @@ function writeIsolatedNpmrc(home: string): { userconfig: string; globalconfig: s
 }
 
 function isolatedEnv(home: string): NodeJS.ProcessEnv {
+  const config = join(home, "config");
+  const cache = join(home, "cache");
+  const tmp = join(home, "tmp");
+  mkdirSync(config, { recursive: true });
+  mkdirSync(cache, { recursive: true });
+  mkdirSync(tmp, { recursive: true });
   const { userconfig, globalconfig } = writeIsolatedNpmrc(home);
-  return {
-    ...process.env,
-    HOME: home,
-    npm_config_cache: join(home, "npm-cache"),
-    npm_config_prefix: join(home, "prefix"),
-    npm_config_userconfig: userconfig,
-    npm_config_globalconfig: globalconfig,
-    npm_config_registry: "http://127.0.0.1:9/",
-    npm_config_update_notifier: "false",
-    npm_config_audit: "false",
-    npm_config_fund: "false",
-  };
+  // Trust exactly the directory of the node binary already running this test (proven by
+  // isNonTamperableSystemFile below) so a nested npm-spawned shell can still resolve node/npm by
+  // name on installs where they live outside /usr/bin (e.g. GitHub Actions' hostedtoolcache).
+  return isolatedEnvironment(
+    { home, tmp, config, cache, npmUserConfig: userconfig, npmGlobalConfig: globalconfig },
+    {},
+    dirname(NODE),
+  );
 }
 
-function packTo(dest: string, pkgDir: string, env: NodeJS.ProcessEnv): string {
-  const packOut = execFileSync("npm", ["pack", "--json", "--pack-destination", dest, "--offline"], {
+// NODE and npm's CLI path come from the controlled process actually running this test (process.execPath /
+// npm_execpath), not a hardcoded machine snapshot, so they are portable to any CI runner or workstation.
+const NODE = process.execPath;
+const TRUSTED_SYSTEM_DIR_PREFIXES = ["/usr/bin/", "/bin/", "/usr/sbin/", "/sbin/"];
+
+function isNonTamperableSystemFile(path: string): boolean {
+  const stat = lstatSync(path);
+  if (stat.isSymbolicLink() || !stat.isFile()) return false;
+  if (stat.uid !== 0 && stat.uid !== process.getuid()) return false;
+  return (stat.mode & 0o022) === 0;
+}
+
+function resolveTrustedSystemExecutable(name: string, candidates: string[]): string {
+  for (const candidate of candidates) {
+    let resolved: string;
+    try {
+      resolved = realpathSync(candidate);
+    } catch {
+      continue;
+    }
+    if (!TRUSTED_SYSTEM_DIR_PREFIXES.some((prefix) => resolved.startsWith(prefix))) continue;
+    if (!isNonTamperableSystemFile(resolved)) continue;
+    return resolved;
+  }
+  throw new Error(`UNPROVEN: no trusted ${name} executable found among ${candidates.join(", ")}`);
+}
+
+let cachedNpmCli: string | undefined;
+let cachedTar: string | undefined;
+let cachedFind: string | undefined;
+let cachedGit: string | undefined;
+
+function getNpmCli(): string {
+  if (cachedNpmCli) return cachedNpmCli;
+  const execpath = process.env.npm_execpath;
+  if (!execpath || !execpath.startsWith("/")) {
+    throw new Error("UNPROVEN: npm_execpath is not set; this test must run through npm (e.g. npm test) so the real npm CLI is known");
+  }
+  if (!statSync(execpath).isFile()) throw new Error(`UNPROVEN: npm_execpath does not resolve to a file: ${execpath}`);
+  cachedNpmCli = execpath;
+  return execpath;
+}
+
+function getTar(): string {
+  return cachedTar ??= resolveTrustedSystemExecutable("tar", ["/usr/bin/tar", "/bin/tar"]);
+}
+function getFind(): string {
+  return cachedFind ??= resolveTrustedSystemExecutable("find", ["/usr/bin/find", "/bin/find"]);
+}
+function getGit(): string {
+  return cachedGit ??= resolveTrustedSystemExecutable("git", ["/usr/bin/git", "/bin/git"]);
+}
+
+// TypeScript is resolved from this repo's own hoisted devDependency (npm workspaces put it at the repo root),
+// never a path on one engineer's machine, and its version is checked against the repo's own package.json pin.
+const TYPESCRIPT = join(root, "node_modules", "typescript");
+
+const pathResolver = {
+  lstat(path: string) {
+    return lstatSync(path);
+  },
+  realpath: realpathSync,
+};
+
+// Set once per test run by requireOwnedTaskHome; every subprocess call is bound to this proven home.
+let currentTaskHome: string | undefined;
+
+function runProductSubprocess(
+  command: string,
+  args: string[],
+  options: Parameters<typeof execFileSync>[2],
+): string | Buffer {
+  if (!currentTaskHome) throw new Error("UNPROVEN: no owned task home has been established for this product boundary");
+  requireApprovedProductBoundary({
+    allowedExecutables: new Set([NODE, getNpmCli(), getTar(), getFind(), getGit()]),
+    command,
+    args,
+    env: (options as { env?: NodeJS.ProcessEnv } | undefined)?.env,
+    taskHome: currentTaskHome,
+    realHome: process.env.HOME,
+    registry: "http://127.0.0.1:9/",
+  });
+  return execFileSync(command, args, options as never);
+}
+
+function npm(args: string[], options: Parameters<typeof execFileSync>[2]): string {
+  return runProductSubprocess(NODE, [getNpmCli(), ...args], options) as string;
+}
+
+function verifyExecutableInputs(): void {
+  if (!isNonTamperableSystemFile(realpathSync(NODE))) throw new Error(`untrusted executable input: ${NODE}`);
+  const npmCli = getNpmCli();
+  if (!isNonTamperableSystemFile(realpathSync(npmCli))) throw new Error(`untrusted executable input: ${npmCli}`);
+  getTar();
+  getFind();
+  getGit();
+}
+
+function verifyCompiler(): void {
+  verifyExecutableInputs();
+  const rootManifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as {
+    devDependencies?: Record<string, string>;
+  };
+  const pinnedVersion = rootManifest.devDependencies?.typescript;
+  if (!pinnedVersion) throw new Error("root package.json does not pin a typescript devDependency version");
+  const stat = lstatSync(TYPESCRIPT);
+  if (stat.isSymbolicLink() || !stat.isDirectory()) throw new Error("TypeScript artifact is not an owned directory");
+  if (stat.uid !== process.getuid()) throw new Error("TypeScript artifact has unexpected owner");
+  const manifest = JSON.parse(readFileSync(join(TYPESCRIPT, "package.json"), "utf8")) as { version?: string };
+  if (manifest.version !== pinnedVersion) {
+    throw new Error(`installed TypeScript ${manifest.version} does not match the pinned devDependency ${pinnedVersion}`);
+  }
+  for (const file of ["bin/tsc", "lib/tsc.js", "lib/typescript.js", "lib/lib.es5.d.ts"]) {
+    if (!statSync(join(TYPESCRIPT, file)).isFile()) throw new Error(`incomplete TypeScript artifact: ${file}`);
+  }
+}
+
+function bootstrapStaging(work: string, env: NodeJS.ProcessEnv): string {
+  verifyCompiler();
+  assertCanonicalPath(work, pathResolver);
+  const stage = join(work, "source");
+  mkdirSync(stage);
+  const archive = runProductSubprocess(getGit(), ["archive", "--format=tar", "HEAD"], {
+    cwd: root,
+    env,
+    encoding: "buffer",
+    maxBuffer: 64 * 1024 * 1024,
+  }) as Buffer;
+  runProductSubprocess(getTar(), ["-xf", "-", "-C", stage], {
+    cwd: root,
+    env,
+    input: archive,
+    stdio: "pipe",
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  assertCanonicalPath(stage, pathResolver);
+  assertCanonicalWithin(stage, join(stage, "package.json"), pathResolver);
+  assertCanonicalWithin(stage, join(stage, "packages"), pathResolver);
+  for (const spec of PACKAGES) {
+    const packageDir = join(stage, "packages", spec.dir);
+    assertCanonicalWithin(stage, packageDir, pathResolver);
+    assertCanonicalWithin(stage, join(packageDir, "package.json"), pathResolver);
+  }
+  const rootManifest = JSON.parse(readFileSync(join(stage, "package.json"), "utf8")) as { workspaces?: unknown };
+  const expectedPaths = PACKAGES.map((spec) => `packages/${spec.dir}`);
+  const committedWorkspaces = rootManifest.workspaces;
+  if (!Array.isArray(committedWorkspaces) || committedWorkspaces.length !== expectedPaths.length
+    || expectedPaths.some((path) => !committedWorkspaces.includes(path))) {
+    throw new Error("committed workspace list changed or is incomplete");
+  }
+  const packageMap: { dir: string; name: string }[] = [];
+  for (const spec of PACKAGES) {
+    const manifest = JSON.parse(readFileSync(join(stage, "packages", spec.dir, "package.json"), "utf8")) as { name?: string };
+    packageMap.push({ dir: `packages/${spec.dir}`, name: manifest.name ?? "" });
+  }
+  const links = workspaceStageMap(stage, packageMap, pathResolver);
+  for (const spec of PACKAGES) {
+    if (!lstatSync(join(stage, "packages", spec.dir)).isDirectory()) throw new Error(`workspace is not a staged directory: ${spec.dir}`);
+  }
+  const modules = join(stage, "node_modules");
+  assertCanonicalPath(stage, pathResolver);
+  mkdirSync(modules);
+  const bins = join(modules, ".bin");
+  mkdirSync(bins);
+  for (const link of links) symlinkSync(relative(dirname(link.link), link.source), link.link, "dir");
+  symlinkSync(TYPESCRIPT, join(modules, "typescript"), "dir");
+  symlinkSync(join(TYPESCRIPT, "bin", "tsc"), join(bins, "tsc"));
+  return stage;
+}
+
+function packTo(
+  dest: string,
+  pkgDir: string,
+  env: NodeJS.ProcessEnv,
+): { filename: string; name: string; version: string; sha256: string } {
+  const packOut = npm(["pack", "--json", "--ignore-scripts", "--pack-destination", dest, "--offline"], {
     cwd: pkgDir,
     encoding: "utf8",
     env,
   });
-  const packed = JSON.parse(packOut) as { filename: string }[];
-  const filename = packed[0]?.filename;
-  if (!filename) throw new Error(`npm pack produced no filename in ${pkgDir}`);
-  return join(dest, filename);
+  const packed = JSON.parse(packOut) as { filename: string; name: string; version: string }[];
+  const entry = packed[0];
+  if (!entry?.filename) throw new Error(`npm pack produced no filename in ${pkgDir}`);
+  const tarball = join(dest, entry.filename);
+  return { ...entry, sha256: createHash("sha256").update(readFileSync(tarball)).digest("hex") };
 }
 
 function tarList(tarball: string): string[] {
-  return execFileSync("tar", ["-tzf", tarball], { encoding: "utf8" }).split("\n").filter(Boolean);
+  const listing = runProductSubprocess(getTar(), ["-tzf", tarball], {
+    encoding: "utf8",
+    env: isolatedEnv(dirname(tarball)),
+  }) as string;
+  return listing.split("\n").filter(Boolean);
+}
+
+function containsPackedSecret(contents: Buffer): boolean {
+  const text = contents.toString("utf8");
+  return /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/.test(text)
+    || /(?:gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16})/.test(text)
+    || text.includes("S6_SECRET_CANARY_positive-control");
+}
+
+function assertNoPackedSecrets(tarball: string): void {
+  const env = isolatedEnv(dirname(tarball));
+  const contents = runProductSubprocess(getTar(), ["-xOzf", tarball], {
+    encoding: "buffer",
+    maxBuffer: 16 * 1024 * 1024,
+    env,
+  }) as Buffer;
+  assert.equal(containsPackedSecret(contents), false, `packed credential in ${tarball}`);
+  // GNU tar verbose listings expose member names and link targets, not all raw PAX/xattr metadata.
+  const metadata = runProductSubprocess(getTar(), ["-tvzf", tarball], { encoding: "utf8", env }) as string;
+  assert.equal(containsPackedSecret(Buffer.from(metadata)), false, `packed credential in archive metadata: ${tarball}`);
 }
 
 function install(home: string, tarballs: string[]): string {
@@ -68,9 +277,10 @@ function install(home: string, tarballs: string[]): string {
     join(consumer, "package.json"),
     JSON.stringify({ name: "s6-consumer", version: "0.0.0", private: true, type: "module" }),
   );
-  execFileSync("npm", ["install", "--ignore-scripts", "--no-package-lock", "--offline", ...tarballs], {
+  const env = isolatedEnv(home);
+  npm(["install", "--omit=dev", "--ignore-scripts", "--no-package-lock", "--offline", ...tarballs], {
     cwd: consumer,
-    env: isolatedEnv(home),
+    env,
     encoding: "utf8",
     stdio: "pipe",
   });
@@ -79,16 +289,28 @@ function install(home: string, tarballs: string[]): string {
 
 function runImport(consumer: string, source: string): string {
   writeFileSync(join(consumer, "import.mjs"), source);
-  return execFileSync(process.execPath, ["import.mjs"], { cwd: consumer, encoding: "utf8" });
+  return runProductSubprocess(NODE, ["import.mjs"], {
+    cwd: consumer,
+    encoding: "utf8",
+    env: isolatedEnv(consumer),
+  }) as string;
 }
 
 function nestedDirs(consumer: string): string {
-  return execFileSync("find", [join(consumer, "node_modules"), "-maxdepth", "4", "-type", "d"], {
+  return runProductSubprocess(getFind(), [join(consumer, "node_modules"), "-maxdepth", "4", "-type", "d"], {
     encoding: "utf8",
-  });
+    env: isolatedEnv(consumer),
+  }) as string;
 }
 
 test("s6 packed tarballs install in a disposable npm home without publish", { timeout: 180_000 }, () => {
+  assert.equal(containsPackedSecret(Buffer.from("S6_SECRET_CANARY_positive-control")), true);
+  assert.equal(containsPackedSecret(Buffer.from("ghp_abcdefghijklmnopqrstuvwxyz1234567890")), true);
+  assert.equal(containsPackedSecret(Buffer.from("-rw-r--r-- owner/group 32 2026-01-01 package/S6_SECRET_CANARY_positive-control_member-name")), true);
+  assert.equal(containsPackedSecret(Buffer.from("lrwxrwxrwx owner/group 32 2026-01-01 package/link -> S6_SECRET_CANARY_positive-control_link-target")), true);
+  assert.equal(containsPackedSecret(Buffer.from("ordinary package documentation")), false);
+  assert.equal(containsPackedSecret(Buffer.from("-rw-r--r-- owner/group 32 2026-01-01 package/README.md")), false);
+  assert.equal(containsPackedSecret(Buffer.from("lrwxrwxrwx owner/group 4 2026-01-01 package/link -> docs")), false);
   for (const spec of PACKAGES) {
     const pkg = JSON.parse(readFileSync(join(packagesDir, spec.dir, "package.json"), "utf8")) as {
       private?: boolean;
@@ -107,28 +329,48 @@ test("s6 packed tarballs install in a disposable npm home without publish", { ti
       assert.equal(pkg.pi, undefined);
     }
   }
-  const doctorSrc = readFileSync(join(gatewayDir, "src", "doctor.ts"), "utf8");
-  const cliSrc = readFileSync(join(gatewayDir, "src", "cli.ts"), "utf8");
+  const doctorSrc = readFileSync(join(root, "packages", "gateway", "src", "doctor.ts"), "utf8");
+  const cliSrc = readFileSync(join(root, "packages", "gateway", "src", "cli.ts"), "utf8");
   for (const src of [doctorSrc, cliSrc]) {
     assert.equal(src.includes("npm" + " publish"), false);
     assert.equal(src.includes("systemctl enable"), false);
     assert.equal(src.includes("enable-linger"), false);
   }
 
-  const work = mkdtempSync(join(tmpdir(), "s6-pack-"));
+  // Self-allocate a disposable, owned task home by default so this proof needs no externally injected
+  // environment variable in CI; an operator may still point S6_TASK_HOME at a specific owned directory.
+  const requestedTaskHome = process.env.S6_TASK_HOME;
+  const ownsAllocatedTaskHome = !requestedTaskHome;
+  const allocatedTaskHome = requestedTaskHome ?? mkdtempSync(join(realpathSync(tmpdir()), "s6-task-"));
+  const taskHome = requireOwnedTaskHome(pathResolver, process.getuid(), allocatedTaskHome);
+  currentTaskHome = taskHome;
+  const work = mkdtempSync(join(taskHome, "s6-pack-"));
   try {
     const packEnv = isolatedEnv(work);
     assert.equal(packEnv.npm_config_userconfig, join(work, ".npmrc"));
     assert.equal(packEnv.npm_config_globalconfig, join(work, "npmrc-global"));
     assert.equal(packEnv.npm_config_registry, "http://127.0.0.1:9/");
-    assert.notEqual(packEnv.npm_config_userconfig, process.env.HOME ? join(process.env.HOME, ".npmrc") : packEnv.npm_config_userconfig);
-    execFileSync("npm", ["run", "build"], { cwd: root, encoding: "utf8", stdio: "pipe" });
+    assert.notEqual(packEnv.npm_config_userconfig, join(taskHome, ".npmrc"));
+    const stage = bootstrapStaging(work, packEnv);
+    npm(["run", "build"], { cwd: stage, encoding: "utf8", stdio: "pipe", env: packEnv });
     const tarballs: Record<string, string> = {};
     const listings: Record<string, string[]> = {};
+    const identities: Record<string, { name: string; version: string; sha256: string }> = {};
     for (const spec of PACKAGES) {
-      tarballs[spec.name] = packTo(work, join(packagesDir, spec.dir), packEnv);
+      const manifest = JSON.parse(readFileSync(join(stage, "packages", spec.dir, "package.json"), "utf8")) as {
+        name: string;
+        version: string;
+      };
+      const packed = packTo(work, join(stage, "packages", spec.dir), packEnv);
+      assertNoPackedSecrets(join(work, packed.filename));
+      assert.equal(packed.name, manifest.name, `${spec.dir} packed name drift`);
+      assert.equal(packed.version, manifest.version, `${spec.dir} packed version drift`);
+      assert.equal(packed.name, spec.name);
+      tarballs[spec.name] = join(work, packed.filename);
+      identities[spec.name] = { name: packed.name, version: packed.version, sha256: packed.sha256 };
       listings[spec.name] = tarList(tarballs[spec.name]!);
     }
+    console.log(`S6 packed tarball identities: ${JSON.stringify(identities)}`);
 
     const coreList = listings["pi-hermes-gateway-core"]!;
     for (const name of [
@@ -188,21 +430,51 @@ test("s6 packed tarballs install in a disposable npm home without publish", { ti
     const companionHome = install(work, [protocolTar, companionTar]);
     const companionOut = runImport(
       companionHome,
-      `import { companionStatus, daemonAvailable } from "pi-hermes-gateway-companion";
-       if (daemonAvailable("/no/such/hermes-profile")) throw new Error("missing profile available");
-       const status = await companionStatus("/no/such/hermes-profile");
-       if (status.ok !== false || status.error.code !== "daemon-unavailable") throw new Error("expected unavailable");
-       console.log(JSON.stringify({ unavailable: true }));
+      `import { companionStatus } from "pi-hermes-gateway-companion";
+       import gatewayCompanion from "pi-hermes-gateway-companion/extension";
+       const missingProfileStatus = await companionStatus("/no/such/hermes-profile");
+       if (missingProfileStatus.ok !== false || missingProfileStatus.available !== false || missingProfileStatus.error.code !== "daemon-unavailable") throw new Error("missing profile status");
+       const handlers = new Map();
+       const tools = new Map();
+       const hostEvents = [];
+       gatewayCompanion({
+         on(event, handler) { handlers.set(event, handler); hostEvents.push({ type: "registered", event }); },
+         registerTool(tool) { tools.set(tool.name, tool); },
+       });
+       const emit = async (event) => {
+         hostEvents.push({ type: "invoked", event });
+         return await handlers.get(event)?.();
+       };
+       if (!handlers.has("session_start")) throw new Error("session_start handler missing");
+       const sessionStartResult = await emit("session_start");
+       if (sessionStartResult !== undefined) throw new Error("offline session_start should be passive");
+       if (!hostEvents.some((event) => event.type === "invoked" && event.event === "session_start")) throw new Error("session_start host event not observed");
+       const statusTool = tools.get("gateway_status");
+       if (!statusTool) throw new Error("gateway_status handler missing");
+       const toolResult = await statusTool.execute();
+       const payload = JSON.parse(toolResult.content[0].text);
+       if (payload.ok !== false || payload.available !== false || payload.error.code !== "daemon-unavailable") throw new Error("status tool did not report unavailable");
+       console.log(JSON.stringify({ unavailable: true, sessionStartAwaited: true, statusHandler: true }));
       `,
     );
-    assert.match(companionOut, /"unavailable":true/);
+    assert.match(companionOut, /"sessionStartAwaited":true/);
+    assert.match(companionOut, /"statusHandler":true/);
 
     const protoHome = install(work, [protocolTar]);
     runImport(
       protoHome,
-      `import { PROTOCOL_VERSION, validateWireRequest } from "pi-hermes-gateway-protocol";
+      `import { ADAPTER_API_VERSION, PROTOCOL_VERSION, validateAdapterManifest, validateWireRequest } from "pi-hermes-gateway-protocol";
        if (PROTOCOL_VERSION !== 1) throw new Error("protocol");
        if (typeof validateWireRequest !== "function") throw new Error("validateWireRequest");
+       const incompatible = validateAdapterManifest({
+         adapterId: "packed-incompatible",
+         adapterApiVersion: ADAPTER_API_VERSION + 1,
+         capabilities: ["send.text"],
+         configSchemaVersion: 1,
+         maxTextLength: 4096,
+         receiptLevels: ["accepted"],
+       });
+       if (incompatible.ok || incompatible.error.code !== "unsupported_adapter_api_version") throw new Error("incompatible adapter API was not rejected");
        console.log("ok");
       `,
     );
@@ -257,5 +529,7 @@ test("s6 packed tarballs install in a disposable npm home without publish", { ti
     );
   } finally {
     rmSync(work, { recursive: true, force: true });
+    if (ownsAllocatedTaskHome) rmSync(allocatedTaskHome, { recursive: true, force: true });
+    currentTaskHome = undefined;
   }
 });

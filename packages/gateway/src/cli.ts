@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -8,6 +9,7 @@ import type { SendAdapter } from "./adapter.js";
 import { approvePending } from "./core.js";
 import { startDaemon } from "./daemon.js";
 import { runDoctor } from "./doctor.js";
+import { newId } from "./ids.js";
 import { ensureProfileDir, profilePaths } from "./profile.js";
 import { Store } from "./store.js";
 import { createResultsStore } from "./worker/results.js";
@@ -90,20 +92,60 @@ async function cli(): Promise<number | undefined> {
       process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
       return exitCode;
     }
+    const workerConfig = {
+      provider: process.env.PI_HERMES_WORKER_PROVIDER,
+      model: process.env.PI_HERMES_WORKER_MODEL,
+      prompt: process.env.PI_HERMES_WORKER_PROMPT,
+    };
+    const missing = Object.entries(workerConfig).filter(([, value]) => !value?.trim()).map(([key]) => key);
+    if (missing.length > 0) {
+      process.stderr.write(`missing worker configuration: ${missing.map((key) => `PI_HERMES_WORKER_${key.toUpperCase()}`).join(", ")}\n`);
+      return 2;
+    }
     const store = new Store(profilePaths(profileDir).dbPath);
+    let workerCwd: string | undefined;
     try {
+      workerCwd = mkdtempSync(join(tmpdir(), "pi-hermes-worker-"));
       store.migrate();
-      // Admission is durable in the profile DB: one attempted invocation per UTC day across processes.
-      const outcome = await runWorkerJob({ profileId, occurrenceId, prompt: "" }, {
-        dailyInvocationLimit: 1, results: createResultsStore(store), nowMs: Date.now,
-        provider: "", model: "", cwd: profileDir, timeoutMs: 60_000, maxOutputBytes: 1_048_576,
+      if (store.db.prepare("SELECT 1 FROM deliveries WHERE occurrence_id = ? AND source <> 'worker' LIMIT 1").get(occurrenceId)) {
+        throw new Error(`worker occurrence already has a delivery: ${occurrenceId}`);
+      }
+      const results = createResultsStore(store);
+      const complete = results.complete;
+      results.complete = (id, value, nowMs) => store.transaction(() => {
+        if (store.db.prepare("SELECT 1 FROM deliveries WHERE occurrence_id = ? LIMIT 1").get(id)) {
+          throw new Error(`worker occurrence already has a delivery: ${id}`);
+        }
+        const row = complete(id, value, nowMs);
+        const text = String((value as { text?: unknown }).text ?? "");
+        store.insertDelivery({
+          delivery_id: newId("dlv"), job_id: null, occurrence_id: id, source: "worker",
+          route_json: "{}", text, not_after_ms: 0, status: "worker-completed", request_id: null,
+          created_at_ms: row.acceptedAtMs, dispatch_intent: 0,
+        });
+        return row;
       });
-      process.stdout.write(`${JSON.stringify(outcome)}\n`);
+      // Admission commits before spawn; only result completion and inert delivery publication are atomic.
+      const outcome = await runWorkerJob({ profileId, occurrenceId, prompt: workerConfig.prompt! }, {
+        dailyInvocationLimit: 1, results, nowMs: Date.now,
+        provider: workerConfig.provider!, model: workerConfig.model!, cwd: workerCwd, timeoutMs: 60_000, maxOutputBytes: 1_048_576,
+        spawnGuard: (spawn) => store.transaction(() => {
+          if (store.db.prepare("SELECT 1 FROM deliveries WHERE occurrence_id = ? LIMIT 1").get(occurrenceId)) {
+            throw new Error(`worker occurrence already has a delivery: ${occurrenceId}`);
+          }
+          return spawn();
+        }),
+      });
       if (outcome.status === "accepted") exitCode = 0;
+      process.stdout.write(`${JSON.stringify(outcome)}\n`);
     } catch (err) {
       process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
     } finally {
-      store.close();
+      try {
+        if (workerCwd) rmSync(workerCwd, { recursive: true, force: true });
+      } finally {
+        store.close();
+      }
     }
     return exitCode;
   }

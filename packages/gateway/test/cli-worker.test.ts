@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -14,18 +14,19 @@ import { handle, openTestGw, ROUTE } from "./helpers.ts";
 const CLI = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
 const HOOK = fileURLToPath(new URL("./cli-worker-profile-hook.mjs", import.meta.url));
 
-// argv after node: [marker, mode, ...worker CLI flags]
+// argv after node: [marker, mode, meta, ...worker CLI flags]
 const FAKE_WORKER = `
-const { appendFileSync } = require("node:fs");
-const [marker, mode] = process.argv.slice(2);
+const { appendFileSync, writeFileSync, readdirSync } = require("node:fs");
+const [marker, mode, meta] = process.argv.slice(2);
 appendFileSync(marker, process.pid + "\\n");
+writeFileSync(meta, JSON.stringify({ cwd: process.cwd(), entries: readdirSync(process.cwd()), argv: process.argv.slice(5), parentSentinel: process.env.PARENT_ONLY_SENTINEL }));
 if (mode === "fail") process.exit(3);
 if (mode === "hang") setInterval(() => {}, 1000);
 else if (mode === "big") process.stdout.write("0123456789".repeat(60_000) + "BIG-TAIL\\n");
 else setTimeout(() => process.stdout.write("worker ok\\n"), mode === "slow" ? 500 : 0);
 `;
 
-function setup(t, mode = "ok") {
+function setup(t, mode = "ok", cliInjection) {
   const dir = mkdtempSync(join(tmpdir(), "cli-worker-"));
   const profileDir = join(dir, "profile");
   mkdirSync(profileDir, { mode: 0o700 });
@@ -33,6 +34,61 @@ function setup(t, mode = "ok") {
   const script = join(dir, "fake-worker.cjs");
   writeFileSync(script, FAKE_WORKER);
   const marker = join(dir, "marker");
+  const cliInjectionHook = cliInjection ? join(dir, "cli-injection-hook.mjs") : undefined;
+  if (cliInjection === "race") {
+    writeFileSync(cliInjectionHook, `
+      import { DatabaseSync } from "node:sqlite";
+      import { registerHooks } from "node:module";
+      globalThis.DatabaseSync = DatabaseSync;
+      registerHooks({ load(url, context, nextLoad) {
+        const loaded = nextLoad(url, context);
+        if (url.endsWith("/dist/worker/runner.js") && process.env.CLI_WORKER_TEST_TRACK_SPAWN === "1") {
+          const source = String(loaded.source).replace('import { spawn } from "node:child_process";', 'import { spawn as nodeSpawn } from "node:child_process"; import { appendFileSync } from "node:fs"; const spawn = (...args) => { appendFileSync(process.env.CLI_WORKER_TEST_PHYSICAL_SPAWN, "spawn\\\\n"); return nodeSpawn(...args); };');
+          return { ...loaded, source };
+        }
+        if (!url.endsWith("/dist/cli.js")) return loaded;
+        const source = String(loaded.source);
+        const marker = source.indexOf("source <> 'worker' LIMIT 1");
+        const at = source.lastIndexOf("if (", marker);
+        const end = source.indexOf("\\n            }", marker) + 14;
+        if (marker < 0 || at < 0 || end < 14) throw new Error("CLI occupancy check seam missing");
+        const insert = source.slice(at, end) + '\\n            { const db = new globalThis.DatabaseSync(process.env.CLI_WORKER_TEST_DB); db.prepare("INSERT INTO deliveries(delivery_id, job_id, occurrence_id, source, route_json, text, not_after_ms, status, request_id, created_at_ms, dispatch_intent) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run("race-delivery", "job-occ-race-before-spawn", "occ-race-before-spawn", "job", "{}", "preserved bytes", 123456789, "queued", null, 123, 0); db.close(); }';
+        return { ...loaded, source: source.slice(0, at) + insert + source.slice(end) };
+      }});
+    `);
+  } else if (cliInjection === "mkdtemp-failure" || cliInjection === "postspawn-commit-failure" || cliInjection === "rmsync-failure" || cliInjection === "spawn-track") {
+    writeFileSync(cliInjectionHook, `
+      import { registerHooks } from "node:module";
+      registerHooks({ load(url, context, nextLoad) {
+        const loaded = nextLoad(url, context);
+        let source = String(loaded.source);
+        if (url.endsWith("/dist/worker/runner.js") && process.env.CLI_WORKER_TEST_TRACK_SPAWN === "1") {
+          source = source.replace('import { spawn } from "node:child_process";', 'import { spawn as nodeSpawn } from "node:child_process"; import { appendFileSync, existsSync } from "node:fs"; const spawn = (...args) => { const child = nodeSpawn(...args); appendFileSync(process.env.CLI_WORKER_TEST_PHYSICAL_SPAWN, "spawn\\\\n"); if (process.env.CLI_WORKER_TEST_CHILD_CLOSE) child.once("close", () => appendFileSync(process.env.CLI_WORKER_TEST_CHILD_CLOSE, JSON.stringify({ cwd: args[2].cwd, cwdExists: existsSync(args[2].cwd) }) + "\\\\n")); return child; };');
+          return { ...loaded, source };
+        }
+        if (!url.endsWith("/dist/cli.js")) return loaded;
+        const store = 'const store = new Store(profilePaths(profileDir).dbPath);';
+        if (!source.includes(store)) throw new Error("CLI Store seam missing");
+        if (process.env.CLI_WORKER_TEST_CLOSED) {
+          source = source.replace('import { readFileSync, existsSync, mkdtempSync, rmSync } from "node:fs";', 'import { readFileSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";').replace(store, store + ' const closeStore = store.close.bind(store); store.close = () => { writeFileSync(process.env.CLI_WORKER_TEST_CLOSED, "closed"); closeStore(); };');
+        }
+        if (process.env.CLI_WORKER_TEST_MKDTEMP_FAILURE === "1") {
+          source = source.replace('workerCwd = mkdtempSync(join(tmpdir(), "pi-hermes-worker-"));', 'throw new Error("injected mkdtemp failure");');
+        }
+        if (process.env.CLI_WORKER_TEST_COMMIT_FAILURE === "1") {
+          source = source.replace(store, store + ' const exec = store.db.exec.bind(store.db); store.db.exec = (sql) => sql === "COMMIT" && existsSync(process.env.CLI_WORKER_TEST_PHYSICAL_SPAWN) ? (() => { throw new Error("injected COMMIT failure"); })() : exec(sql);');
+        }
+        if (process.env.CLI_WORKER_TEST_RMSYNC_FAILURE === "1") {
+          const rmAt = source.indexOf("rmSync(workerCwd, { recursive: true, force: true });");
+          const start = source.lastIndexOf("if (workerCwd)", rmAt);
+          if (rmAt < 0 || start < 0) throw new Error("CLI rmSync seam missing");
+          const end = source.indexOf(";", rmAt) + 1;
+          source = source.slice(0, start) + 'if (workerCwd) { writeFileSync(process.env.CLI_WORKER_TEST_RMSYNC, "attempted"); throw new Error("injected rmSync failure"); }' + source.slice(end);
+        }
+        return { ...loaded, source };
+      }});
+    `);
+  }
   t.after(() => {
     // Workers run detached in their own process group; reap every one that started.
     const pids = existsSync(marker) ? readFileSync(marker, "utf8").trim().split("\n").filter(Boolean) : [];
@@ -45,13 +101,42 @@ function setup(t, mode = "ok") {
     }
     rmSync(dir, { recursive: true, force: true });
   });
-  const env = (profile = [process.execPath, script, marker, mode], extra = {}) => ({
+  const meta = join(dir, "worker-meta.json");
+  const env = (profile = [process.execPath, script, marker, mode, meta], extra = {}) => ({
     ...process.env,
     CLI_WORKER_TEST_PROFILE: JSON.stringify(profile),
+    PI_HERMES_WORKER_PROVIDER: "synthetic-provider",
+    PI_HERMES_WORKER_MODEL: "synthetic-model",
+    PI_HERMES_WORKER_PROMPT: "synthetic prompt",
     ...extra,
   });
-  const argv = (args) => ["--import", HOOK, CLI, "--profile", profileDir, "worker", ...args];
-  const run = (args, profile) => spawnSync(process.execPath, argv(args), { encoding: "utf8", env: env(profile), timeout: 10_000 });
+  const argv = (args) => ["--import", HOOK, ...(cliInjectionHook ? ["--import", cliInjectionHook] : []), CLI, "--profile", profileDir, "worker", ...args];
+  const seedDelivery = (occurrenceId, overrides = {}) => {
+    const store = new Store(join(profileDir, "gateway.sqlite"));
+    try {
+      store.migrate();
+      const jobId = `job-${occurrenceId}`;
+      store.insertDelivery({ delivery_id: `delivery-${occurrenceId}`, job_id: jobId, occurrence_id: occurrenceId, source: "job", route_json: JSON.stringify(ROUTE), text: "placeholder", not_after_ms: Date.now() + 60_000, status: "queued", request_id: null, created_at_ms: Date.now(), dispatch_intent: 0, ...overrides });
+    } finally {
+      store.close();
+    }
+  };
+  const run = (args, profile, extra) => spawnSync(process.execPath, argv(args), { encoding: "utf8", env: env(profile, {
+    ...(cliInjection === "race" ? {
+      CLI_WORKER_TEST_DB: join(profileDir, "gateway.sqlite"),
+      CLI_WORKER_TEST_TRACK_SPAWN: "1",
+      CLI_WORKER_TEST_PHYSICAL_SPAWN: join(dir, "physical-spawn"),
+    } : {}),
+    ...(cliInjection === "mkdtemp-failure" || cliInjection === "postspawn-commit-failure" || cliInjection === "rmsync-failure" ? { CLI_WORKER_TEST_CLOSED: join(dir, "store-closed") } : {}),
+    ...(cliInjection === "mkdtemp-failure" ? { CLI_WORKER_TEST_MKDTEMP_FAILURE: "1" } : {}),
+    ...(cliInjection === "postspawn-commit-failure" || cliInjection === "spawn-track" ? {
+      CLI_WORKER_TEST_TRACK_SPAWN: "1",
+      CLI_WORKER_TEST_PHYSICAL_SPAWN: join(dir, "physical-spawn"),
+      ...(cliInjection === "postspawn-commit-failure" ? { CLI_WORKER_TEST_COMMIT_FAILURE: "1", CLI_WORKER_TEST_CHILD_CLOSE: join(dir, "child-close") } : {}),
+    } : {}),
+    ...(cliInjection === "rmsync-failure" ? { CLI_WORKER_TEST_RMSYNC_FAILURE: "1", CLI_WORKER_TEST_RMSYNC: join(dir, "rmsync") } : {}),
+    ...extra,
+  }), timeout: 10_000 });
   // Piped CLI run that reports on close, so every stdout byte is collected; readDelayMs defers reading.
   const runPiped = (args, { readDelayMs = 0, closeStdout = false } = {}) => new Promise((resolve, reject) => {
     const child = spawn(process.execPath, argv(args), { env: env(), stdio: ["ignore", "pipe", "pipe"] });
@@ -88,7 +173,32 @@ function setup(t, mode = "ok") {
       db.close();
     }
   };
-  return { dir, profileDir, marker, env, argv, run, runPiped, spawns, claims, completedResult };
+  const deliveryRows = (occurrenceId) => {
+    const db = new DatabaseSync(join(profileDir, "gateway.sqlite"), { readOnly: true });
+    try {
+      return db.prepare("SELECT occurrence_id, text, status, dispatch_intent FROM deliveries WHERE occurrence_id = ?").all(occurrenceId).map((row) => ({ ...row }));
+    } finally {
+      db.close();
+    }
+  };
+  const allDeliveries = () => {
+    const db = new DatabaseSync(join(profileDir, "gateway.sqlite"), { readOnly: true });
+    try {
+      return db.prepare("SELECT * FROM deliveries ORDER BY delivery_id").all().map((row) => ({ ...row }));
+    } finally {
+      db.close();
+    }
+  };
+  const failWorkerDeliveryInserts = () => {
+    const store = new Store(join(profileDir, "gateway.sqlite"));
+    try {
+      store.migrate();
+      store.db.exec("CREATE TRIGGER fail_worker_delivery BEFORE INSERT ON deliveries WHEN NEW.source = 'worker' BEGIN SELECT RAISE(ABORT, 'injected worker delivery failure'); END");
+    } finally {
+      store.close();
+    }
+  };
+  return { dir, profileDir, marker, meta, env, argv, run, runPiped, spawns, claims, completedResult, deliveryRows, allDeliveries, failWorkerDeliveryInserts, seedDelivery };
 }
 
 const outcome = (result) => JSON.parse(result.stdout);
@@ -108,6 +218,17 @@ test("cli-worker: rejects extra arguments and job-supplied executables before ad
     assert.equal(result.status, 2, `${args.join(" ")}: ${result.stderr}`);
     assert.match(result.stderr, /usage: .* worker <profile-id> <occurrence-id>/);
   }
+  assert.equal(existsSync(join(profileDir, "gateway.sqlite")), false);
+  assert.equal(spawns(), 0);
+});
+
+test("cli-worker: missing synthetic config refuses before claim or spawn", (t) => {
+  const { profileDir, run, spawns } = setup(t);
+  const result = run(["report", "occ-missing-config"], undefined, {
+    PI_HERMES_WORKER_PROVIDER: "", PI_HERMES_WORKER_MODEL: "", PI_HERMES_WORKER_PROMPT: "",
+  });
+  assert.equal(result.status, 2, result.stderr);
+  assert.match(result.stderr, /missing worker configuration: PI_HERMES_WORKER_PROVIDER, PI_HERMES_WORKER_MODEL, PI_HERMES_WORKER_PROMPT/);
   assert.equal(existsSync(join(profileDir, "gateway.sqlite")), false);
   assert.equal(spawns(), 0);
 });
@@ -195,18 +316,172 @@ test("cli-worker: the command is the first positional; `worker approve ID` never
 
 test("cli-worker: separate processes reject a repeated occurrence and a second occurrence the same UTC day", async (t) => {
   await avoidUtcMidnight();
-  const { run, spawns, claims } = setup(t);
-  const first = run(["report", "occ-1"]);
+  const { run, spawns, claims, deliveryRows, meta, profileDir } = setup(t);
+  const first = run(["report", "occ-1"], undefined, { PARENT_ONLY_SENTINEL: "must-not-reach-worker" });
   assert.equal(first.status, 0, first.stderr);
   assert.deepEqual(outcome(first).row.value, { kind: "ok", text: "worker ok" });
+  assert.deepEqual(deliveryRows("occ-1"), [{ occurrence_id: "occ-1", text: "worker ok", status: "worker-completed", dispatch_intent: 0 }]);
+  const metadata = JSON.parse(readFileSync(meta, "utf8"));
+  assert.notEqual(metadata.cwd, profileDir);
+  assert.deepEqual(metadata.entries, []);
+  assert.equal(metadata.parentSentinel, undefined);
+  const args = metadata.argv;
+  assert.equal(args[args.indexOf("--provider") + 1], "synthetic-provider");
+  assert.equal(args[args.indexOf("--model") + 1], "synthetic-model");
+  assert.equal(args.at(-1), "synthetic prompt");
+  const firstDelivery = deliveryRows("occ-1");
   const repeat = run(["report", "occ-1"]);
   assert.equal(repeat.status, 1);
   assert.deepEqual(outcome(repeat), { status: "rejected", reason: "duplicate" });
+  assert.deepEqual(deliveryRows("occ-1"), firstDelivery);
   const other = run(["report", "occ-2"]);
   assert.equal(other.status, 1);
   assert.deepEqual(outcome(other), exhausted);
   assert.equal(spawns(), 1);
   assert.deepEqual(claims(), [{ occurrence_id: "occ-1", status: "completed" }]);
+});
+
+test("cli-worker: accepted result creates one inert delivery on an empty ledger", async (t) => {
+  await avoidUtcMidnight();
+  const { run, deliveryRows } = setup(t);
+  const result = run(["report", "occ-empty"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(outcome(result).status, "accepted");
+  assert.deepEqual(deliveryRows("occ-empty"), [{ occurrence_id: "occ-empty", text: "worker ok", status: "worker-completed", dispatch_intent: 0 }]);
+});
+
+test("cli-worker: a scheduled job delivery is preserved and rejected before admission", async (t) => {
+  await avoidUtcMidnight();
+  const { run, allDeliveries, claims, spawns, profileDir } = setup(t);
+  const { gw, clock } = openTestGw({ dir: profileDir });
+  gw.store.setMeta("dispatch_enabled", "0");
+  const created = handle(gw, "job.create", {
+    kind: "static-text", text: "original scheduled text", route: ROUTE,
+    schedule: { type: "once", atUtc: "2026-01-01T10:01:00.000Z" },
+  }, clock.nowMs());
+  assert.equal(created.ok, true);
+  clock.set(Date.parse("2026-01-01T10:02:00.000Z"));
+  gw.tick();
+  const [scheduled] = gw.store.listDeliveries();
+  assert.equal(scheduled?.status, "queued");
+  const occurrenceId = scheduled!.occurrence_id;
+  gw.close();
+  const before = allDeliveries();
+  const result = run(["report", occurrenceId]);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /worker occurrence already has a delivery/);
+  assert.deepEqual(allDeliveries(), before);
+  assert.deepEqual(claims(), []);
+  assert.equal(spawns(), 0);
+});
+
+test("cli-worker: a delivery committed after the initial check blocks the physical spawn", async (t) => {
+  await avoidUtcMidnight();
+  const { run, dir, profileDir, allDeliveries, claims, spawns } = setup(t, "ok", "race");
+  const result = run(["report", "occ-race-before-spawn"]);
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /worker occurrence already has a delivery/);
+  assert.ok(existsSync(join(profileDir, "gateway.sqlite")), result.stderr);
+  assert.deepEqual(allDeliveries(), [{
+    delivery_id: "race-delivery", job_id: "job-occ-race-before-spawn", occurrence_id: "occ-race-before-spawn",
+    source: "job", route_json: "{}", text: "preserved bytes", not_after_ms: 123456789, status: "queued",
+    request_id: null, created_at_ms: 123, dispatch_intent: 0,
+  }]);
+  assert.deepEqual(claims(), [{ occurrence_id: "occ-race-before-spawn", status: "interrupted" }]);
+  assert.equal(spawns(), 0);
+  const retry = run(["report", "occ-race-before-spawn"]);
+  assert.equal(retry.status, 1);
+  assert.deepEqual(claims(), [{ occurrence_id: "occ-race-before-spawn", status: "interrupted" }]);
+  assert.equal(spawns(), 0);
+  assert.equal(existsSync(join(dir, "physical-spawn")), false, "occupied guard must not invoke physical spawn");
+});
+
+test("cli-worker: physical spawn and successful child close are recorded by the spawn control", (t) => {
+  const { run, dir, spawns } = setup(t, "ok", "spawn-track");
+  const result = run(["report", "occ-spawn-positive"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(spawns(), 1);
+  assert.equal(readFileSync(join(dir, "physical-spawn"), "utf8"), "spawn\n");
+});
+
+test("cli-worker: post-spawn COMMIT failure kills and reaps child before cwd cleanup", (t) => {
+  const { run, dir, claims } = setup(t, "hang", "postspawn-commit-failure");
+  const result = run(["report", "occ-commit-failure"]);
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /injected COMMIT failure/);
+  assert.equal(readFileSync(join(dir, "physical-spawn"), "utf8"), "spawn\n");
+  const close = JSON.parse(readFileSync(join(dir, "child-close"), "utf8"));
+  assert.equal(close.cwdExists, true, "child close must precede temporary cwd cleanup");
+  assert.deepEqual(claims(), [{ occurrence_id: "occ-commit-failure", status: "interrupted" }]);
+});
+
+test("cli-worker: rmSync failure still closes Store", (t) => {
+  const { run, dir } = setup(t, "ok", "rmsync-failure");
+  const result = run(["report", "occ-rmsync-failure"]);
+  assert.match(result.stderr, /injected rmSync failure/);
+  assert.equal(readFileSync(join(dir, "rmsync"), "utf8"), "attempted");
+  assert.equal(readFileSync(join(dir, "store-closed"), "utf8"), "closed");
+});
+
+test("cli-worker: temporary-directory allocation failure closes Store without claim or spawn", (t) => {
+  const { run, claims, spawns, dir } = setup(t, "ok", "mkdtemp-failure");
+  const result = run(["report", "occ-mkdtemp-failure"]);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /injected mkdtemp failure/);
+  assert.equal(readFileSync(join(dir, "store-closed"), "utf8"), "closed");
+  const store = new Store(join(dir, "profile", "gateway.sqlite"));
+  try {
+    store.migrate();
+    assert.deepEqual(claims(), []);
+  } finally {
+    store.close();
+  }
+  assert.equal(spawns(), 0);
+});
+
+test("cli-worker: unrelated worker-prefixed delivery IDs do not collide with new results", async (t) => {
+  await avoidUtcMidnight();
+  const { run, seedDelivery, allDeliveries, deliveryRows } = setup(t);
+  seedDelivery("unrelated", { delivery_id: "worker-occ-collision" });
+  const before = allDeliveries();
+  const result = run(["report", "occ-collision"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(allDeliveries().filter((row) => row.occurrence_id === "unrelated"), before);
+  assert.deepEqual(deliveryRows("occ-collision"), [{ occurrence_id: "occ-collision", text: "worker ok", status: "worker-completed", dispatch_intent: 0 }]);
+});
+
+test("cli-worker: result and delivery insertion roll back together and retry does not spawn", async (t) => {
+  await avoidUtcMidnight();
+  const { run, failWorkerDeliveryInserts, claims, deliveryRows, spawns } = setup(t);
+  failWorkerDeliveryInserts();
+  const failed = run(["report", "occ-insert-failure"]);
+  assert.equal(failed.status, 1);
+  assert.match(failed.stderr, /injected worker delivery failure/);
+  assert.deepEqual(claims(), [{ occurrence_id: "occ-insert-failure", status: "interrupted" }]);
+  assert.deepEqual(deliveryRows("occ-insert-failure"), []);
+  assert.equal(spawns(), 1);
+  const retry = run(["report", "occ-insert-failure"]);
+  assert.equal(retry.status, 1);
+  assert.deepEqual(outcome(retry), { status: "rejected", reason: "duplicate" });
+  assert.equal(spawns(), 1);
+});
+
+test("cli-worker: concurrent delivery occupation rejects completion without overwriting", { timeout: 15_000 }, async (t) => {
+  await avoidUtcMidnight();
+  const { run, env, argv, marker, seedDelivery, allDeliveries, claims, spawns } = setup(t, "slow");
+  const child = spawn(process.execPath, argv(["report", "occ-race"]), { env: env(), encoding: "utf8" });
+  const result = new Promise((resolve) => child.once("close", (code) => resolve(code)));
+  const deadline = Date.now() + 10_000;
+  while (!existsSync(marker) || !readFileSync(marker, "utf8").endsWith("\n")) {
+    assert.ok(Date.now() < deadline, "worker never started");
+    await sleep(20);
+  }
+  seedDelivery("occ-race");
+  const before = allDeliveries();
+  assert.equal(await result, 1);
+  assert.deepEqual(allDeliveries(), before);
+  assert.deepEqual(claims(), [{ occurrence_id: "occ-race", status: "interrupted" }]);
+  assert.equal(spawns(), 1);
 });
 
 test("cli-worker: a failing worker still consumes the daily invocation", async (t) => {
@@ -505,6 +780,17 @@ async function concurrentFreshProfileRound(t, round, children) {
     assert.equal(db.prepare("PRAGMA journal_mode").get().journal_mode, "wal", details);
     assert.equal(db.prepare("PRAGMA user_version").get().user_version, SCHEMA_VERSION, details);
     assert.equal(db.prepare("PRAGMA integrity_check").get().integrity_check, "ok", details);
+    const deliveries = db.prepare("SELECT occurrence_id, job_id, request_id, source, route_json, text, not_after_ms, created_at_ms, dispatch_intent, status FROM deliveries").all();
+    assert.equal(deliveries.length, 1, details);
+    assert.equal(deliveries[0].occurrence_id, accepted[0].occurrenceId, details);
+    assert.equal(deliveries[0].job_id, null, details);
+    assert.equal(deliveries[0].request_id, null, details);
+    assert.equal(deliveries[0].source, "worker", details);
+    assert.equal(deliveries[0].route_json, "{}", details);
+    assert.equal(deliveries[0].text, "worker ok", details);
+    assert.equal(deliveries[0].not_after_ms, 0, details);
+    assert.equal(deliveries[0].dispatch_intent, 0, details);
+    assert.equal(deliveries[0].status, "worker-completed", details);
   } finally {
     db.close();
   }

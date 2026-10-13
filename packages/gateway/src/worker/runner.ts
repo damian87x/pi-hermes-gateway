@@ -22,6 +22,7 @@ export interface RunWorkerOptions {
   timeoutMs: number;
   maxOutputBytes: number;
   env?: Record<string, string>;
+  spawnGuard?: <T>(spawn: () => T) => T;
 }
 
 export type WorkerResult =
@@ -52,16 +53,35 @@ export async function runWorker(opts: RunWorkerOptions): Promise<WorkerResult> {
   if (!isAbsolute(opts.cliPath)) throw new Error(`worker CLI path must be absolute: ${opts.cliPath}`);
   // detached: the child leads its own process group so kill(-pid) reaches grandchildren.
   const spawnOpts = { cwd: opts.cwd, env: opts.env ?? {}, detached: true, stdio: ["ignore", "pipe", "pipe"] };
-  const child = spawn(opts.cliPath, workerArgv(opts), spawnOpts);
-  const pid = child.pid;
-  const killGroup = () => {
-    if (pid === undefined) return;
+  let pid: number | undefined;
+  const killGroup = (groupPid = pid) => {
+    if (groupPid === undefined) return;
     try {
-      process.kill(-pid, "SIGKILL");
+      process.kill(-groupPid, "SIGKILL");
     } catch {
       // group already gone
     }
   };
+  let spawned: ReturnType<typeof spawn> | undefined;
+  let spawnClosed: Promise<void> | undefined;
+  const spawnChild = () => {
+    spawned = spawn(opts.cliPath, workerArgv(opts), spawnOpts);
+    // The guard may throw after spawn returns (for example, while committing its lock).
+    spawned.on("error", () => {});
+    spawnClosed = new Promise((resolve) => (spawned as unknown as ClosableChild).on("close", () => resolve()));
+    return spawned;
+  };
+  let child: ReturnType<typeof spawn>;
+  try {
+    child = (opts.spawnGuard ?? ((spawnChild) => spawnChild()))(spawnChild);
+  } catch (error) {
+    if (spawned) {
+      killGroup(spawned.pid);
+      await spawnClosed;
+    }
+    throw error;
+  }
+  pid = child.pid;
 
   return await new Promise<WorkerResult>((resolve, reject) => {
     const chunks: Uint8Array[] = [];
