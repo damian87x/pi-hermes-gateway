@@ -141,9 +141,9 @@ test("cli-job: malformed operands are usage errors that never reach the daemon",
 test("cli-job: an index outside config.routes is rejected with invalid_route and creates no job", async (t) => {
   const { create, list, storedJobIds, adapter } = setup(t);
   const rejected = await create(["--text", "out of range", "--at", FUTURE, "--route", "1"]);
-  assert.notEqual(rejected.status, null);
-  assert.notEqual(rejected.status, 0, rejected.stderr);
-  assert.match(rejected.stderr, /^invalid_route: route index 1 is not configured \(1 configured\)\n/);
+  assert.equal(rejected.status, 1, rejected.stderr);
+  assert.equal(rejected.stderr, "invalid_route: route index 1 is not configured (1 configured)\n");
+  assert.doesNotMatch(rejected.stdout + rejected.stderr, /usage:/);
   assert.equal(rejected.stdout, "");
   assert.deepEqual(await list(), []);
   assert.deepEqual(storedJobIds(), []);

@@ -136,8 +136,8 @@ async function jobCommand(profileDir: string, commandAt: number): Promise<number
   if (sub === "create") {
     const created = jobCreateBody(opts, config.routes);
     if (typeof created === "string") {
-      process.stderr.write(`${created}\n${JOB_USAGE}`);
-      return 2;
+      process.stderr.write(created.startsWith("invalid_route:") ? `${created}\n` : `${created}\n${JOB_USAGE}`);
+      return created.startsWith("invalid_route:") ? 1 : 2;
     }
     body = created;
   }
