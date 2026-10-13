@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Owner steps: first live sends</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f6f8fa; color: #1f2328; font: 16px/1.55 system-ui, sans-serif; }
+    main { max-width: 820px; margin: 0 auto; padding: 20px 16px 36px; background: #fff; }
+    h1 { margin: 0 0 12px; font-size: 1.8rem; line-height: 1.2; }
+    h2 { margin: 22px 0 8px; padding-bottom: 7px; border-bottom: 1px solid #d1d9e0; font-size: 1.35rem; }
+    p { margin: 8px 0; }
+    ol { padding-left: 24px; }
+    li { padding-left: 3px; margin: 8px 0; }
+    a { color: #0969da; text-decoration: underline; }
+    code { padding: .1em .3em; border-radius: 5px; background: #eff2f5; font: .9em ui-monospace, SFMono-Regular, Consolas, monospace; overflow-wrap: anywhere; }
+    pre { margin: 8px 0; padding: 10px; overflow-wrap: anywhere; white-space: pre-wrap; background: #f6f8fa; border: 1px solid #d1d9e0; border-radius: 7px; font: 13px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
+    @media (max-width: 420px) { main { padding: 16px 14px 28px; } h1 { font-size: 1.55rem; } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Owner steps: first live sends</h1>
+    <p>Nothing is sent until you reply <code>go</code>.</p>
+    <h2>Telegram — <a href="https://github.com/damian87x/pi-hermes-gateway/issues/10">issue #10</a></h2>
+    <ol>
+      <li>Use <code>$HOME/.config/pi-hermes-gateway/pilot</code> as the profile directory.</li>
+      <li>In its <code>config.json</code>, fill <code>adapter.config.token</code> and <code>routes[0].chatId</code> with your private values.</li>
+      <li>Set the config file permissions: <code>chmod 600 "$HOME/.config/pi-hermes-gateway/pilot/config.json"</code>.</li>
+      <li>Check the profile:
+        <pre>PROFILE="$HOME/.config/pi-hermes-gateway/pilot"
+pi-hermes-gateway-core --profile "$PROFILE" doctor</pre>
+      </li>
+      <li>Reply <code>go</code> when ready. Keep the token and chat ID private.</li>
+    </ol>
+    <h2>WhatsApp — <a href="https://github.com/damian87x/pi-hermes-gateway/issues/12">issue #12</a>, after Telegram</h2>
+    <ol>
+      <li>Use the separate profile <code>$HOME/.config/pi-hermes-gateway/whatsapp-pilot</code>.</li>
+      <li>As owner, pair a fresh linked device into its <code>whatsapp-auth</code> folder using the provider's QR or one-time-code flow.</li>
+      <li>Put your recipient JID in <code>routes[0].chatId</code> in that profile's private <code>config.json</code>.</li>
+      <li>Unofficial automation or linked devices can risk account restriction or a ban; proceed only if you accept that risk.</li>
+      <li>Check the profile:
+        <pre>PROFILE="$HOME/.config/pi-hermes-gateway/whatsapp-pilot"
+pi-hermes-gateway-core --profile "$PROFILE" doctor</pre>
+      </li>
+      <li>Reply <code>go</code> when ready. Keep the JID private.</li>
+    </ol>
+  </main>
+</body>
+</html>
