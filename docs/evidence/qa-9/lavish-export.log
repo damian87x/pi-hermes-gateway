@@ -1,0 +1,7 @@
+export:
+  source: /home/damian-linux/workspace/pi-hermes-gateway-qa-persistent-9-r2/docs/evidence/qa-9/index.html
+  output: /home/damian-linux/workspace/pi-hermes-gateway-qa-persistent-9-r2/docs/evidence/qa-9/lavish-export.html
+  bytes: 391931
+  unresolved_local_assets: 0
+  notices: 0
+next_step: "Wrote /home/damian-linux/workspace/pi-hermes-gateway-qa-persistent-9-r2/docs/evidence/qa-9/lavish-export.html. Open it directly or host it anywhere - it needs no Lavish server. Local assets are inlined; remote CDN/font references are left as links, so it needs network to render those."

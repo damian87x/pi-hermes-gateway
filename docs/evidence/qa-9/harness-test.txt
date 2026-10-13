@@ -1,0 +1,13 @@
+✔ systemd proof accepts and logs empty pgrep status 1 (10.917364ms)
+✔ systemd proof preserves raw pgrep output and rejects tool errors (17.60023ms)
+✔ systemd proof accepts no pilot clients and ignores unrelated sockets (9.919248ms)
+✔ systemd proof rejects pilot clients on either endpoint before and after restart (20.964613ms)
+✔ systemd proof rejects ss errors and brackets the first restart with client checks (3.357943ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 143.120317

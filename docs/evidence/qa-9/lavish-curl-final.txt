@@ -1,0 +1,2 @@
+HTTP 200; bytes=391984
+PASS: served response has head + embedded screenshot; export self-contained with no GitHub image URL
