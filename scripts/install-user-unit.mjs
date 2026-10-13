@@ -72,7 +72,9 @@ function main() {
   const unit = template.split("\n").filter((line) => !line.startsWith("#")).map((line) => {
     if (line.startsWith("Description=")) return `Description=pi-hermes-gateway profile ${profile}`;
     if (line.startsWith("ExecStart=")) return `ExecStart=${quote(node, true)} ${quote(cli, true)} --profile ${quote(profileDir, true)}`;
-    if (line.startsWith("WorkingDirectory=")) return `WorkingDirectory=${quote(prefix)}`;
+    // WorkingDirectory is a literal path, not a quoted ExecStart argument. Only
+    // systemd specifiers expand here; quotes would become part of the path.
+    if (line.startsWith("WorkingDirectory=")) return `WorkingDirectory=${prefix.replaceAll("%", "%%")}`;
     return line;
   }).join("\n").trimStart();
   if (opts.has("--install") || opts.has("--enable")) {
