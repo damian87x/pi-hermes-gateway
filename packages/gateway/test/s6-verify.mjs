@@ -12,12 +12,18 @@ const EXPECTED_WORKSPACES = new Map([
   ["packages/wiki", "pi-hermes-gateway-wiki"],
 ]);
 
-export function isolatedEnvironment(owned, _untrusted = {}) {
+export function isolatedEnvironment(owned, _untrusted = {}, trustedBinDir) {
   for (const key of ["home", "tmp", "config", "cache", "npmUserConfig", "npmGlobalConfig"]) {
     if (typeof owned[key] !== "string" || !isAbsolute(owned[key])) throw new Error(`invalid owned ${key}`);
   }
+  if (trustedBinDir !== undefined && (typeof trustedBinDir !== "string" || !isAbsolute(trustedBinDir))) {
+    throw new Error("invalid trustedBinDir");
+  }
+  // trustedBinDir, when supplied, is the directory of the exact node binary already running this test
+  // process (proven elsewhere via a non-tamperable-file check) — not an arbitrary, attacker-influenced PATH.
+  const PATH = trustedBinDir ? `${trustedBinDir}:/usr/bin:/bin` : "/usr/bin:/bin";
   return {
-    PATH: "/usr/bin:/bin",
+    PATH,
     HOME: owned.home,
     TMPDIR: owned.tmp,
     TMP: owned.tmp,
@@ -156,6 +162,20 @@ export function runSelfTest() {
   assert.equal(clean.PATH, "/usr/bin:/bin");
   assert.equal(synthetic.NODE_OPTIONS, "--import=evil");
   assert.equal(clean.HOME, "/owned/home");
+
+  const withTrustedBin = isolatedEnvironment(
+    { home: "/owned/home", tmp: "/owned/tmp", config: "/owned/config", cache: "/owned/cache",
+      npmUserConfig: "/owned/home/.npmrc", npmGlobalConfig: "/owned/home/npmrc-global" },
+    {},
+    "/opt/hostedtoolcache/node/24.20.0/x64/bin",
+  );
+  assert.equal(withTrustedBin.PATH, "/opt/hostedtoolcache/node/24.20.0/x64/bin:/usr/bin:/bin");
+  assert.throws(() => isolatedEnvironment(
+    { home: "/owned/home", tmp: "/owned/tmp", config: "/owned/config", cache: "/owned/cache",
+      npmUserConfig: "/owned/home/.npmrc", npmGlobalConfig: "/owned/home/npmrc-global" },
+    {},
+    "relative/bin",
+  ), /invalid trustedBinDir/);
 
   const syntheticResolver = (symlinks = [], failures = []) => ({
     lstat(path) {

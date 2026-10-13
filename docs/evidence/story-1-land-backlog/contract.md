@@ -198,3 +198,47 @@ run used by CI. The fail-closed invariant is preserved and was re-proven, not we
 still exercises every deny case (unsafe executable, `publish`/`systemctl`/`enable-linger` in args, credential-
 shaped env keys, `HOME` escaping the disposable sandbox, a non-local registry), and running the real test outside
 `npm`'s control still fails closed with a specific, honest message instead of silently proceeding.
+
+## g) GitHub Actions CI exposed one more real portability gap; fixed
+
+Pushing the portability fix (head `73a58a7`) triggered CI runs `38363431437` (push) and `38363436217`
+(pull_request) on `ubuntu-latest`. Both failed with a different, specific, genuine error (`gh run view --log-failed`):
+
+```
+Command failed: /opt/hostedtoolcache/node/24.20.0/x64/bin/node /opt/hostedtoolcache/node/24.20.0/x64/lib/node_modules/npm/bin/npm-cli.js run build
+sh: 1: npm: not found
+```
+
+`NODE`/`npm_execpath` resolved correctly to GitHub's `actions/setup-node` tool-cache install (proving the
+process-derived path fix worked). The failure was one layer deeper: the sandbox `isolatedEnvironment()` locks
+`PATH` to `/usr/bin:/bin` so a spawned subprocess cannot pick up an attacker-influenced PATH; on this local
+machine `/usr/bin:/bin` already contains working `node`/`npm` (apt-installed), so the gap was invisible here, but
+GitHub's tool-cache install lives under `/opt/hostedtoolcache/...`, outside that fixed PATH. npm's own `run build`
+script shells out (`sh -c "npm run build -w ... && ..."`) and that nested shell could not find `npm` on `PATH`.
+
+Fix: `isolatedEnvironment()` in `s6-verify.mjs` now takes an explicit `trustedBinDir` third argument and prepends
+it to `PATH` (`<trustedBinDir>:/usr/bin:/bin`) only when supplied; `pack-install.test.ts`'s `isolatedEnv()` passes
+`dirname(NODE)` — the directory of the exact node binary already running this test process, the same path already
+proven non-tamperable by `isNonTamperableSystemFile`. This does not open PATH to anything new or untrusted; it
+only admits the one directory already independently verified. `runSelfTest()` gained assertions for both the
+default (`/usr/bin:/bin`) and `trustedBinDir`-supplied cases, plus a rejection case for a non-absolute
+`trustedBinDir`.
+
+### Final validation
+
+```
+npx tsc -p packages/gateway/tsconfig.json --noEmit                                        # exit 0
+node packages/gateway/test/s6-verify.mjs --self-test                                      # "S6 pure synthetic checks passed"
+npm_execpath=<npm-cli.js> node --experimental-strip-types --test test/product-boundary.test.ts   # 2/2 pass
+npm_execpath=<npm-cli.js> node --experimental-strip-types --test test/pack-install.test.ts       # 1/1 pass, full real run
+NODE_OPTIONS=--max-old-space-size=4096 npm ci             # exit 0
+NODE_OPTIONS=--max-old-space-size=4096 npm run typecheck  # exit 0
+NODE_OPTIONS=--max-old-space-size=4096 npm test           # exit 0 (276/276 gateway tests incl. the s6 test; full
+                                                           # monorepo suite; run once; load checked <16 before each
+                                                           # step; no other full suite running concurrently)
+```
+
+Pushed as commit `<head after this fix>` on `story/4-land-backlog` (PR #14). GitHub Actions CI on this new head
+was re-triggered automatically on push; its result is the authoritative CI signal and should be checked on GitHub
+directly, since this lane only has visibility into runs already completed at the time of writing. No PR
+comment, review, or QA note was posted, per instruction, until CI is confirmed green on the exact head.

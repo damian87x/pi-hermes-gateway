@@ -46,7 +46,14 @@ function isolatedEnv(home: string): NodeJS.ProcessEnv {
   mkdirSync(cache, { recursive: true });
   mkdirSync(tmp, { recursive: true });
   const { userconfig, globalconfig } = writeIsolatedNpmrc(home);
-  return isolatedEnvironment({ home, tmp, config, cache, npmUserConfig: userconfig, npmGlobalConfig: globalconfig });
+  // Trust exactly the directory of the node binary already running this test (proven by
+  // isNonTamperableSystemFile below) so a nested npm-spawned shell can still resolve node/npm by
+  // name on installs where they live outside /usr/bin (e.g. GitHub Actions' hostedtoolcache).
+  return isolatedEnvironment(
+    { home, tmp, config, cache, npmUserConfig: userconfig, npmGlobalConfig: globalconfig },
+    {},
+    dirname(NODE),
+  );
 }
 
 // NODE and npm's CLI path come from the controlled process actually running this test (process.execPath /
