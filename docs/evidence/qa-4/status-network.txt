@@ -1,0 +1,26 @@
+### Result
+#2 [GET] http://127.0.0.1:4178/api/status
+
+  General
+    status:    [200] OK
+    duration:  2ms
+    type:      fetch
+    mimeType:  application/json
+
+  Request headers
+    sec-ch-ua-platform: "Linux"
+    authorization: Bearer aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    referer: http://127.0.0.1:4178/
+    user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/146.0.0.0 Safari/537.36
+    sec-ch-ua: "Chromium";v="146", "Not-A.Brand";v="24", "Google Chrome";v="146"
+    sec-ch-ua-mobile: ?0
+
+  Response headers
+    cache-control: no-store
+    content-length: 586
+    keep-alive: timeout=5
+    date: Tue, 13 Oct 2026 07:59:36 GMT
+    content-type: application/json; charset=utf-8
+    connection: keep-alive
+
+Run `response-body 2` to read the response body.
