@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { randomBytes } from "node:crypto";
 import { readFileSync, existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,20 +7,176 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { loadSendAdapter } from "./adapter-loader.js";
 import type { SendAdapter } from "./adapter.js";
-import { approvePending } from "./core.js";
+import { approvePending, type GatewayResponse } from "./core.js";
 import { startDaemon } from "./daemon.js";
 import { runDoctor } from "./doctor.js";
 import { newId } from "./ids.js";
+import { sendIpc } from "./ipc.js";
 import { ensureProfileDir, profilePaths } from "./profile.js";
 import { Store } from "./store.js";
 import { createResultsStore } from "./worker/results.js";
 import { runWorkerJob } from "./worker/run.js";
-import type { DeliveryRoute } from "pi-hermes-gateway-protocol";
+import { PROTOCOL_VERSION, type DeliveryRoute, type JobSchedule, type StaticTextJobCreate } from "pi-hermes-gateway-protocol";
+
+const USAGE =
+  "usage: pi-hermes-gateway-core --profile DIR [--restore BACKUP] [--resume-dispatch]\n" +
+  "       pi-hermes-gateway-core --profile DIR approve <id>\n" +
+  "       pi-hermes-gateway-core --profile DIR [--node PATH] doctor\n" +
+  "       pi-hermes-gateway-core --profile DIR job create --text T (--at ISO-UTC | --daily HH:MM --tz IANA) [--route N] [--request-id ID]\n" +
+  "       pi-hermes-gateway-core --profile DIR job list\n";
+
+const JOB_USAGE =
+  "usage: pi-hermes-gateway-core --profile DIR job create --text T (--at ISO-UTC | --daily HH:MM --tz IANA) [--route N] [--request-id ID]\n" +
+  "       pi-hermes-gateway-core --profile DIR job list\n";
+
+// The CLI sends requests over the profile socket with a short TTL; the daemon enforces the protocol bound.
+const REQUEST_TTL_MS = 30_000;
+
+type ProfileConfig = {
+  routes: DeliveryRoute[];
+  catchUpPolicy?: "skip" | "one-latest";
+  adapter?: { module: string; config?: unknown };
+};
 
 function arg(name: string): string | undefined {
   const idx = process.argv.indexOf(name);
   if (idx === -1) return undefined;
   return process.argv[idx + 1];
+}
+
+function readProfileConfig(profileDir: string): ProfileConfig | undefined {
+  const configPath = join(profileDir, "config.json");
+  if (!existsSync(configPath)) {
+    process.stderr.write("missing profile config.json\n");
+    return undefined;
+  }
+  return JSON.parse(readFileSync(configPath, "utf8")) as ProfileConfig;
+}
+
+// Operands after `job <sub>` are `--flag value` pairs from `allowed`; `--profile DIR` is skipped because
+// arg() already consumed it. Any other flag, a repeated flag, or a stray positional is a usage error.
+function parseJobOptions(args: string[], allowed: readonly string[]): Map<string, string> | string {
+  const opts = new Map<string, string>();
+  for (let i = 0; i < args.length; i += 1) {
+    const cur = args[i]!;
+    if (cur === "--profile") {
+      i += 1;
+      continue;
+    }
+    if (!cur.startsWith("--")) return `unexpected argument ${cur}`;
+    if (!allowed.includes(cur)) return `unknown option ${cur}`;
+    if (opts.has(cur)) return `duplicate option ${cur}`;
+    const value = args[i + 1];
+    if (value === undefined || value.startsWith("--")) return `${cur} requires a value`;
+    opts.set(cur, value);
+    i += 1;
+  }
+  return opts;
+}
+
+// Builds the job.create body from parsed options; schedule and text formats are validated by the daemon,
+// the route index is resolved here because only the configured route list can be sent on the wire.
+function jobCreateBody(opts: Map<string, string>, routes: DeliveryRoute[]): StaticTextJobCreate | string {
+  const text = opts.get("--text");
+  if (text === undefined) return "--text is required";
+  if (text.length === 0) return "--text must be non-empty";
+  const at = opts.get("--at");
+  const daily = opts.get("--daily");
+  const tz = opts.get("--tz");
+  let schedule: JobSchedule;
+  if (at !== undefined) {
+    if (daily !== undefined || tz !== undefined) return "--at cannot be combined with --daily or --tz";
+    schedule = { type: "once", atUtc: at };
+  } else if (daily !== undefined && tz !== undefined) {
+    schedule = { type: "daily", localTime: daily, timeZone: tz };
+  } else if (daily !== undefined) {
+    return "--daily requires --tz";
+  } else if (tz !== undefined) {
+    return "--tz requires --daily";
+  } else {
+    return "one of --at or --daily with --tz is required";
+  }
+  const routeArg = opts.get("--route");
+  let index = 0;
+  if (routeArg === undefined) {
+    if (routes.length !== 1) return `--route is required when ${routes.length} routes are configured`;
+  } else {
+    if (!/^\d+$/.test(routeArg)) return "--route must be a non-negative integer index into the configured routes";
+    index = Number(routeArg);
+  }
+  const route = routes[index];
+  if (!route) return `route index ${index} is not configured (${routes.length} configured)`;
+  return { kind: "static-text", text, route, schedule, requireApproval: false };
+}
+
+function isGatewayResponse(value: unknown): value is GatewayResponse {
+  if (typeof value !== "object" || value === null || typeof (value as { ok?: unknown }).ok !== "boolean") return false;
+  if ((value as { ok: boolean }).ok) return true;
+  const error = (value as { error?: { code?: unknown; message?: unknown } }).error;
+  return typeof error?.code === "string" && typeof error.message === "string";
+}
+
+// Job commands only talk to the running daemon over the profile socket: they never open the ledger, so a
+// missing daemon leaves the profile untouched.
+async function jobCommand(profileDir: string, commandAt: number): Promise<number> {
+  const sub = process.argv[commandAt + 1];
+  if (sub !== "create" && sub !== "list") {
+    process.stderr.write(JOB_USAGE);
+    return 2;
+  }
+  const config = readProfileConfig(profileDir);
+  if (!config) return 2;
+  const operands = process.argv.slice(commandAt + 2);
+  const opts = parseJobOptions(operands, sub === "create" ? ["--text", "--at", "--daily", "--tz", "--route", "--request-id"] : []);
+  if (typeof opts === "string") {
+    process.stderr.write(`${opts}\n${JOB_USAGE}`);
+    return 2;
+  }
+  let body: unknown = {};
+  if (sub === "create") {
+    const created = jobCreateBody(opts, config.routes);
+    if (typeof created === "string") {
+      process.stderr.write(`${created}\n${JOB_USAGE}`);
+      return 2;
+    }
+    body = created;
+  }
+  const { socketPath } = profilePaths(profileDir);
+  const request = {
+    protocolVersion: PROTOCOL_VERSION,
+    // Generated ids use "-" because the protocol request-id pattern has no "_" (unlike newId's job ids).
+    requestId: opts.get("--request-id") ?? `req-${randomBytes(12).toString("hex")}`,
+    method: sub === "create" ? "job.create" : "job.list",
+    body,
+    expiresAt: Date.now() + REQUEST_TTL_MS,
+  };
+  let response: unknown;
+  try {
+    response = await sendIpc(socketPath, request);
+  } catch (err) {
+    const code = (err as { code?: unknown }).code;
+    process.stderr.write(`gateway daemon is not running: cannot connect to ${socketPath}${typeof code === "string" ? ` (${code})` : ""}\n`);
+    return 1;
+  }
+  if (!isGatewayResponse(response)) {
+    process.stderr.write("unexpected gateway response\n");
+    return 1;
+  }
+  if (!response.ok) {
+    process.stderr.write(`${response.error.code}: ${response.error.message}\n`);
+    return 1;
+  }
+  if (sub === "list") {
+    process.stdout.write(`${JSON.stringify(response.body)}\n`);
+    return 0;
+  }
+  const jobId = (response.body as { jobId?: unknown } | null)?.jobId;
+  if (typeof jobId !== "string") {
+    process.stderr.write("unexpected gateway response\n");
+    return 1;
+  }
+  process.stdout.write(`${jobId}\n`);
+  return 0;
 }
 
 // The command is the first positional argument; later positionals are its operands.
@@ -41,15 +198,15 @@ function commandIndex(): number {
 async function cli(): Promise<number | undefined> {
   const profileArg = arg("--profile");
   if (!profileArg) {
-    process.stderr.write(
-      "usage: pi-hermes-gateway-core --profile DIR [--restore BACKUP] [--resume-dispatch]\n       pi-hermes-gateway-core --profile DIR approve <id>\n       pi-hermes-gateway-core --profile DIR [--node PATH] doctor\n",
-    );
+    process.stderr.write(USAGE);
     return 2;
   }
   const profileDir: string = profileArg;
 
   const commandAt = commandIndex();
   const command = commandAt === -1 ? undefined : process.argv[commandAt];
+
+  if (command === "job") return jobCommand(profileDir, commandAt);
 
   if (command === "approve") {
     const id = process.argv[commandAt + 1];
@@ -168,17 +325,10 @@ async function cli(): Promise<number | undefined> {
     return 2;
   }
 
-  const configPath = join(profileDir, "config.json");
-  if (!existsSync(configPath)) {
-    process.stderr.write("missing profile config.json\n");
-    return 2;
-  }
-
-  const config = JSON.parse(readFileSync(configPath, "utf8")) as {
-    routes: DeliveryRoute[];
-    catchUpPolicy?: "skip" | "one-latest";
-    adapter?: { module: string; config?: unknown };
-  };
+  const loadedConfig = readProfileConfig(profileDir);
+  if (!loadedConfig) return 2;
+  // Hoisted function declarations do not keep the narrowing above, so bind the non-optional config here.
+  const config: ProfileConfig = loadedConfig;
 
   async function main(): Promise<void> {
     let adapter: SendAdapter | undefined;
