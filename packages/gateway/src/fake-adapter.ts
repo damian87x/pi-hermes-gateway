@@ -20,7 +20,38 @@ export type FakeAdapter = SendAdapter & {
   send(envelope: FakeSendEnvelope): FakeReceipt;
 };
 
-export function createFakeAdapter(opts?: { maxTextLength?: number; sinkPath?: string }): FakeAdapter {
+export type FakeAdapterConfig = { maxTextLength?: number; sinkPath?: string };
+
+// Shape of config.adapter.config when this module is named by config.adapter.module. Anything the
+// fake adapter does not understand is refused so a typo cannot silently drop the sink.
+function parseFakeAdapterConfig(config: unknown): FakeAdapterConfig {
+  if (config === null || config === undefined) return {};
+  if (typeof config !== "object" || Array.isArray(config)) {
+    throw new Error("fake adapter config must be an object");
+  }
+  const parsed: FakeAdapterConfig = {};
+  for (const [key, value] of Object.entries(config as Record<string, unknown>)) {
+    if (key === "sinkPath") {
+      if (typeof value !== "string" || value.length === 0) throw new Error("fake adapter config sinkPath must be a non-empty string");
+      parsed.sinkPath = value;
+    } else if (key === "maxTextLength") {
+      if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+        throw new Error("fake adapter config maxTextLength must be a positive integer");
+      }
+      parsed.maxTextLength = value;
+    } else {
+      throw new Error(`fake adapter config has unknown key ${JSON.stringify(key)}`);
+    }
+  }
+  return parsed;
+}
+
+// Module-path factory for adapter-loader: config.adapter = { module: <this file>, config: { sinkPath } }.
+export function createAdapter(config: unknown = null): FakeAdapter {
+  return createFakeAdapter(parseFakeAdapterConfig(config));
+}
+
+export function createFakeAdapter(opts?: FakeAdapterConfig): FakeAdapter {
   // protocol caller: validateAdapterManifest — fake adapter construction (Gateway.open / createFakeAdapter)
   const manifestResult = validateAdapterManifest({
     adapterId: "fake",

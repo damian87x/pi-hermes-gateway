@@ -12,7 +12,7 @@ export {
   type GatewayConfig,
   type GatewayResponse,
 } from "./core.js";
-export { createFakeAdapter, type FakeAdapter } from "./fake-adapter.js";
+export { createAdapter, createFakeAdapter, type FakeAdapter, type FakeAdapterConfig } from "./fake-adapter.js";
 export {
   isSendAdapter,
   type SendAdapter,

@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { loadSendAdapter } from "./adapter-loader.js";
 import type { SendAdapter } from "./adapter.js";
 import { approvePending, type GatewayResponse } from "./core.js";
-import { startDaemon } from "./daemon.js";
+import { DEFAULT_TICK_INTERVAL_MS, startDaemon } from "./daemon.js";
 import { runDoctor } from "./doctor.js";
 import { newId } from "./ids.js";
 import { sendIpc } from "./ipc.js";
@@ -36,6 +36,7 @@ type ProfileConfig = {
   routes: DeliveryRoute[];
   catchUpPolicy?: "skip" | "one-latest";
   adapter?: { module: string; config?: unknown };
+  tickIntervalMs?: unknown;
 };
 
 function arg(name: string): string | undefined {
@@ -330,6 +331,17 @@ async function cli(): Promise<number | undefined> {
   // Hoisted function declarations do not keep the narrowing above, so bind the non-optional config here.
   const config: ProfileConfig = loadedConfig;
 
+  // Refused here, before any lock or ledger is touched, so a bad interval is a usage error (2), not a crash (1).
+  let tickIntervalMs: number | undefined;
+  if (config.tickIntervalMs !== undefined) {
+    const value = config.tickIntervalMs;
+    if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > DEFAULT_TICK_INTERVAL_MS) {
+      process.stderr.write(`tickIntervalMs must be an integer in 1..${DEFAULT_TICK_INTERVAL_MS}\n`);
+      return 2;
+    }
+    tickIntervalMs = value;
+  }
+
   async function main(): Promise<void> {
     let adapter: SendAdapter | undefined;
     if (config.adapter?.module) {
@@ -340,6 +352,7 @@ async function cli(): Promise<number | undefined> {
       routes: config.routes,
       ...(adapter ? { adapter } : {}),
       ...(config.catchUpPolicy ? { catchUpPolicy: config.catchUpPolicy } : {}),
+      ...(tickIntervalMs !== undefined ? { tickIntervalMs } : {}),
       ...(restoreFromBackup ? { restoreFromBackup } : {}),
       ...(resumeDispatch ? { resumeDispatch: true } : {}),
     });
