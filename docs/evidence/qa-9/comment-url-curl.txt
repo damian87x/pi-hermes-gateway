@@ -1,0 +1,1 @@
+curl 200 http://192.168.68.55:4387/artifact/611c1cd3629aba18/index.html
