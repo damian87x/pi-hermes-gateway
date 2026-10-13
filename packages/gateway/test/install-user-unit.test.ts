@@ -46,6 +46,18 @@ test("install-user-unit defaults to write-free dry-run with concrete absolute pa
   } finally { rmSync(s.home, { recursive: true, force: true }); }
 });
 
+test("install-user-unit renders WorkingDirectory as a literal path, not an ExecStart quoted argument", () => {
+  const s = sandbox();
+  try {
+    const result = s.invoke([]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.split("\n").find((line) => line.startsWith("WorkingDirectory=")),
+      `WorkingDirectory=${s.prefix.replaceAll("%", "%%")}`);
+    assert.equal(existsSync(s.unit), false);
+    assert.equal(existsSync(s.calls), false);
+  } finally { rmSync(s.home, { recursive: true, force: true }); }
+});
+
 test("install-user-unit writes passively; enable alone explicitly reloads and enables only its own unit", () => {
   const s = sandbox();
   try {
