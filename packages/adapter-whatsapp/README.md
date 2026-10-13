@@ -14,6 +14,18 @@ Without `deps` the sender is **unconfigured**: it returns `{ kind: "unconfigured
 
 Credentials live only at `whatsAppAuthDir(profileDir)` = `<profileDir>/whatsapp-auth`, a dedicated directory under the gateway profile. The path is derived, never configured: an `authDir` key in the adapter config is rejected. The user's existing WhatsApp session is never read, copied, or taken over. Linking a fresh device for that directory is an owner action outside this package.
 
+## Owner-only pairing preflight (G9a)
+
+Use a separate profile at `$HOME/.config/pi-hermes-gateway/whatsapp-pilot`; do not reuse an existing gateway or WhatsApp profile. Doctor checks that the profile and its `whatsapp-auth` child are real directories rather than symlinks, so the gateway cannot alias another session path. This check only inspects directory metadata; it does not read or create auth/session files.
+
+This package does not implement pairing. The owner must pair a fresh linked device through the selected socket provider's QR or one-time-code flow, directed only to the new profile's `whatsapp-auth` directory. Do not capture or post pairing codes or auth contents. WhatsApp may restrict or ban accounts using unofficial automation or linked-device providers; proceed only after the owner accepts that risk.
+
+Put the owner-provided recipient JID in `routes[0].chatId` in the private profile `config.json`; never put the JID in source, logs, screenshots, or evidence. After the owner has paired the new profile, run:
+
+```sh
+pi-hermes-gateway-core --profile "$HOME/.config/pi-hermes-gateway/whatsapp-pilot" doctor
+```
+
 ## Runtime dependency
 
 The packed tarball's only runtime dependency is `pi-hermes-gateway-protocol`. No WhatsApp socket library (for example Baileys) is declared or bundled; the operator supplies the socket factory from their own gateway plugin prefix. Rationale and rejected alternatives are in the root `DECISIONS.md` under "WhatsApp socket dependency".
