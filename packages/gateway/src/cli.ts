@@ -105,7 +105,7 @@ function jobCreateBody(opts: Map<string, string>, routes: DeliveryRoute[]): Stat
     index = Number(routeArg);
   }
   const route = routes[index];
-  if (!route) return `route index ${index} is not configured (${routes.length} configured)`;
+  if (!route) return `invalid_route: route index ${index} is not configured (${routes.length} configured)`;
   return { kind: "static-text", text, route, schedule, requireApproval: false };
 }
 
