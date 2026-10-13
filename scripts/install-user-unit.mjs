@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve, sep } from "node:path";
 
@@ -77,8 +77,12 @@ function main() {
   }).join("\n").trimStart();
   if (opts.has("--install") || opts.has("--enable")) {
     const unitDir = join(home, ".config", "systemd", "user");
+    const destination = join(unitDir, unitName);
+    if (lstatSync(destination, { throwIfNoEntry: false })?.isSymbolicLink()) {
+      throw new Error(`refusing to write unit to symlink: ${destination}`);
+    }
     mkdirSync(unitDir, { recursive: true });
-    writeFileSync(join(unitDir, unitName), unit, { mode: 0o644 });
+    writeFileSync(destination, unit, { mode: 0o644 });
     if (opts.has("--enable")) {
       for (const args of [["--user", "daemon-reload"], ["--user", "enable", unitName]]) {
         const result = spawnSync("systemctl", args, { stdio: ["ignore", "ignore", "pipe"], encoding: "utf8" });

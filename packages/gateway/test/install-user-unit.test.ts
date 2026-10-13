@@ -61,6 +61,23 @@ test("install-user-unit writes passively; enable alone explicitly reloads and en
   } finally { rmSync(s.home, { recursive: true, force: true }); }
 });
 
+test("install-user-unit refuses a symlink destination without changing its target", () => {
+  const s = sandbox();
+  try {
+    const target = join(s.home, "existing-file");
+    const contents = "keep this file unchanged\n";
+    writeFileSync(target, contents);
+    mkdirSync(join(s.home, ".config", "systemd", "user"), { recursive: true });
+    symlinkSync(target, s.unit);
+    const result = s.invoke(["--install"]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /refusing to write unit to symlink/);
+    assert.equal(result.stdout, "");
+    assert.equal(readFileSync(target, "utf8"), contents);
+    assert.equal(existsSync(s.calls), false);
+  } finally { rmSync(s.home, { recursive: true, force: true }); }
+});
+
 test("install-user-unit rejects invalid input and Pi-owned prefixes without writes or systemctl", () => {
   const s = sandbox();
   try {
